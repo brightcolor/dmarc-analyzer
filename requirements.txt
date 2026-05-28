@@ -32,7 +32,7 @@ aiosmtpd==1.4.6
 defusedxml==0.7.1
 
 # Async file I/O
-aiofiles==24.1.0
+aiofiles==25.1.0
 
 # Scheduling (lightweight)
 apscheduler==3.10.4
