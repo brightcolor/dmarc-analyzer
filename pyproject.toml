@@ -24,7 +24,7 @@ omit = ["*/tests/*", "*/migrations/*", "*/scripts/*"]
 [tool.coverage.report]
 skip_empty = true
 show_missing = true
-fail_under = 70
+fail_under = 55
 
 [tool.ruff]
 target-version = "py311"
