@@ -8,6 +8,27 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <style>
     body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f4f6f9; }
+
+    /* Strength meter */
+    .strength-track { display: flex; gap: 4px; height: 5px; margin-top: 10px; }
+    .strength-seg {
+      flex: 1; border-radius: 3px; background: #dee2e6;
+      transition: background 0.25s ease;
+    }
+    .strength-seg.filled-1 { background: #dc3545; }
+    .strength-seg.filled-2 { background: #fd7e14; }
+    .strength-seg.filled-3 { background: #ffc107; }
+    .strength-seg.filled-4 { background: #20c997; }
+    .strength-seg.filled-5 { background: #198754; }
+
+    .req-item { font-size: .78rem; display: flex; align-items: center; gap: 4px; }
+    .req-item .bi { font-size: .8rem; }
+    .req-item.ok  { color: #198754; }
+    .req-item.nok { color: #adb5bd; }
+
+    .match-hint { font-size: .78rem; }
+    .match-hint.ok  { color: #198754; }
+    .match-hint.err { color: #dc3545; }
   </style>
 </head>
 <body>
@@ -35,7 +56,7 @@
             account and your organization. This page disappears once an account has been created.
           </p>
 
-          <form method="post" action="/auth/setup">
+          <form method="post" action="/auth/setup" id="setupForm" novalidate>
 
             <h6 class="text-uppercase text-muted fw-semibold small mb-3">
               <i class="bi bi-building me-1"></i>Organization
@@ -67,26 +88,69 @@
               </div>
             </div>
 
-            <div class="mb-3">
-              <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
+            <!-- Password -->
+            <div class="mb-1">
+              <label for="password" class="form-label">
+                Password <span class="text-danger">*</span>
+              </label>
               <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-lock"></i></span>
                 <input type="password" class="form-control" id="password" name="password"
-                       placeholder="At least 10 characters" required minlength="10">
+                       placeholder="At least 10 characters" required minlength="10" autocomplete="new-password">
+                <button type="button" class="btn btn-outline-secondary" id="togglePwd" tabindex="-1"
+                        title="Show / hide password">
+                  <i class="bi bi-eye" id="togglePwdIcon"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="generatePwd" tabindex="-1"
+                        title="Generate a strong password">
+                  <i class="bi bi-shuffle"></i>
+                </button>
+              </div>
+
+              <!-- Strength meter -->
+              <div id="strengthWrap" style="display:none">
+                <div class="strength-track">
+                  <div class="strength-seg" id="seg1"></div>
+                  <div class="strength-seg" id="seg2"></div>
+                  <div class="strength-seg" id="seg3"></div>
+                  <div class="strength-seg" id="seg4"></div>
+                  <div class="strength-seg" id="seg5"></div>
+                </div>
+                <div class="d-flex justify-content-between mt-1">
+                  <span id="strengthLabel" class="fw-semibold" style="font-size:.78rem"></span>
+                  <span id="byteCount" class="text-muted" style="font-size:.78rem"></span>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2" id="reqList">
+                  <span class="req-item nok" id="req-len"><i class="bi bi-x-circle-fill"></i>10+ chars</span>
+                  <span class="req-item nok" id="req-upper"><i class="bi bi-x-circle-fill"></i>Uppercase</span>
+                  <span class="req-item nok" id="req-lower"><i class="bi bi-x-circle-fill"></i>Lowercase</span>
+                  <span class="req-item nok" id="req-digit"><i class="bi bi-x-circle-fill"></i>Number</span>
+                  <span class="req-item nok" id="req-sym"><i class="bi bi-x-circle-fill"></i>Symbol</span>
+                  <span class="req-item nok" id="req-bytes"><i class="bi bi-x-circle-fill"></i>&le;72 bytes</span>
+                </div>
               </div>
             </div>
 
-            <div class="mb-4">
-              <label for="password_confirm" class="form-label">Confirm password <span class="text-danger">*</span></label>
+            <!-- Confirm password -->
+            <div class="mb-4 mt-3">
+              <label for="password_confirm" class="form-label">
+                Confirm password <span class="text-danger">*</span>
+              </label>
               <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
-                <input type="password" class="form-control" id="password_confirm" name="password_confirm"
-                       placeholder="Repeat password" required minlength="10">
+                <input type="password" class="form-control" id="password_confirm"
+                       name="password_confirm" placeholder="Repeat password"
+                       required minlength="10" autocomplete="new-password">
+                <button type="button" class="btn btn-outline-secondary" id="toggleConfirm" tabindex="-1"
+                        title="Show / hide password">
+                  <i class="bi bi-eye" id="toggleConfirmIcon"></i>
+                </button>
               </div>
+              <div id="matchHint" class="match-hint mt-1" style="display:none"></div>
             </div>
 
             <div class="d-grid">
-              <button type="submit" class="btn btn-success btn-lg">
+              <button type="submit" class="btn btn-success btn-lg" id="submitBtn">
                 <i class="bi bi-check-circle me-2"></i>Create account &amp; get started
               </button>
             </div>
@@ -94,12 +158,206 @@
         </div>
       </div>
 
-      <p class="text-center text-muted mt-3 small">
-        DMARC Analyzer — self-hosted
-      </p>
+      <p class="text-center text-muted mt-3 small">DMARC Analyzer — self-hosted</p>
     </div>
   </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/js/adminlte.min.js" defer></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function byteLength(str) {
+    return new TextEncoder().encode(str).length;
+  }
+
+  function randInt(max) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % max;
+  }
+
+  function generatePassword(length) {
+    length = length || 20;
+    const lower   = 'abcdefghijkmnpqrstuvwxyz';   // no l, o
+    const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ';   // no I, O
+    const digits  = '23456789';                    // no 0, 1
+    const symbols = '!@#$%&*-_=+?';
+    const all     = lower + upper + digits + symbols;
+
+    // Guarantee one from each class, fill rest randomly
+    const required = [
+      lower  [randInt(lower.length)],
+      upper  [randInt(upper.length)],
+      digits [randInt(digits.length)],
+      symbols[randInt(symbols.length)],
+    ];
+    const rest = Array.from({ length: length - required.length },
+      () => all[randInt(all.length)]);
+
+    const combined = required.concat(rest);
+    // Fisher-Yates shuffle
+    for (let i = combined.length - 1; i > 0; i--) {
+      const j = randInt(i + 1);
+      [combined[i], combined[j]] = [combined[j], combined[i]];
+    }
+    return combined.join('');
+  }
+
+  // ── Strength scoring ───────────────────────────────────────────────────────
+
+  const LEVELS = [
+    { score: 0, label: '',          color: '' },
+    { score: 1, label: 'Very weak', color: '#dc3545' },
+    { score: 2, label: 'Weak',      color: '#fd7e14' },
+    { score: 3, label: 'Fair',      color: '#ffc107' },
+    { score: 4, label: 'Good',      color: '#20c997' },
+    { score: 5, label: 'Strong',    color: '#198754' },
+  ];
+
+  function scorePassword(pwd) {
+    if (!pwd) return 0;
+    let score = 0;
+
+    // Length milestones
+    if (pwd.length >= 10) score++;
+    if (pwd.length >= 14) score++;
+    if (pwd.length >= 20) score++;
+
+    // Character-class diversity
+    const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/];
+    const present = classes.filter(r => r.test(pwd)).length;
+    if (present >= 3) score++;
+    if (present === 4) score++;
+
+    // Deductions
+    if (/(.)\1{2,}/.test(pwd)) score--;          // 3+ repeated chars
+    if (byteLength(pwd) > 72)  score = 1;        // over bcrypt limit → always weak
+
+    return Math.max(0, Math.min(5, score));
+  }
+
+  // ── DOM wiring ─────────────────────────────────────────────────────────────
+
+  const pwdInput     = document.getElementById('password');
+  const confirmInput = document.getElementById('password_confirm');
+  const strengthWrap = document.getElementById('strengthWrap');
+  const segs         = [1,2,3,4,5].map(n => document.getElementById('seg' + n));
+  const strengthLbl  = document.getElementById('strengthLabel');
+  const byteCountEl  = document.getElementById('byteCount');
+  const matchHint    = document.getElementById('matchHint');
+
+  // Requirements
+  const reqs = {
+    len:   document.getElementById('req-len'),
+    upper: document.getElementById('req-upper'),
+    lower: document.getElementById('req-lower'),
+    digit: document.getElementById('req-digit'),
+    sym:   document.getElementById('req-sym'),
+    bytes: document.getElementById('req-bytes'),
+  };
+
+  function setReq(el, ok) {
+    el.className = 'req-item ' + (ok ? 'ok' : 'nok');
+    const icon = el.querySelector('.bi');
+    icon.className = ok ? 'bi bi-check-circle-fill' : 'bi bi-x-circle-fill';
+  }
+
+  function updateStrength() {
+    const pwd = pwdInput.value;
+    if (!pwd) { strengthWrap.style.display = 'none'; return; }
+    strengthWrap.style.display = '';
+
+    const score  = scorePassword(pwd);
+    const level  = LEVELS[score] || LEVELS[0];
+    const bytes  = byteLength(pwd);
+
+    // Segments
+    segs.forEach((s, i) => {
+      s.className = 'strength-seg' + (i < score ? ' filled-' + score : '');
+    });
+
+    strengthLbl.textContent = level.label;
+    strengthLbl.style.color = level.color;
+    byteCountEl.textContent = bytes + ' / 72 bytes';
+    byteCountEl.style.color = bytes > 72 ? '#dc3545' : '#6c757d';
+
+    // Requirement badges
+    setReq(reqs.len,   pwd.length >= 10);
+    setReq(reqs.upper, /[A-Z]/.test(pwd));
+    setReq(reqs.lower, /[a-z]/.test(pwd));
+    setReq(reqs.digit, /[0-9]/.test(pwd));
+    setReq(reqs.sym,   /[^a-zA-Z0-9]/.test(pwd));
+    setReq(reqs.bytes, bytes <= 72);
+
+    updateMatch();
+  }
+
+  function updateMatch() {
+    const pwd  = pwdInput.value;
+    const conf = confirmInput.value;
+    if (!conf) { matchHint.style.display = 'none'; return; }
+    matchHint.style.display = '';
+    if (pwd === conf) {
+      matchHint.textContent = '✓ Passwords match';
+      matchHint.className   = 'match-hint ok';
+    } else {
+      matchHint.textContent = 'Passwords do not match';
+      matchHint.className   = 'match-hint err';
+    }
+  }
+
+  pwdInput.addEventListener('input', updateStrength);
+  confirmInput.addEventListener('input', updateMatch);
+
+  // ── Show / hide toggles ────────────────────────────────────────────────────
+
+  function makeToggle(btnId, iconId, inputEl) {
+    document.getElementById(btnId).addEventListener('click', function () {
+      const show = inputEl.type === 'password';
+      inputEl.type = show ? 'text' : 'password';
+      document.getElementById(iconId).className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  }
+  makeToggle('togglePwd',     'togglePwdIcon',     pwdInput);
+  makeToggle('toggleConfirm', 'toggleConfirmIcon', confirmInput);
+
+  // ── Password generator ─────────────────────────────────────────────────────
+
+  document.getElementById('generatePwd').addEventListener('click', function () {
+    const pwd = generatePassword(20);
+    pwdInput.type     = 'text';
+    confirmInput.type = 'text';
+    document.getElementById('togglePwdIcon').className     = 'bi bi-eye-slash';
+    document.getElementById('toggleConfirmIcon').className = 'bi bi-eye-slash';
+    pwdInput.value     = pwd;
+    confirmInput.value = pwd;
+    updateStrength();
+    updateMatch();
+    pwdInput.focus();
+  });
+
+  // ── Submit guard ───────────────────────────────────────────────────────────
+
+  document.getElementById('setupForm').addEventListener('submit', function (e) {
+    const pwd  = pwdInput.value;
+    const conf = confirmInput.value;
+    if (byteLength(pwd) > 72) {
+      e.preventDefault();
+      alert('Password exceeds 72 bytes. Please shorten it or use the generator.');
+      return;
+    }
+    if (pwd !== conf) {
+      e.preventDefault();
+      confirmInput.focus();
+      updateMatch();
+    }
+  });
+
+})();
+</script>
 </body>
 </html>
