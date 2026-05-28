@@ -26,6 +26,7 @@ services:
 
   web:
     image: ghcr.io/brightcolor/dmarc-analyzer:${IMAGE_TAG:-latest}
+    build: .
     restart: unless-stopped
     depends_on:
       db:
@@ -53,6 +54,7 @@ services:
 
   smtp:
     image: ghcr.io/brightcolor/dmarc-analyzer:${IMAGE_TAG:-latest}
+    build: .
     restart: unless-stopped
     depends_on:
       db:
