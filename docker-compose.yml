@@ -33,10 +33,7 @@ services:
       start_period: 30s
 
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: dmarc-analyzer:latest
+    image: ghcr.io/brightcolor/dmarc-analyzer:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       db:
@@ -63,10 +60,7 @@ services:
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
 
   smtp:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: dmarc-analyzer:latest
+    image: ghcr.io/brightcolor/dmarc-analyzer:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       db:

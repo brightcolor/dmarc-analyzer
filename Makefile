@@ -52,7 +52,10 @@ upgrade:
 	alembic upgrade head
 
 image:
-	docker build -t dmarc-analyzer:latest .
+	docker build -t ghcr.io/brightcolor/dmarc-analyzer:latest .
+
+pull:
+	docker pull ghcr.io/brightcolor/dmarc-analyzer:latest
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
