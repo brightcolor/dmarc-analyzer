@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup — DMARC Analyzer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/css/adminlte.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <style>
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f4f6f9; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-12 col-sm-10 col-md-7 col-lg-6">
+
+      <div class="card shadow-sm mt-5">
+        <div class="card-header text-center bg-success text-white py-4">
+          <i class="bi bi-shield-check fs-1"></i>
+          <h4 class="mb-0 mt-2">Welcome to DMARC Analyzer</h4>
+          <small class="opacity-75">Create your admin account to get started</small>
+        </div>
+
+        <div class="card-body p-4">
+          {% if error %}
+          <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+          {% endif %}
+
+          <p class="text-muted small mb-4">
+            No accounts exist yet. Fill in the form below to create the first administrator
+            account and your organization. This page disappears once an account has been created.
+          </p>
+
+          <form method="post" action="/auth/setup">
+
+            <h6 class="text-uppercase text-muted fw-semibold small mb-3">
+              <i class="bi bi-building me-1"></i>Organization
+            </h6>
+            <div class="mb-4">
+              <label for="org_name" class="form-label">Organization name <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="org_name" name="org_name"
+                     placeholder="Acme Corp" required maxlength="120" autofocus>
+            </div>
+
+            <hr class="my-3">
+
+            <h6 class="text-uppercase text-muted fw-semibold small mb-3">
+              <i class="bi bi-person-circle me-1"></i>Admin account
+            </h6>
+
+            <div class="mb-3">
+              <label for="full_name" class="form-label">Full name</label>
+              <input type="text" class="form-control" id="full_name" name="full_name"
+                     placeholder="Jane Doe" maxlength="120">
+            </div>
+
+            <div class="mb-3">
+              <label for="email" class="form-label">Email address <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                <input type="email" class="form-control" id="email" name="email"
+                       placeholder="admin@example.com" required>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                <input type="password" class="form-control" id="password" name="password"
+                       placeholder="At least 10 characters" required minlength="10">
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <label for="password_confirm" class="form-label">Confirm password <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+                <input type="password" class="form-control" id="password_confirm" name="password_confirm"
+                       placeholder="Repeat password" required minlength="10">
+              </div>
+            </div>
+
+            <div class="d-grid">
+              <button type="submit" class="btn btn-success btn-lg">
+                <i class="bi bi-check-circle me-2"></i>Create account &amp; get started
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <p class="text-center text-muted mt-3 small">
+        DMARC Analyzer — self-hosted
+      </p>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/js/adminlte.min.js" defer></script>
+</body>
+</html>

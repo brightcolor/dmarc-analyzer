@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-12 col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Import Job</h6></div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted">Status</dt>
+          <dd class="col-7">
+            <span class="badge
+              {% if job.status=='completed' %}bg-success{% elif job.status=='failed' %}bg-danger
+              {% elif job.status=='processing' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+              {{ job.status }}
+            </span>
+          </dd>
+          <dt class="col-5 text-muted">Source</dt>
+          <dd class="col-7"><span class="badge bg-secondary">{{ job.source }}</span></dd>
+          <dt class="col-5 text-muted">File</dt>
+          <dd class="col-7 text-break">{{ job.file_name | default('—') }}</dd>
+          <dt class="col-5 text-muted">Size</dt>
+          <dd class="col-7">{{ job.file_size | filesizeformat }}</dd>
+          <dt class="col-5 text-muted">Imported</dt>
+          <dd class="col-7 text-success fw-bold">{{ job.records_imported }}</dd>
+          <dt class="col-5 text-muted">Skipped</dt>
+          <dd class="col-7 text-muted">{{ job.records_skipped }}</dd>
+          <dt class="col-5 text-muted">Failed</dt>
+          <dd class="col-7 {% if job.records_failed > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ job.records_failed }}</dd>
+          <dt class="col-5 text-muted">Created</dt>
+          <dd class="col-7">{{ job.created_at | datetime }}</dd>
+          {% if job.completed_at %}
+          <dt class="col-5 text-muted">Completed</dt>
+          <dd class="col-7">{{ job.completed_at | datetime }}</dd>
+          {% endif %}
+          {% if job.file_hash %}
+          <dt class="col-5 text-muted">SHA256</dt>
+          <dd class="col-7 font-monospace small text-break">{{ job.file_hash[:16] }}…</dd>
+          {% endif %}
+        </dl>
+        {% if job.error_message %}
+        <div class="alert alert-danger mt-3 mb-0 small">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ job.error_message }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-7">
+    {% if errors %}
+    <div class="card shadow-sm border-danger">
+      <div class="card-header bg-danger text-white"><h6 class="mb-0"><i class="bi bi-x-circle me-2"></i>Import Errors ({{ errors | length }})</h6></div>
+      <div class="card-body p-0">
+        <ul class="list-group list-group-flush">
+        {% for err in errors %}
+        <li class="list-group-item">
+          <div class="d-flex justify-content-between">
+            <span class="badge bg-secondary">{{ err.error_type }}</span>
+            <small class="text-muted">{{ err.created_at | datetime }}</small>
+          </div>
+          <p class="mb-0 small mt-1">{{ err.error_message }}</p>
+          {% if err.context %}<small class="text-muted">Context: {{ err.context }}</small>{% endif %}
+        </li>
+        {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% else %}
+    <div class="card shadow-sm">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-check-circle text-success fs-1"></i>
+        <p class="mt-2 text-muted">No errors recorded for this import.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block content %}
+<!-- Report metadata -->
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Report Info</h6></div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-5 text-muted">Report ID</dt>
+          <dd class="col-7 font-monospace text-break">{{ report.report_id }}</dd>
+          <dt class="col-5 text-muted">Domain</dt>
+          <dd class="col-7">
+            {% if domain %}
+            <a href="/domains/{{ domain.id }}">{{ domain.name }}</a>
+            {% else %}{{ report.policy_domain or '—' }}{% endif %}
+          </dd>
+          <dt class="col-5 text-muted">Period</dt>
+          <dd class="col-7">
+            {% if report.period_begin %}{{ report.period_begin | datetime }}{% else %}—{% endif %}
+            → {% if report.period_end %}{{ report.period_end | datetime }}{% else %}—{% endif %}
+          </dd>
+          <dt class="col-5 text-muted">Reporting Org</dt>
+          <dd class="col-7">{{ report.reporting_org or '—' }}</dd>
+          <dt class="col-5 text-muted">Source</dt>
+          <dd class="col-7"><span class="badge bg-secondary">{{ report.import_source }}</span></dd>
+          <dt class="col-5 text-muted">Imported</dt>
+          <dd class="col-7">{{ report.created_at | datetime }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-shield me-2"></i>Policy Published</h6></div>
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-4 text-muted">p=</dt>
+          <dd class="col-8"><span class="badge
+            {% if report.policy_p == 'reject' %}bg-success
+            {% elif report.policy_p == 'quarantine' %}bg-warning text-dark
+            {% else %}bg-secondary{% endif %}">{{ report.policy_p or '—' }}</span></dd>
+          <dt class="col-4 text-muted">sp=</dt>
+          <dd class="col-8"><span class="badge bg-secondary">{{ report.policy_sp or '—' }}</span></dd>
+          <dt class="col-4 text-muted">pct=</dt>
+          <dd class="col-8">
+            {% if report.policy_pct is not none %}
+            <span class="badge {% if report.policy_pct < 100 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+              {{ report.policy_pct }}%
+            </span>
+            {% else %}—{% endif %}
+          </dd>
+          <dt class="col-4 text-muted">adkim=</dt>
+          <dd class="col-8">{{ report.policy_adkim or '—' }} <small class="text-muted">({% if report.policy_adkim == 's' %}strict{% else %}relaxed{% endif %})</small></dd>
+          <dt class="col-4 text-muted">aspf=</dt>
+          <dd class="col-8">{{ report.policy_aspf or '—' }} <small class="text-muted">({% if report.policy_aspf == 's' %}strict{% else %}relaxed{% endif %})</small></dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Aggregate stats -->
+<div class="row g-3 mb-3">
+  <div class="col-4">
+    <div class="info-box bg-body-secondary shadow-sm">
+      <span class="info-box-icon text-muted"><i class="bi bi-envelope"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">Total Messages</span>
+        <span class="info-box-number">{{ report.total_messages }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="info-box bg-success shadow-sm">
+      <span class="info-box-icon"><i class="bi bi-check-circle"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">DMARC Pass</span>
+        <span class="info-box-number">{{ report.pass_count }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="info-box bg-danger shadow-sm">
+      <span class="info-box-icon"><i class="bi bi-x-circle"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">DMARC Fail</span>
+        <span class="info-box-number">{{ report.fail_count }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Records table -->
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0"><i class="bi bi-table me-2"></i>Records ({{ total_records }})</h6>
+    {% if report.pass_rate is not none %}
+    <span class="badge bg-{{ report.pass_rate | pct_color }} fs-6">{{ report.pass_rate }}% pass rate</span>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Source IP</th>
+            <th>Count</th>
+            <th>DMARC</th>
+            <th>SPF Aligned</th>
+            <th>DKIM Aligned</th>
+            <th>Disposition</th>
+            <th>Header From</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for rec in records %}
+        <tr class="{% if not rec.dmarc_pass %}table-danger{% endif %}">
+          <td class="font-monospace small">{{ rec.source_ip }}</td>
+          <td>{{ rec.count }}</td>
+          <td>
+            <span class="badge {% if rec.dmarc_pass %}bg-success{% else %}bg-danger{% endif %}">
+              {% if rec.dmarc_pass %}PASS{% else %}FAIL{% endif %}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if rec.spf_aligned %}bg-success{% else %}bg-danger{% endif %}">
+              {% if rec.spf_aligned %}✓{% else %}✗{% endif %}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if rec.dkim_aligned %}bg-success{% else %}bg-danger{% endif %}">
+              {% if rec.dkim_aligned %}✓{% else %}✗{% endif %}
+            </span>
+          </td>
+          <td>
+            <span class="badge
+              {% if rec.disposition == 'reject' %}bg-danger
+              {% elif rec.disposition == 'quarantine' %}bg-warning text-dark
+              {% else %}bg-secondary{% endif %}">
+              {{ rec.disposition }}
+            </span>
+          </td>
+          <td class="small text-muted">{{ rec.header_from or '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% if pages > 1 %}
+  <div class="card-footer">{% include "partials/pagination.html" %}</div>
+  {% endif %}
+</div>
+{% endblock %}

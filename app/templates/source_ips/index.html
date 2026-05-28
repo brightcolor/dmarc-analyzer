@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Source IPs ({{ total }})</h6>
+  </div>
+  <div class="card-body border-bottom py-2">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <input type="search" name="search" value="{{ search }}" placeholder="Search IP…" class="form-control form-control-sm" style="max-width:180px">
+      <select name="classification" class="form-select form-select-sm" style="max-width:160px">
+        <option value="">All classifications</option>
+        {% for cls in ['unknown','trusted','suspicious','ignored'] %}
+        <option value="{{ cls }}" {% if classification_filter == cls %}selected{% endif %}>{{ cls | title }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-secondary">Filter</button>
+      {% if search or classification_filter %}<a href="/source-ips" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div class="card-body p-0">
+    {% if ips %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>IP Address</th><th>Messages</th><th>Pass Rate</th><th>Classification</th><th>Last Seen</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for ip in ips %}
+        <tr>
+          <td class="font-monospace"><a href="/source-ips/{{ ip.id }}">{{ ip.ip_address }}</a></td>
+          <td>{{ ip.total_messages }}</td>
+          <td>
+            {% if ip.pass_rate is not none %}
+            <div class="d-flex align-items-center gap-2">
+              <div class="progress flex-grow-1" style="height:8px">
+                <div class="progress-bar bg-{{ ip.pass_rate | pct_color }}" style="width:{{ ip.pass_rate }}%"></div>
+              </div>
+              <span class="small">{{ ip.pass_rate }}%</span>
+            </div>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <span class="badge
+              {% if ip.classification == 'trusted' %}bg-success
+              {% elif ip.classification == 'suspicious' %}bg-danger
+              {% elif ip.classification == 'ignored' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ ip.classification }}
+            </span>
+          </td>
+          <td class="text-muted small">{{ ip.last_seen_at | datetime }}</td>
+          <td><a href="/source-ips/{{ ip.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-diagram-3 fs-1 text-muted"></i>
+      <p class="text-muted mt-2">No source IPs tracked yet. Import DMARC reports to populate this view.</p>
+    </div>
+    {% endif %}
+  </div>
+  {% if pages > 1 %}<div class="card-footer">{% include "partials/pagination.html" %}</div>{% endif %}
+</div>
+{% endblock %}

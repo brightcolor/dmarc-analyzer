@@ -1,0 +1,88 @@
+version: "3.9"
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  internal:
+    driver: bridge
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  uploads_data:
+  raw_mail_data:
+
+# ── Services ───────────────────────────────────────────────────────────────────
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dmarc}
+      POSTGRES_USER: ${POSTGRES_USER:-dmarc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dmarc} -d ${POSTGRES_DB:-dmarc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dmarc-analyzer:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dmarc}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dmarc}
+      UPLOAD_DIR: /data/uploads
+      RAW_MAIL_DIR: /data/raw_mail
+    volumes:
+      - uploads_data:/data/uploads
+      - raw_mail_data:/data/raw_mail
+    networks:
+      - internal
+    ports:
+      - "${WEB_PORT:-8765}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
+
+  smtp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dmarc-analyzer:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dmarc}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dmarc}
+      UPLOAD_DIR: /data/uploads
+      RAW_MAIL_DIR: /data/raw_mail
+    volumes:
+      - uploads_data:/data/uploads
+      - raw_mail_data:/data/raw_mail
+    networks:
+      - internal
+    ports:
+      - "${SMTP_PORT:-2525}:2525"
+    command: ["python", "-m", "smtp_inbound"]

@@ -1,0 +1,57 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+starlette==0.41.3
+
+# Templates
+jinja2==3.1.4
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# Auth / Security
+passlib[bcrypt]==1.7.4
+itsdangerous==2.2.0
+python-jose[cryptography]==3.3.0
+
+# Forms / Uploads
+python-multipart==0.0.17
+email-validator==2.2.0
+
+# Settings
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# SMTP Inbound
+aiosmtpd==1.4.6
+
+# Safe XML parsing (XXE protection)
+defusedxml==0.7.1
+
+# Async file I/O
+aiofiles==24.1.0
+
+# Scheduling (lightweight)
+apscheduler==3.10.4
+
+# HTTP client (notifications, webhooks)
+httpx==0.27.2
+
+# DNS lookups (optional enrichment)
+dnspython==2.7.0
+
+# Rate limiting
+slowapi==0.1.9
+limits==3.14.0
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+httpx==0.27.2
+
+# Linting / formatting
+ruff==0.8.4

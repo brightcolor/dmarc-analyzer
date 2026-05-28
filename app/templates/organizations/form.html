@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-7 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-buildings me-2"></i>{{ page_title }}</h6></div>
+      <div class="card-body">
+        {% if error %}<div class="alert alert-danger small">{{ error }}</div>{% endif %}
+        <form method="post" action="/organizations/new">
+          <div class="mb-3">
+            <label class="form-label">Organization Name</label>
+            <input type="text" name="name" class="form-control" required placeholder="Acme Corp" autofocus
+                   value="{{ org_obj.name if org_obj else '' }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Slug <small class="text-muted">(URL identifier)</small></label>
+            <div class="input-group">
+              <span class="input-group-text text-muted">/</span>
+              <input type="text" name="slug" class="form-control font-monospace" required
+                     placeholder="acme-corp" pattern="[a-z0-9\-]{2,80}"
+                     value="{{ org_obj.slug if org_obj else '' }}">
+            </div>
+            <div class="form-text">Lowercase letters, numbers and hyphens only.</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>Create</button>
+            <a href="/organizations" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

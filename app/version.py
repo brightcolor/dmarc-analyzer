@@ -1,0 +1,3 @@
+VERSION = "0.1.0"
+VERSION_TUPLE = (0, 1, 0)
+APP_NAME = "DMARC Analyzer"

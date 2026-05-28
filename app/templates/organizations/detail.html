@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-12 col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-buildings me-2"></i>{{ org_detail.name }}</h6></div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-muted">Slug</dt>
+          <dd class="col-7 font-monospace">{{ org_detail.slug }}</dd>
+          <dt class="col-5 text-muted">Status</dt>
+          <dd class="col-7"><span class="badge {% if org_detail.is_active %}bg-success{% else %}bg-secondary{% endif %}">{% if org_detail.is_active %}Active{% else %}Inactive{% endif %}</span></dd>
+          <dt class="col-5 text-muted">Max Domains</dt>
+          <dd class="col-7">{{ org_detail.max_domains }}</dd>
+          <dt class="col-5 text-muted">Max Users</dt>
+          <dd class="col-7">{{ org_detail.max_users }}</dd>
+          <dt class="col-5 text-muted">Retention</dt>
+          <dd class="col-7">{{ org_detail.report_retention_days }} days</dd>
+          <dt class="col-5 text-muted">Created</dt>
+          <dd class="col-7">{{ org_detail.created_at | datetime }}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-people me-2"></i>Members ({{ memberships | length }})</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th></tr></thead>
+          <tbody>
+          {% for m in memberships %}
+          <tr>
+            <td class="small">{{ m.user.email if m.user else m.user_id }}</td>
+            <td><span class="badge bg-secondary">{{ m.role }}</span></td>
+            <td><span class="badge {% if m.is_active %}bg-success{% else %}bg-secondary{% endif %}">{% if m.is_active %}Active{% else %}Removed{% endif %}</span></td>
+            <td class="small text-muted">{{ m.created_at | date }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

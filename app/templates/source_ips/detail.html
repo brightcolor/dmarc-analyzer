@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-hdd-network me-2"></i>{{ sip.ip_address }}</h6></div>
+      <div class="card-body">
+        <dl class="row mb-3 small">
+          <dt class="col-5 text-muted">Classification</dt>
+          <dd class="col-7">
+            <span class="badge
+              {% if sip.classification == 'trusted' %}bg-success
+              {% elif sip.classification == 'suspicious' %}bg-danger
+              {% elif sip.classification == 'ignored' %}bg-secondary
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ sip.classification }}
+            </span>
+          </dd>
+          <dt class="col-5 text-muted">Total Messages</dt>
+          <dd class="col-7">{{ sip.total_messages }}</dd>
+          <dt class="col-5 text-muted">Pass / Fail</dt>
+          <dd class="col-7">
+            <span class="text-success">{{ sip.pass_count }}</span> /
+            <span class="text-danger">{{ sip.fail_count }}</span>
+            {% if sip.pass_rate is not none %}<span class="text-muted">({{ sip.pass_rate }}%)</span>{% endif %}
+          </dd>
+          <dt class="col-5 text-muted">First Seen</dt>
+          <dd class="col-7">{{ sip.first_seen_at | datetime }}</dd>
+          <dt class="col-5 text-muted">Last Seen</dt>
+          <dd class="col-7">{{ sip.last_seen_at | datetime }}</dd>
+          {% if sip.reverse_dns %}
+          <dt class="col-5 text-muted">Reverse DNS</dt>
+          <dd class="col-7 font-monospace">{{ sip.reverse_dns }}</dd>
+          {% endif %}
+          {% if sip.asn_org %}
+          <dt class="col-5 text-muted">ASN / Org</dt>
+          <dd class="col-7">{{ sip.asn }} — {{ sip.asn_org }}</dd>
+          {% endif %}
+          {% if sip.country_code %}
+          <dt class="col-5 text-muted">Country</dt>
+          <dd class="col-7">{{ sip.country_code }}</dd>
+          {% endif %}
+        </dl>
+
+        <!-- Classify form -->
+        <form method="post" action="/source-ips/{{ sip.id }}/classify">
+          <label class="form-label small fw-semibold">Change Classification</label>
+          <div class="input-group mb-2">
+            <select name="classification" class="form-select form-select-sm">
+              {% for cls in ['unknown','trusted','suspicious','ignored'] %}
+              <option value="{{ cls }}" {% if sip.classification == cls %}selected{% endif %}>{{ cls | title }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-primary">Save</button>
+          </div>
+          <textarea name="notes" class="form-control form-control-sm mb-2" rows="2" placeholder="Notes (optional)">{{ sip.notes or '' }}</textarea>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-table me-2"></i>Recent Records</h6></div>
+      <div class="card-body p-0">
+        {% if recent_records %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Domain</th><th>Count</th><th>DMARC</th><th>SPF</th><th>DKIM</th><th>Disposition</th></tr>
+            </thead>
+            <tbody>
+            {% for rec in recent_records %}
+            <tr class="{% if not rec.dmarc_pass %}table-danger{% endif %}">
+              <td class="small">{{ rec.header_from or '—' }}</td>
+              <td>{{ rec.count }}</td>
+              <td><span class="badge {% if rec.dmarc_pass %}bg-success{% else %}bg-danger{% endif %}">{% if rec.dmarc_pass %}PASS{% else %}FAIL{% endif %}</span></td>
+              <td><span class="badge {% if rec.spf_aligned %}bg-success{% else %}bg-secondary{% endif %}">{% if rec.spf_aligned %}✓{% else %}✗{% endif %}</span></td>
+              <td><span class="badge {% if rec.dkim_aligned %}bg-success{% else %}bg-secondary{% endif %}">{% if rec.dkim_aligned %}✓{% else %}✗{% endif %}</span></td>
+              <td><span class="badge bg-secondary">{{ rec.disposition }}</span></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">No records found for this IP.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

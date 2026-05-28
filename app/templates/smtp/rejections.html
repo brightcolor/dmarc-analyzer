@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0"><i class="bi bi-x-octagon me-2"></i>SMTP Rejections ({{ total }})</h6>
+    <a href="/smtp/status" class="btn btn-sm btn-outline-secondary">← Status</a>
+  </div>
+  <div class="card-body p-0">
+    {% if rejections %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>Remote IP</th><th>Attempted Recipient</th><th>Code</th><th>Reason</th><th>Time</th></tr>
+        </thead>
+        <tbody>
+        {% for r in rejections %}
+        <tr>
+          <td class="font-monospace small">{{ r.remote_ip or '—' }}</td>
+          <td class="small">{{ r.attempted_recipient or '—' }}</td>
+          <td><span class="badge bg-danger">{{ r.rejection_code }}</span></td>
+          <td class="small text-muted">{{ r.rejection_reason | truncate(60) }}</td>
+          <td class="small text-muted">{{ r.created_at | datetime }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-check-circle fs-1 text-success"></i>
+      <p class="text-muted mt-2">No rejections recorded.</p>
+    </div>
+    {% endif %}
+  </div>
+  {% if pages > 1 %}<div class="card-footer">{% include "partials/pagination.html" %}</div>{% endif %}
+</div>
+{% endblock %}

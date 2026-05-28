@@ -1,0 +1,29 @@
+/* DMARC Analyzer — custom styles */
+
+/* Tighter info boxes on small screens */
+.info-box { min-height: 70px; }
+.info-box-icon { width: 60px; font-size: 1.6rem; }
+.info-box-number { font-size: 1.4rem; }
+
+/* Monospace in tables for IPs and hashes */
+.font-monospace { font-size: .85em; }
+
+/* Compact sidebar nav */
+.sidebar-menu .nav-link { padding: .35rem 1rem; }
+
+/* Pass/fail badge colors follow Bootstrap */
+.badge-pass  { background-color: var(--bs-success); color: #fff; }
+.badge-fail  { background-color: var(--bs-danger);  color: #fff; }
+
+/* Prevent overly wide pre blocks */
+pre { white-space: pre-wrap; word-break: break-all; }
+
+/* User-select-all helper */
+.user-select-all { user-select: all; cursor: copy; }
+
+/* Card header actions alignment */
+.card-header { display: flex; align-items: center; justify-content: space-between; }
+.card-header h6 { margin-bottom: 0; }
+
+/* Small progress bar */
+.progress { border-radius: 10px; }

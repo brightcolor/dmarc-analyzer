@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — DMARC Analyzer{% endblock %}
+
+{% block content %}
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="info-box bg-primary shadow-sm">
+      <span class="info-box-icon"><i class="bi bi-file-earmark-text"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">Reports (total)</span>
+        <span class="info-box-number">{{ stats.report_count | default(0) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="info-box bg-success shadow-sm">
+      <span class="info-box-icon"><i class="bi bi-globe"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">Domains</span>
+        <span class="info-box-number">{{ stats.domain_count | default(0) }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="info-box bg-info shadow-sm">
+      <span class="info-box-icon"><i class="bi bi-envelope"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">Messages (30d)</span>
+        <span class="info-box-number">{{ stats.total_messages_30d | default(0) | int }}</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    {% set pr = stats.pass_rate_30d %}
+    <div class="info-box {{ pr | pct_color if pr is not none else 'bg-secondary' }} shadow-sm" style="background-color: var(--bs-{{ pr | pct_color if pr is not none else 'secondary' }}) !important">
+      <span class="info-box-icon"><i class="bi bi-shield-check"></i></span>
+      <div class="info-box-content">
+        <span class="info-box-text">DMARC Pass Rate (30d)</span>
+        <span class="info-box-number">{% if pr is not none %}{{ pr }}%{% else %}—{% endif %}</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Second stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
+      <div class="fs-3 fw-bold text-success">{{ stats.pass_messages_30d | default(0) }}</div>
+      <div class="text-muted small">DMARC Pass</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
+      <div class="fs-3 fw-bold text-danger">{{ stats.fail_messages_30d | default(0) }}</div>
+      <div class="text-muted small">DMARC Fail</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
+      <div class="fs-3 fw-bold text-warning">{{ stats.unknown_ips | default(0) }}</div>
+      <div class="text-muted small">Unknown Sources</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
+      <div class="fs-3 fw-bold {% if stats.active_alerts > 0 %}text-danger{% else %}text-success{% endif %}">
+        {{ stats.active_alerts | default(0) }}
+      </div>
+      <div class="text-muted small">Active Alerts</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- DMARC pass/fail chart -->
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>DMARC Pass / Fail (last 30 days)</h6>
+      </div>
+      <div class="card-body">
+        {% if chart_data %}
+        <canvas id="passFailChart" height="80"></canvas>
+        {% else %}
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-bar-chart fs-1"></i>
+          <p class="mt-2">No data yet. Import your first DMARC reports.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Source IPs -->
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Top Source IPs</h6>
+        <a href="/source-ips" class="btn btn-sm btn-outline-secondary">All</a>
+      </div>
+      <div class="card-body p-0">
+        {% if top_ips %}
+        <ul class="list-group list-group-flush">
+          {% for ip in top_ips %}
+          <li class="list-group-item d-flex justify-content-between align-items-center px-3">
+            <div>
+              <span class="font-monospace small">{{ ip.ip }}</span>
+              <span class="badge ms-1
+                {% if ip.classification == 'trusted' %}bg-success
+                {% elif ip.classification == 'suspicious' %}bg-danger
+                {% elif ip.classification == 'ignored' %}bg-secondary
+                {% else %}bg-warning text-dark{% endif %}">
+                {{ ip.classification }}
+              </span>
+            </div>
+            <div class="text-end">
+              <div class="small fw-bold">{{ ip.total }}</div>
+              <div class="small text-muted">
+                {% if ip.pass_rate is not none %}{{ ip.pass_rate }}%{% else %}—{% endif %}
+              </div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-center text-muted py-4">No source IPs yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Imports -->
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>Recent Imports</h6>
+        <a href="/imports" class="btn btn-sm btn-outline-secondary">All</a>
+      </div>
+      <div class="card-body p-0">
+        {% if stats.recent_imports %}
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th>File</th><th>Status</th><th>Source</th><th>Time</th></tr></thead>
+          <tbody>
+          {% for job in stats.recent_imports %}
+          <tr>
+            <td class="small">
+              <a href="/imports/{{ job.id }}">{{ job.file_name | default('—') | truncate(30) }}</a>
+            </td>
+            <td>
+              <span class="badge
+                {% if job.status == 'completed' %}bg-success
+                {% elif job.status == 'failed' %}bg-danger
+                {% elif job.status == 'processing' %}bg-warning text-dark
+                {% else %}bg-secondary{% endif %}">
+                {{ job.status }}
+              </span>
+            </td>
+            <td class="small text-muted">{{ job.source }}</td>
+            <td class="small text-muted">{{ job.created_at | datetime }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-4">
+          <i class="bi bi-inbox fs-2"></i>
+          <p class="mt-2 small">No imports yet. <a href="/upload">Upload a report</a> to get started.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Domains without recent reports -->
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Domains without reports (7d)</h6>
+      </div>
+      <div class="card-body p-0">
+        {% if stats.domains_no_reports %}
+        <ul class="list-group list-group-flush">
+          {% for d in stats.domains_no_reports %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ d.name }}</span>
+            <a href="/domains/{{ d.id }}" class="btn btn-xs btn-outline-secondary btn-sm">View</a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-center text-muted py-4">
+          <i class="bi bi-check-circle text-success fs-2"></i>
+          <p class="mt-2 small">All domains have received recent reports.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts summary -->
+  {% if stats.active_alerts > 0 %}
+  <div class="col-12">
+    <div class="alert alert-warning d-flex align-items-center">
+      <i class="bi bi-bell-fill me-3 fs-4"></i>
+      <div>
+        <strong>{{ stats.active_alerts }} open alert(s)</strong> require your attention.
+        <a href="/alerts/events?status=open" class="btn btn-sm btn-warning ms-3">View Alerts</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_data %}
+<script>
+(function() {
+  const data = {{ chart_data | tojson }};
+  const labels = data.map(d => d.date);
+  const passData = data.map(d => d.pass);
+  const failData = data.map(d => d.fail);
+
+  const ctx = document.getElementById('passFailChart');
+  if (!ctx) return;
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Pass',
+          data: passData,
+          backgroundColor: 'rgba(25,135,84,0.7)',
+          stack: 'stack',
+        },
+        {
+          label: 'Fail',
+          data: failData,
+          backgroundColor: 'rgba(220,53,69,0.7)',
+          stack: 'stack',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, beginAtZero: true }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

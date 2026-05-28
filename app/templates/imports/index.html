@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>Import Jobs ({{ total }})</h6>
+    <a href="/upload" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</a>
+  </div>
+  <div class="card-body border-bottom py-2">
+    <form method="get" class="d-flex gap-2">
+      <select name="status" class="form-select form-select-sm" style="max-width:150px">
+        <option value="">All</option>
+        {% for s in ['pending','processing','completed','failed'] %}
+        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s | title }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-secondary">Filter</button>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    {% if jobs %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>File</th><th>Source</th><th>Status</th><th>Imported</th><th>Skipped</th><th>Failed</th><th>Created</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td class="small">{{ job.file_name | default('—') | truncate(35) }}</td>
+          <td><span class="badge bg-secondary">{{ job.source }}</span></td>
+          <td>
+            <span class="badge
+              {% if job.status == 'completed' %}bg-success
+              {% elif job.status == 'failed' %}bg-danger
+              {% elif job.status == 'processing' %}bg-warning text-dark
+              {% else %}bg-secondary{% endif %}">
+              {{ job.status }}
+            </span>
+          </td>
+          <td class="small">{{ job.records_imported }}</td>
+          <td class="small text-muted">{{ job.records_skipped }}</td>
+          <td class="small {% if job.records_failed > 0 %}text-danger{% else %}text-muted{% endif %}">{{ job.records_failed }}</td>
+          <td class="small text-muted">{{ job.created_at | datetime }}</td>
+          <td><a href="/imports/{{ job.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-inbox fs-1 text-muted"></i>
+      <p class="text-muted mt-2">No import jobs yet. <a href="/upload">Upload a report</a> to start.</p>
+    </div>
+    {% endif %}
+  </div>
+  {% if pages > 1 %}<div class="card-footer">{% include "partials/pagination.html" %}</div>{% endif %}
+</div>
+{% endblock %}

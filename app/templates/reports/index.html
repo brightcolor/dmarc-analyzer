@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>DMARC Reports ({{ total }})</h6>
+    <a href="/upload" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</a>
+  </div>
+  <div class="card-body border-bottom py-2">
+    <form method="get" class="d-flex flex-wrap gap-2">
+      <input type="search" name="search" value="{{ search }}" placeholder="Search domain…" class="form-control form-control-sm" style="max-width:200px">
+      <select name="domain_id" class="form-select form-select-sm" style="max-width:220px">
+        <option value="">All domains</option>
+        {% for d in domains %}
+        <option value="{{ d.id }}" {% if selected_domain_id == d.id %}selected{% endif %}>{{ d.name }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-secondary">Filter</button>
+      {% if search or selected_domain_id %}<a href="/reports" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div class="card-body p-0">
+    {% if reports %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Domain</th>
+            <th>Period</th>
+            <th>Reporting Org</th>
+            <th>Messages</th>
+            <th>Pass Rate</th>
+            <th>Policy</th>
+            <th>Source</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in reports %}
+        <tr>
+          <td class="fw-semibold">{{ r.policy_domain or '—' }}</td>
+          <td class="small text-muted">
+            {% if r.period_begin %}{{ r.period_begin | date }}{% else %}—{% endif %}
+          </td>
+          <td class="small text-muted">{{ r.reporting_org | default('—') | truncate(30) }}</td>
+          <td>{{ r.total_messages }}</td>
+          <td>
+            {% if r.pass_rate is not none %}
+            <span class="badge bg-{{ r.pass_rate | pct_color }}">{{ r.pass_rate }}%</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <span class="badge
+              {% if r.policy_p == 'reject' %}bg-success
+              {% elif r.policy_p == 'quarantine' %}bg-warning text-dark
+              {% else %}bg-secondary{% endif %}">
+              {{ r.policy_p or '—' }}
+            </span>
+          </td>
+          <td><span class="badge bg-light text-dark">{{ r.import_source }}</span></td>
+          <td><a href="/reports/{{ r.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-file-earmark-text fs-1 text-muted"></i>
+      <p class="text-muted mt-2">No reports yet. <a href="/upload">Upload your first DMARC report.</a></p>
+    </div>
+    {% endif %}
+  </div>
+  {% if pages > 1 %}
+  <div class="card-footer">{% include "partials/pagination.html" %}</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <!-- Rules list -->
+  <div class="col-12 col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-sliders me-2"></i>Alert Rules ({{ rules | length }})</h6></div>
+      <div class="card-body p-0">
+        {% if rules %}
+        <ul class="list-group list-group-flush">
+        {% for rule in rules %}
+        <li class="list-group-item">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <span class="fw-semibold">{{ rule.name }}</span>
+              <span class="badge bg-{{ rule.severity | severity_badge }} ms-2">{{ rule.severity }}</span>
+              {% if not rule.is_active %}<span class="badge bg-secondary ms-1">Inactive</span>{% endif %}
+              <div class="small text-muted mt-1">
+                Type: <code>{{ rule.alert_type }}</code>
+                · Window: {{ rule.time_window_minutes }}min
+                · Cooldown: {{ rule.cooldown_minutes }}min
+              </div>
+              {% if rule.last_triggered_at %}
+              <div class="small text-muted">Last triggered: {{ rule.last_triggered_at | datetime }}</div>
+              {% endif %}
+            </div>
+            <form method="post" action="/alerts/rules/{{ rule.id }}/toggle">
+              <button class="btn btn-sm {% if rule.is_active %}btn-outline-secondary{% else %}btn-outline-success{% endif %}">
+                {% if rule.is_active %}Disable{% else %}Enable{% endif %}
+              </button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-center py-4 text-muted">No alert rules yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- New rule form -->
+  <div class="col-12 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-header"><h6 class="mb-0"><i class="bi bi-plus-circle me-2"></i>New Alert Rule</h6></div>
+      <div class="card-body">
+        <form method="post" action="/alerts/rules/new">
+          <div class="mb-2">
+            <label class="form-label small">Name</label>
+            <input type="text" name="name" class="form-control form-control-sm" required placeholder="My alert rule">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Alert Type</label>
+            <select name="alert_type" class="form-select form-select-sm" required>
+              {% for k, v in alert_types.items() %}
+              <option value="{{ k }}">{{ v }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Domain (optional)</label>
+            <select name="domain_id" class="form-select form-select-sm">
+              <option value="">All domains</option>
+              {% for d in domains %}
+              <option value="{{ d.id }}">{{ d.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small">Threshold</label>
+              <input type="number" name="threshold" step="0.1" class="form-control form-control-sm" placeholder="10">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Severity</label>
+              <select name="severity" class="form-select form-select-sm">
+                <option value="info">Info</option>
+                <option value="warning" selected>Warning</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small">Time Window (min)</label>
+              <input type="number" name="time_window_minutes" class="form-control form-control-sm" value="60" min="1">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Cooldown (min)</label>
+              <input type="number" name="cooldown_minutes" class="form-control form-control-sm" value="60" min="1">
+            </div>
+          </div>
+          {% if channels %}
+          <div class="mb-2">
+            <label class="form-label small">Notification Channels</label>
+            {% for ch in channels %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="channel_ids" value="{{ ch.id }}" id="ch_{{ ch.id }}">
+              <label class="form-check-label small" for="ch_{{ ch.id }}">{{ ch.name }} ({{ ch.channel_type }})</label>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-plus-circle me-1"></i>Create Rule
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
