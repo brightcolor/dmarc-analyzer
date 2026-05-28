@@ -5,12 +5,6 @@ networks:
   internal:
     driver: bridge
 
-# ── Volumes ────────────────────────────────────────────────────────────────────
-volumes:
-  postgres_data:
-  uploads_data:
-  raw_mail_data:
-
 # ── Services ───────────────────────────────────────────────────────────────────
 services:
 
@@ -22,7 +16,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-dmarc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
@@ -44,8 +38,8 @@ services:
       UPLOAD_DIR: /data/uploads
       RAW_MAIL_DIR: /data/raw_mail
     volumes:
-      - uploads_data:/data/uploads
-      - raw_mail_data:/data/raw_mail
+      - ./data/uploads:/data/uploads
+      - ./data/raw_mail:/data/raw_mail
     networks:
       - internal
     ports:
@@ -73,8 +67,8 @@ services:
       UPLOAD_DIR: /data/uploads
       RAW_MAIL_DIR: /data/raw_mail
     volumes:
-      - uploads_data:/data/uploads
-      - raw_mail_data:/data/raw_mail
+      - ./data/uploads:/data/uploads
+      - ./data/raw_mail:/data/raw_mail
     networks:
       - internal
     ports:

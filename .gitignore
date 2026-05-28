@@ -38,10 +38,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Project data
-/data/
-uploads/
-raw_mail/
+# Runtime data (bind-mount targets)
+/data/postgres/
+/data/uploads/
+/data/raw_mail/
 *.db
 *.db-shm
 *.db-wal
