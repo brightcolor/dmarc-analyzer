@@ -1,15 +1,12 @@
 import hashlib
-import os
-import shutil
-from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org, get_client_ip
+from app.dependencies import get_client_ip, get_current_org, get_current_user
 from app.models import Domain, ImportJob, Organization, User
 from app.services.audit import log_action
 from app.services.import_service import process_import_job
@@ -39,7 +36,7 @@ def upload_page(
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
-    domain_id: Optional[str] = Form(None),
+    domain_id: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),

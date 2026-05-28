@@ -28,7 +28,7 @@ jobs:
       - name: Run tests
         env:
           SECRET_KEY: test-secret-key-for-ci-only
-          DATABASE_URL: sqlite:///:memory:
+          DATABASE_URL: "sqlite:///:memory:"
           SMTP_INBOUND_DOMAIN: reports.example.org
         run: pytest tests/ -v --tb=short --cov=app --cov=smtp_inbound --cov-report=xml
 

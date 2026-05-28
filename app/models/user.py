@@ -1,7 +1,6 @@
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, now_utc, uuid_pk
@@ -12,22 +11,22 @@ class User(Base):
 
     id: Mapped[str] = uuid_pk()
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    username: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
+    username: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    email_verification_token: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    password_reset_token: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    password_reset_expires_at: Mapped[Optional[datetime]] = mapped_column(
+    email_verification_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    password_reset_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    password_reset_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
     )
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     memberships: Mapped[list["OrganizationMembership"]] = relationship(
         "OrganizationMembership",

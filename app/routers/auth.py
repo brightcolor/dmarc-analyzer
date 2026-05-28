@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user_optional, get_client_ip
-from app.services.auth import authenticate_user, create_user, get_user_orgs
+from app.dependencies import get_client_ip, get_current_user_optional
 from app.services.audit import log_action
+from app.services.auth import authenticate_user, create_user, get_user_orgs
 from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -45,8 +45,9 @@ def setup_submit(
         request.session["setup_error"] = "Password must be at least 10 characters."
         return RedirectResponse(url="/auth/setup", status_code=303)
 
-    from app.models import Organization, OrganizationMembership
     import re
+
+    from app.models import Organization, OrganizationMembership
 
     slug = re.sub(r"[^a-z0-9]+", "-", org_name.lower().strip()).strip("-")[:80] or "default-org"
 
@@ -142,7 +143,6 @@ def select_org_page(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/select-org")
 def select_org(request: Request, org_id: str = Form(...), db: Session = Depends(get_db)):
-    from app.models import Organization
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/auth/login", status_code=303)

@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org
+from app.dependencies import get_current_org, get_current_user
 from app.models import Organization, User
 from app.services.dashboard import get_dashboard_stats, get_pass_fail_over_time, get_top_source_ips
 from app.templates_config import templates

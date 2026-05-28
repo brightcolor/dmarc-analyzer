@@ -4,21 +4,32 @@ Handles deduplication, domain resolution, and source IP tracking.
 """
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models import (
-    DmarcAuthResult, DmarcRecord, DmarcReport, Domain, ImportError,
-    ImportJob, InboundMailAttachment, Organization, SmtpInboundMessage, SourceIp,
+    DmarcAuthResult,
+    DmarcRecord,
+    DmarcReport,
+    Domain,
+    ImportError,
+    ImportJob,
+    SourceIp,
 )
 from app.services.dmarc_evaluator import (
-    AuthResultEntry, EvalResult, PolicyConfig, RecordEvalInput, evaluate_record,
+    AuthResultEntry,
+    EvalResult,
+    PolicyConfig,
+    RecordEvalInput,
+    evaluate_record,
 )
 from app.services.dmarc_parser import (
-    DmarcParseError, ParsedReport, PARSER_VERSION, parse_xml_bytes,
+    PARSER_VERSION,
+    DmarcParseError,
+    ParsedReport,
+    parse_xml_bytes,
 )
-from app.version import VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +50,7 @@ def get_or_create_domain(db: Session, organization_id: str, name: str) -> Domain
 
 def _upsert_source_ip(db: Session, org_id: str, ip: str, count: int, passed: bool) -> None:
     sip = db.query(SourceIp).filter_by(organization_id=org_id, ip_address=ip).first()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if not sip:
         sip = SourceIp(
             organization_id=org_id,
@@ -186,11 +197,12 @@ def store_parsed_report(
 
     # Update domain's last report timestamp and cached policy
     if domain:
-        domain.last_report_at = datetime.now(timezone.utc)
+        domain.last_report_at = datetime.now(UTC)
         domain.dmarc_policy = parsed.policy_p
         domain.dmarc_policy_sp = parsed.policy_sp
         domain.dmarc_policy_pct = parsed.policy_pct
 
+    db.flush()
     return report
 
 
@@ -199,12 +211,12 @@ def process_import_job(db: Session, job: ImportJob) -> None:
     Main entry point: read the file for this job and import it.
     Updates job.status accordingly.
     """
-    import io
     import os
+
     from app.services.mime_parser import _safe_gunzip, _safe_unzip
 
     job.status = "processing"
-    job.started_at = datetime.now(timezone.utc)
+    job.started_at = datetime.now(UTC)
     db.flush()
 
     org_id = job.organization_id
@@ -265,13 +277,13 @@ def process_import_job(db: Session, job: ImportJob) -> None:
         job.records_skipped = skipped
         job.records_failed = failed
         job.status = "completed" if failed == 0 else ("failed" if imported == 0 else "completed")
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
 
     except Exception as exc:
         logger.exception("Import job %s failed: %s", job.id, exc)
         job.status = "failed"
         job.error_message = str(exc)[:2000]
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
         _record_error(db, job.id, "fatal", str(exc))
 
 

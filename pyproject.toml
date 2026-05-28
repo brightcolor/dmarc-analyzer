@@ -28,7 +28,7 @@ fail_under = 70
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S"]
@@ -36,6 +36,7 @@ ignore = [
     "S101",  # assert in tests
     "B008",  # FastAPI Depends() calls in function defaults
     "S311",  # random not used for security here
+    "F821",  # SQLAlchemy string forward references are resolved at runtime
 ]
 
 [tool.ruff.lint.per-file-ignores]

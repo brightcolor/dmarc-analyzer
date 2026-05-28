@@ -1,11 +1,10 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org, get_client_ip
+from app.dependencies import get_client_ip, get_current_org, get_current_user
 from app.models import ApiToken, Organization, User
 from app.security import utcnow
 from app.services.audit import log_action

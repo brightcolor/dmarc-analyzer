@@ -1,12 +1,11 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org
-from app.models import Domain, DmarcRecord, DmarcReport, Organization, User
+from app.dependencies import get_current_org, get_current_user
+from app.models import DmarcRecord, DmarcReport, Domain, Organization, User
 from app.templates_config import templates
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -22,8 +21,8 @@ def _paginate(q, page: int, per_page: int = 25):
 def report_list(
     request: Request,
     page: int = Query(1, ge=1),
-    domain_id: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    domain_id: str | None = Query(None),
+    search: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),

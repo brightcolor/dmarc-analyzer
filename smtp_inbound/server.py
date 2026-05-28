@@ -6,14 +6,14 @@ import asyncio
 import logging
 import ssl
 import sys
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 async def start_smtp_server() -> None:
-    from app.config import settings
     from aiosmtpd.controller import Controller
+
+    from app.config import settings
     from smtp_inbound.handler import DmarcSmtpHandler
 
     if not settings.SMTP_INBOUND_ENABLED:

@@ -1,16 +1,13 @@
 """
 REST API v1 — authenticated with Bearer API tokens.
 """
-import json
-from datetime import datetime, timezone
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_api_auth
-from app.models import AlertEvent, Domain, DmarcRecord, DmarcReport, InboundMailAddress, Organization, SourceIp, User
+from app.models import AlertEvent, DmarcReport, Domain, InboundMailAddress, Organization, SourceIp
 from app.version import APP_NAME, VERSION
 
 router = APIRouter(prefix="/api/v1", tags=["api_v1"])
@@ -87,7 +84,7 @@ def domain_stats(
 def list_reports(
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
-    domain_id: Optional[str] = Query(None),
+    domain_id: str | None = Query(None),
     db: Session = Depends(get_db),
     api_auth=Depends(get_api_auth),
 ):
@@ -125,7 +122,7 @@ def list_reports(
 def list_source_ips(
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
-    classification: Optional[str] = Query(None),
+    classification: str | None = Query(None),
     db: Session = Depends(get_db),
     api_auth=Depends(get_api_auth),
 ):
@@ -157,7 +154,7 @@ def list_source_ips(
 def list_alert_events(
     page: int = Query(1, ge=1),
     per_page: int = Query(25, ge=1, le=100),
-    event_status: Optional[str] = Query(None),
+    event_status: str | None = Query(None),
     db: Session = Depends(get_db),
     api_auth=Depends(get_api_auth),
 ):

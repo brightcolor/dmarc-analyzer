@@ -1,4 +1,3 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
@@ -6,8 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org
-from app.models import InboundMailAddress, Organization, SmtpInboundMessage, SmtpInboundRejection, User
+from app.dependencies import get_current_org, get_current_user
+from app.models import (
+    InboundMailAddress,
+    Organization,
+    SmtpInboundMessage,
+    SmtpInboundRejection,
+    User,
+)
 from app.templates_config import templates
 
 router = APIRouter(prefix="/smtp", tags=["smtp"])
@@ -20,7 +25,6 @@ def smtp_status(
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
 ):
-    from app.models import InboundMailAddress
     addresses = db.query(InboundMailAddress).filter_by(organization_id=org.id).all()
     recent_messages = (
         db.query(SmtpInboundMessage)
@@ -53,7 +57,7 @@ def smtp_status(
 def smtp_messages(
     request: Request,
     page: int = Query(1, ge=1),
-    import_status: Optional[str] = Query(None),
+    import_status: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),

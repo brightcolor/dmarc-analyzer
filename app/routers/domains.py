@@ -1,19 +1,17 @@
 import re
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org, get_client_ip
+from app.dependencies import get_client_ip, get_current_org, get_current_user
 from app.models import Domain, InboundMailAddress, Organization, User
 from app.services.audit import log_action
-from app.services.inbound_address import create_domain_address, create_org_address
-from app.services.recommendation import get_recommendations_for_domain
 from app.services.dashboard import get_pass_fail_over_time
+from app.services.inbound_address import create_domain_address
+from app.services.recommendation import get_recommendations_for_domain
 from app.templates_config import templates
-from app.config import settings
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
@@ -30,7 +28,7 @@ def _paginate(q, page: int, per_page: int = 25):
 def domain_list(
     request: Request,
     page: int = Query(1, ge=1),
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -96,7 +94,7 @@ def domain_create(
     db.flush()
 
     # Auto-create domain-specific inbound address
-    addr = create_domain_address(db, org, domain)
+    create_domain_address(db, org, domain)
 
     log_action(
         db, "domain.create", org_id=org.id, user_id=user.id,

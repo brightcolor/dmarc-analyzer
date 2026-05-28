@@ -1,7 +1,7 @@
 """Audit logging service."""
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -14,14 +14,14 @@ def log_action(
     db: Session,
     action: str,
     *,
-    org_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    resource_type: Optional[str] = None,
-    resource_id: Optional[str] = None,
-    old_value: Optional[Any] = None,
-    new_value: Optional[Any] = None,
-    ip_address: Optional[str] = None,
-    user_agent: Optional[str] = None,
+    org_id: str | None = None,
+    user_id: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    old_value: Any | None = None,
+    new_value: Any | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> None:
     try:
         entry = AuditLog(

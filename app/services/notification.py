@@ -4,8 +4,7 @@ Sends alerts via configured channels (email, webhook, ntfy, slack-compatible).
 """
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy.orm import Session
@@ -27,7 +26,7 @@ def deliver_event(db: Session, event: AlertEvent, channel: NotificationChannel) 
     try:
         _send(event, channel)
         delivery.status = "sent"
-        delivery.sent_at = datetime.now(timezone.utc)
+        delivery.sent_at = datetime.now(UTC)
     except Exception as exc:
         logger.warning("Notification delivery failed (channel=%s): %s", channel.id, exc)
         delivery.status = "failed"

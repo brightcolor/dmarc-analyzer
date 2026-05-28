@@ -4,8 +4,7 @@ Implements iterparse for memory-efficient processing.
 """
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import defusedxml.ElementTree as safe_et
 
@@ -22,8 +21,8 @@ class ParsedAuthResult:
     auth_type: str
     domain: str
     result: str
-    selector: Optional[str] = None
-    scope: Optional[str] = None
+    selector: str | None = None
+    scope: str | None = None
 
 
 @dataclass
@@ -31,27 +30,27 @@ class ParsedRecord:
     source_ip: str
     count: int
     disposition: str
-    dkim_result: Optional[str]
-    spf_result: Optional[str]
-    header_from: Optional[str]
-    envelope_from: Optional[str]
+    dkim_result: str | None
+    spf_result: str | None
+    header_from: str | None
+    envelope_from: str | None
     auth_results: list[ParsedAuthResult] = field(default_factory=list)
 
 
 @dataclass
 class ParsedReport:
     report_id: str
-    reporting_org: Optional[str]
-    reporting_email: Optional[str]
-    period_begin: Optional[datetime]
-    period_end: Optional[datetime]
-    policy_domain: Optional[str]
+    reporting_org: str | None
+    reporting_email: str | None
+    period_begin: datetime | None
+    period_end: datetime | None
+    policy_domain: str | None
     policy_adkim: str
     policy_aspf: str
     policy_p: str
-    policy_sp: Optional[str]
+    policy_sp: str | None
     policy_pct: int
-    policy_fo: Optional[str]
+    policy_fo: str | None
     records: list[ParsedRecord] = field(default_factory=list)
     parser_version: str = PARSER_VERSION
 
@@ -98,9 +97,9 @@ def parse_xml_bytes(data: bytes) -> ParsedReport:
             begin_ts = int(_find_text(date_range, "begin", "0"))
             end_ts = int(_find_text(date_range, "end", "0"))
             if begin_ts:
-                period_begin = datetime.fromtimestamp(begin_ts, tz=timezone.utc)
+                period_begin = datetime.fromtimestamp(begin_ts, tz=UTC)
             if end_ts:
-                period_end = datetime.fromtimestamp(end_ts, tz=timezone.utc)
+                period_end = datetime.fromtimestamp(end_ts, tz=UTC)
         except (ValueError, OSError):
             pass
 

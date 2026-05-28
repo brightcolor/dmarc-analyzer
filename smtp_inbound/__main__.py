@@ -15,7 +15,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-from smtp_inbound.server import start_smtp_server
+from smtp_inbound.server import start_smtp_server  # noqa: E402
 
 
 def main() -> None:

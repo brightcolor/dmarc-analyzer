@@ -1,6 +1,6 @@
 import secrets
 from pathlib import Path
-from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # SMTP Inbound
     SMTP_INBOUND_ENABLED: bool = True
-    SMTP_INBOUND_BIND: str = "0.0.0.0"
+    SMTP_INBOUND_BIND: str = "0.0.0.0"  # noqa: S104
     SMTP_INBOUND_PORT: int = 2525
     SMTP_INBOUND_DOMAIN: str = "reports.example.org"
     SMTP_INBOUND_MAX_MESSAGE_SIZE: int = 10 * 1024 * 1024  # 10MB
@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     SMTP_INBOUND_RATE_LIMIT_PER_IP: int = 60       # per hour
     SMTP_INBOUND_RATE_LIMIT_PER_RECIPIENT: int = 120  # per hour
     SMTP_INBOUND_TLS_ENABLED: bool = False
-    SMTP_INBOUND_TLS_CERT_PATH: Optional[str] = None
-    SMTP_INBOUND_TLS_KEY_PATH: Optional[str] = None
+    SMTP_INBOUND_TLS_CERT_PATH: str | None = None
+    SMTP_INBOUND_TLS_KEY_PATH: str | None = None
 
     # Raw mail storage (when STORE_RAW=true)
     RAW_MAIL_DIR: str = "./raw_mail"
@@ -59,8 +59,8 @@ class Settings(BaseSettings):
     NOTIFICATION_RETRY_MAX: int = 3
 
     # Initial super admin (created on first run if not exists)
-    INITIAL_ADMIN_EMAIL: Optional[str] = None
-    INITIAL_ADMIN_PASSWORD: Optional[str] = None
+    INITIAL_ADMIN_EMAIL: str | None = None
+    INITIAL_ADMIN_PASSWORD: str | None = None
 
     # API
     API_RATE_LIMIT: str = "100/minute"

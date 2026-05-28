@@ -21,7 +21,7 @@ class PlanDefinition(Base):
     report_retention_days: Mapped[int] = mapped_column(Integer, default=365)
     smtp_rate_limit_per_hour: Mapped[int] = mapped_column(Integer, default=200)
     api_rate_limit_per_hour: Mapped[int] = mapped_column(Integer, default=1000)
-    features: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
+    features: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
@@ -35,10 +35,10 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    owner_id: Mapped[Optional[str]] = mapped_column(
+    owner_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    plan_id: Mapped[Optional[str]] = mapped_column(
+    plan_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("plan_definitions.id"), nullable=True
     )
 
@@ -51,7 +51,7 @@ class Organization(Base):
     smtp_rate_limit_per_hour: Mapped[int] = mapped_column(Integer, default=200, nullable=False)
     api_rate_limit_per_hour: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
 
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
@@ -89,7 +89,7 @@ class OrganizationMembership(Base):
     # Roles: super_admin, org_admin, manager, analyst, read_only
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="analyst")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    invited_by: Mapped[Optional[str]] = mapped_column(
+    invited_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

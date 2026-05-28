@@ -1,7 +1,6 @@
 """
 FastAPI dependency functions for auth, tenant context, and DB sessions.
 """
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -10,12 +9,11 @@ from app.database import get_db
 from app.models import Organization, User
 from app.services.auth import get_user_by_id, validate_api_token
 
-
 # ─── Session-based auth ────────────────────────────────────────────────────────
 
 def get_current_user_optional(
     request: Request, db: Session = Depends(get_db)
-) -> Optional[User]:
+) -> User | None:
     user_id = request.session.get("user_id")
     if not user_id:
         return None
@@ -66,7 +64,7 @@ def get_current_user_and_org(
 
 def get_api_auth(
     request: Request, db: Session = Depends(get_db)
-) -> tuple[Optional[User], Optional[Organization]]:
+) -> tuple[User | None, Organization | None]:
     """Validate Bearer API token for REST API endpoints."""
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):

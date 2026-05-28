@@ -5,7 +5,6 @@ All rules are pure functions operating on plain data structures
 so they can be tested in isolation without a database.
 """
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -13,8 +12,8 @@ class AuthResultEntry:
     auth_type: str    # "dkim" or "spf"
     domain: str
     result: str       # pass/fail/neutral/softfail/none/permerror/temperror
-    selector: Optional[str] = None  # DKIM only
-    scope: Optional[str] = None     # SPF only ("mfrom" or "helo")
+    selector: str | None = None  # DKIM only
+    scope: str | None = None     # SPF only ("mfrom" or "helo")
 
 
 @dataclass
@@ -22,9 +21,9 @@ class RecordEvalInput:
     source_ip: str
     count: int
     header_from: str          # organizational domain used for alignment
-    envelope_from: Optional[str]
-    dkim_result: Optional[str]  # row-level result (may be None)
-    spf_result: Optional[str]   # row-level result (may be None)
+    envelope_from: str | None
+    dkim_result: str | None  # row-level result (may be None)
+    spf_result: str | None   # row-level result (may be None)
     auth_results: list[AuthResultEntry] = field(default_factory=list)
 
 
@@ -84,7 +83,6 @@ def evaluate_record(record: RecordEvalInput, policy: PolicyConfig) -> EvalResult
     DMARC passes if at least one authenticated mechanism (SPF or DKIM)
     passes AND is aligned with the RFC5322.From domain.
     """
-    header_from_org = _organizational_domain(record.header_from)
     is_subdomain = record.header_from.lower().rstrip(".") != policy.domain.lower().rstrip(".")
 
     # Effective subdomain policy
@@ -161,7 +159,7 @@ def compute_report_stats(records: list[EvalResult], counts: list[int]) -> dict:
     total = sum(counts)
     if total == 0:
         return {"total": 0, "pass": 0, "fail": 0, "pass_rate": None}
-    pass_total = sum(c for r, c in zip(records, counts) if r.dmarc_pass)
+    pass_total = sum(c for r, c in zip(records, counts, strict=False) if r.dmarc_pass)
     fail_total = total - pass_total
     return {
         "total": total,

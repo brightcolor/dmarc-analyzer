@@ -5,15 +5,14 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.database import get_db
-
 from app.config import settings
+from app.database import get_db
 from app.version import APP_NAME, VERSION
 
 logging.basicConfig(
@@ -27,8 +26,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Run startup tasks on application start."""
     # Ensure upload directories exist
-    settings.upload_dir_path
-    settings.raw_mail_dir_path
+    settings.upload_dir_path  # noqa: B018
+    settings.raw_mail_dir_path  # noqa: B018
 
     # Create DB tables and run migrations
     from app.database import engine
@@ -124,8 +123,18 @@ def create_app() -> FastAPI:
 
     # Register routers
     from app.routers import (
-        alerts, api_tokens, auth, dashboard, domains,
-        imports, organizations, reports, smtp_admin, source_ips, upload, users,
+        alerts,
+        api_tokens,
+        auth,
+        dashboard,
+        domains,
+        imports,
+        organizations,
+        reports,
+        smtp_admin,
+        source_ips,
+        upload,
+        users,
     )
     from app.routers.api import v1 as api_v1
 

@@ -1,6 +1,5 @@
 """Service for managing inbound mail addresses."""
 import logging
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -53,7 +52,7 @@ def create_domain_address(db: Session, org: Organization, domain: Domain) -> Inb
     return addr
 
 
-def lookup_by_address(db: Session, address: str) -> Optional[InboundMailAddress]:
+def lookup_by_address(db: Session, address: str) -> InboundMailAddress | None:
     """Look up an inbound address by its full email address (case-insensitive)."""
     return db.query(InboundMailAddress).filter_by(address=address.lower()).first()
 
@@ -97,7 +96,7 @@ def rotate_address(
     return new_addr
 
 
-def validate_for_smtp(db: Session, address: str) -> tuple[bool, str, Optional[InboundMailAddress]]:
+def validate_for_smtp(db: Session, address: str) -> tuple[bool, str, InboundMailAddress | None]:
     """
     Check whether an address can accept mail.
     Returns (accepted, rejection_reason, InboundMailAddress|None).

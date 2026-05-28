@@ -5,13 +5,19 @@ Never blocks SMTP ingestion or import processing.
 """
 import json
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import AlertEvent, AlertRule, Domain, DmarcRecord, DmarcReport, Organization, SourceIp
+from app.models import (
+    AlertEvent,
+    AlertRule,
+    DmarcRecord,
+    DmarcReport,
+    Domain,
+    SourceIp,
+)
 from app.security import utcnow
 
 logger = logging.getLogger(__name__)
@@ -51,15 +57,15 @@ def _create_event(
     db: Session,
     *,
     org_id: str,
-    domain_id: Optional[str] = None,
-    rule: Optional[AlertRule] = None,
+    domain_id: str | None = None,
+    rule: AlertRule | None = None,
     alert_type: str,
     severity: str,
     title: str,
     description: str = "",
-    metrics: Optional[dict] = None,
-    source_ip: Optional[str] = None,
-    report_id: Optional[str] = None,
+    metrics: dict | None = None,
+    source_ip: str | None = None,
+    report_id: str | None = None,
 ) -> AlertEvent:
     event = AlertEvent(
         organization_id=org_id,
@@ -191,7 +197,7 @@ def _evaluate_rule(db: Session, rule: AlertRule) -> list[AlertEvent]:
     return events
 
 
-def _domain_name(db: Session, domain_id: Optional[str]) -> Optional[str]:
+def _domain_name(db: Session, domain_id: str | None) -> str | None:
     if not domain_id:
         return None
     d = db.query(Domain).filter_by(id=domain_id).first()
@@ -202,14 +208,14 @@ def create_system_alert(
     db: Session,
     *,
     org_id: str,
-    domain_id: Optional[str] = None,
+    domain_id: str | None = None,
     alert_type: str,
     severity: str = "warning",
     title: str,
     description: str = "",
-    metrics: Optional[dict] = None,
-    source_ip: Optional[str] = None,
-    report_id: Optional[str] = None,
+    metrics: dict | None = None,
+    source_ip: str | None = None,
+    report_id: str | None = None,
 ) -> AlertEvent:
     """
     Create a system-generated alert (not tied to a rule).

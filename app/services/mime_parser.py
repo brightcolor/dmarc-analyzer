@@ -10,7 +10,6 @@ import zipfile
 from dataclasses import dataclass
 from email import message_from_bytes
 from email.message import Message
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ class ExtractedAttachment:
     content_type: str
     data: bytes
     sha256: str
-    source_filename: Optional[str] = None  # original name if from ZIP
+    source_filename: str | None = None  # original name if from ZIP
 
 
 class MimeParseError(Exception):

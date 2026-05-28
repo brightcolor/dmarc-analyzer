@@ -1,11 +1,10 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org
+from app.dependencies import get_current_org, get_current_user
 from app.models import ImportError, ImportJob, Organization, User
 from app.templates_config import templates
 
@@ -16,7 +15,7 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 def import_list(
     request: Request,
     page: int = Query(1, ge=1),
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -53,5 +52,5 @@ def import_detail(
 
     return templates.TemplateResponse("imports/detail.html", {
         "request": request, "user": user, "org": org,
-        "job": job, "errors": errors, "page_title": f"Import Job",
+        "job": job, "errors": errors, "page_title": "Import Job",
     })

@@ -5,9 +5,8 @@ All DB checks happen here before a mail is accepted.
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Lock
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +55,9 @@ class ValidationResult:
     accepted: bool
     smtp_code: int
     smtp_message: str
-    address_id: Optional[str] = None
-    organization_id: Optional[str] = None
-    domain_id: Optional[str] = None
+    address_id: str | None = None
+    organization_id: str | None = None
+    domain_id: str | None = None
 
 
 def validate_recipient(
@@ -76,14 +75,13 @@ def validate_recipient(
     """
     from app.database import get_db_context
     from app.services.inbound_address import validate_for_smtp
-    from app.config import settings
 
     # Size check first (no DB needed)
     if message_size > max_message_size:
         return ValidationResult(
             accepted=False,
             smtp_code=552,
-            smtp_message=f"5.3.4 Message size exceeds fixed limit",
+            smtp_message="5.3.4 Message size exceeds fixed limit",
         )
 
     # IP rate limit

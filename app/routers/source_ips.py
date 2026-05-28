@@ -1,11 +1,10 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org
+from app.dependencies import get_current_org, get_current_user
 from app.models import DmarcRecord, DmarcReport, Organization, SourceIp, User
 from app.templates_config import templates
 
@@ -22,8 +21,8 @@ def _paginate(q, page: int, per_page: int = 25):
 def source_ip_list(
     request: Request,
     page: int = Query(1, ge=1),
-    classification: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    classification: str | None = Query(None),
+    search: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -82,7 +81,7 @@ def classify_ip(
     request: Request,
     ip_id: str,
     classification: str = Form(...),
-    notes: Optional[str] = Form(None),
+    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),

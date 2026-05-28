@@ -14,18 +14,18 @@ class ApiToken(Base):
     organization_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[Optional[str]] = mapped_column(
+    user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     token_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
-    scopes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array
+    scopes: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="api_tokens")
     user: Mapped[Optional["User"]] = relationship("User", back_populates="api_tokens")

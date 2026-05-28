@@ -1,11 +1,10 @@
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org, get_client_ip
+from app.dependencies import get_client_ip, get_current_org, get_current_user
 from app.models import Organization, OrganizationMembership, User
 from app.services.audit import log_action
 from app.services.auth import ROLES, create_user, get_user_role_in_org
@@ -39,7 +38,7 @@ def invite_form(
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
 ):
-    role = get_user_role_in_org(None, user.id, org.id) if not user.is_superadmin else "super_admin"
+    _role = get_user_role_in_org(None, user.id, org.id) if not user.is_superadmin else "super_admin"
     return templates.TemplateResponse("users/invite.html", {
         "request": request, "user": user, "org": org,
         "roles": ROLES, "page_title": "Invite User",

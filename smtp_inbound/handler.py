@@ -3,18 +3,18 @@ SMTP message handler.
 Called by aiosmtpd after a message is fully received and accepted.
 """
 import asyncio
-import hashlib
 import logging
-import os
-from datetime import datetime, timezone
-from email import message_from_bytes
-from typing import Optional
+from datetime import UTC, datetime
 
-from aiosmtpd.smtp import Envelope as SmtpEnvelope, SMTP as SmtpServer, Session as SmtpSession
+from aiosmtpd.smtp import SMTP as SmtpServer
+from aiosmtpd.smtp import Envelope as SmtpEnvelope
+from aiosmtpd.smtp import Session as SmtpSession
 
 from app.config import settings
 from app.database import get_db_context
 from app.models import ImportJob, InboundMailAttachment, SmtpInboundMessage, SmtpInboundRejection
+from app.services.alert_service import create_system_alert
+from app.services.import_service import process_import_job
 from app.services.mime_parser import (
     MimeParseError,
     ZipBombError,
@@ -22,8 +22,6 @@ from app.services.mime_parser import (
     parse_mail_headers,
     sha256_hex,
 )
-from app.services.import_service import process_import_job
-from app.services.alert_service import create_system_alert
 from smtp_inbound.validator import validate_recipient
 
 logger = logging.getLogger(__name__)
@@ -134,9 +132,9 @@ class DmarcSmtpHandler:
         envelope_recipient: str,
         remote_ip: str,
         headers: dict,
-        address_id: Optional[str],
+        address_id: str | None,
         organization_id: str,
-        domain_id: Optional[str],
+        domain_id: str | None,
     ) -> None:
         """Synchronous persistence and processing (called via asyncio.to_thread)."""
         raw_path = None
@@ -157,7 +155,7 @@ class DmarcSmtpHandler:
                     header_to=headers.get("to", "")[:1000] or None,
                     subject=headers.get("subject", "")[:500] or None,
                     message_id=headers.get("message_id", "")[:500] or None,
-                    received_at=datetime.now(timezone.utc),
+                    received_at=datetime.now(UTC),
                     size_bytes=len(raw),
                     raw_path=raw_path,
                     import_status="processing",
@@ -170,7 +168,7 @@ class DmarcSmtpHandler:
                     from app.models import InboundMailAddress
                     addr = db.query(InboundMailAddress).filter_by(id=address_id).first()
                     if addr:
-                        addr.last_used_at = datetime.now(timezone.utc)
+                        addr.last_used_at = datetime.now(UTC)
 
                 # Extract DMARC attachments
                 try:
@@ -261,13 +259,13 @@ class DmarcSmtpHandler:
                 msg.import_status = "completed" if imported_count > 0 else "failed"
                 if imported_count == 0:
                     msg.error_message = "All attachments failed to import"
-                msg.processed_at = datetime.now(timezone.utc)
+                msg.processed_at = datetime.now(UTC)
 
         except Exception as exc:
             logger.exception("Error processing mail from %s to %s: %s", remote_ip, envelope_recipient, exc)
 
     @staticmethod
-    def _save_raw_mail(organization_id: str, raw: bytes) -> Optional[str]:
+    def _save_raw_mail(organization_id: str, raw: bytes) -> str | None:
         try:
             raw_dir = settings.raw_mail_dir_path / organization_id
             raw_dir.mkdir(parents=True, exist_ok=True)

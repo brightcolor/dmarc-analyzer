@@ -1,12 +1,11 @@
 import json
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_org
+from app.dependencies import get_current_org, get_current_user
 from app.models import AlertEvent, AlertRule, Domain, NotificationChannel, Organization, User
 from app.security import utcnow
 from app.services.alert_service import ALERT_TYPES
@@ -37,12 +36,12 @@ def create_alert_rule(
     request: Request,
     name: str = Form(...),
     alert_type: str = Form(...),
-    domain_id: Optional[str] = Form(None),
-    threshold: Optional[float] = Form(None),
+    domain_id: str | None = Form(None),
+    threshold: float | None = Form(None),
     time_window_minutes: int = Form(60),
     cooldown_minutes: int = Form(60),
     severity: str = Form("warning"),
-    channel_ids: Optional[list[str]] = Form(None),
+    channel_ids: list[str] | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -84,8 +83,8 @@ def toggle_rule(
 def alert_events(
     request: Request,
     page: int = Query(1, ge=1),
-    status: Optional[str] = Query(None),
-    severity: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    severity: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),

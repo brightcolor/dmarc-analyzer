@@ -1,18 +1,24 @@
 """Server-side dashboard aggregation queries."""
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, text
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
-    AlertEvent, Domain, DmarcRecord, DmarcReport, ImportJob,
-    InboundMailAddress, SmtpInboundMessage, SmtpInboundRejection, SourceIp,
+    AlertEvent,
+    DmarcRecord,
+    DmarcReport,
+    Domain,
+    ImportJob,
+    SmtpInboundMessage,
+    SmtpInboundRejection,
+    SourceIp,
 )
 
 
 def get_dashboard_stats(db: Session, org_id: str) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     thirty_days_ago = now - timedelta(days=30)
     seven_days_ago = now - timedelta(days=7)
 
@@ -25,7 +31,7 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
         db.query(
             func.sum(DmarcRecord.count).label("total"),
             func.sum(
-                func.case((DmarcRecord.dmarc_pass == True, DmarcRecord.count), else_=0)
+                func.case((DmarcRecord.dmarc_pass.is_(True), DmarcRecord.count), else_=0)
             ).label("pass"),
         )
         .join(DmarcReport)
@@ -47,7 +53,7 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
         .filter(
             DmarcReport.organization_id == org_id,
             DmarcReport.created_at >= thirty_days_ago,
-            DmarcRecord.spf_aligned == True,
+            DmarcRecord.spf_aligned.is_(True),
         )
         .scalar() or 0
     )
@@ -57,7 +63,7 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
         .filter(
             DmarcReport.organization_id == org_id,
             DmarcReport.created_at >= thirty_days_ago,
-            DmarcRecord.dkim_aligned == True,
+            DmarcRecord.dkim_aligned.is_(True),
         )
         .scalar() or 0
     )
@@ -147,9 +153,9 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
     }
 
 
-def get_pass_fail_over_time(db: Session, org_id: str, domain_id: Optional[str] = None, days: int = 30) -> list[dict]:
+def get_pass_fail_over_time(db: Session, org_id: str, domain_id: str | None = None, days: int = 30) -> list[dict]:
     """Daily DMARC pass/fail counts for charting."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = now - timedelta(days=days)
 
     q = (
@@ -163,16 +169,7 @@ def get_pass_fail_over_time(db: Session, org_id: str, domain_id: Optional[str] =
     if domain_id:
         q = q.filter(DmarcReport.domain_id == domain_id)
 
-    records = q.all()
-
-    # Group by date using Python (avoids DB-specific date functions)
-    from collections import defaultdict
-    buckets: dict[str, dict] = defaultdict(lambda: {"pass": 0, "fail": 0})
-    for r in records:
-        # Use report created_at via join - approximate but sufficient
-        pass  # We need the report date, will handle via subquery
-
-    # Simpler: aggregate on report level
+    # Aggregate on report level
     reports_q = (
         db.query(DmarcReport)
         .filter(

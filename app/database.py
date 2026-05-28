@@ -1,8 +1,8 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 

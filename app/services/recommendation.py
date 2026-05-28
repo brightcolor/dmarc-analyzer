@@ -3,13 +3,11 @@ Rule-based recommendation engine for DMARC domains.
 No AI/ML. All logic is deterministic and explainable.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Domain, DmarcRecord, DmarcReport, InboundMailAddress, SourceIp
+from app.models import DmarcRecord, DmarcReport, Domain, InboundMailAddress, SourceIp
 
 
 @dataclass
@@ -27,7 +25,7 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
     if not domain:
         return recs
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     thirty_days_ago = now - timedelta(days=30)
     seven_days_ago = now - timedelta(days=7)
 
@@ -89,7 +87,7 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             recs.append(Recommendation(
                 code="REPORTS_STALE",
                 severity="info",
-                title=f"No reports received in the last 7 days",
+                title="No reports received in the last 7 days",
                 description=(
                     f"The last report was received {days_since} day(s) ago. "
                     "This may indicate the sending domain has stopped sending, "

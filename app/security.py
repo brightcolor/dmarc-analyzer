@@ -1,8 +1,7 @@
 import hashlib
-import os
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from passlib.context import CryptContext
 
@@ -51,4 +50,4 @@ def generate_verification_token() -> str:
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)

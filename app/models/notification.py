@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,7 +16,7 @@ class NotificationChannel(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # email, webhook, ntfy, pushover, slack
     channel_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON (no passwords in plaintext)
+    config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON (no passwords in plaintext)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -42,8 +41,8 @@ class NotificationDelivery(Base):
     )
     # pending, sent, failed
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
-    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 

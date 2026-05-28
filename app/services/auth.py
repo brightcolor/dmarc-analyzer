@@ -1,12 +1,16 @@
 """Authentication service."""
 import logging
-from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.models import ApiToken, Organization, OrganizationMembership, User
-from app.security import generate_api_token, generate_token, hash_api_token, hash_password, utcnow, verify_password
+from app.security import (
+    generate_api_token,
+    hash_api_token,
+    hash_password,
+    utcnow,
+    verify_password,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +18,7 @@ ROLES = ["super_admin", "org_admin", "manager", "analyst", "read_only"]
 ROLE_HIERARCHY = {r: i for i, r in enumerate(ROLES)}
 
 
-def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
+def authenticate_user(db: Session, email: str, password: str) -> User | None:
     user = db.query(User).filter_by(email=email.lower().strip()).first()
     if not user:
         return None
@@ -26,7 +30,7 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     return user
 
 
-def get_user_by_id(db: Session, user_id: str) -> Optional[User]:
+def get_user_by_id(db: Session, user_id: str) -> User | None:
     return db.query(User).filter_by(id=user_id, is_active=True).first()
 
 
@@ -34,7 +38,7 @@ def create_user(
     db: Session,
     email: str,
     password: str,
-    full_name: Optional[str] = None,
+    full_name: str | None = None,
     is_superadmin: bool = False,
 ) -> User:
     user = User(
@@ -49,7 +53,7 @@ def create_user(
     return user
 
 
-def get_user_role_in_org(db: Session, user_id: str, org_id: str) -> Optional[str]:
+def get_user_role_in_org(db: Session, user_id: str, org_id: str) -> str | None:
     membership = (
         db.query(OrganizationMembership)
         .filter_by(user_id=user_id, organization_id=org_id, is_active=True)
@@ -64,7 +68,7 @@ def can_access_org(db: Session, user: User, org_id: str) -> bool:
     return get_user_role_in_org(db, user.id, org_id) is not None
 
 
-def require_role(user_role: Optional[str], minimum_role: str) -> bool:
+def require_role(user_role: str | None, minimum_role: str) -> bool:
     """Check that user_role meets minimum_role threshold."""
     if user_role is None:
         return False
@@ -80,10 +84,10 @@ def get_user_orgs(db: Session, user_id: str) -> list[Organization]:
     org_ids = [m.organization_id for m in memberships]
     if not org_ids:
         return []
-    return db.query(Organization).filter(Organization.id.in_(org_ids), Organization.is_active == True).all()
+    return db.query(Organization).filter(Organization.id.in_(org_ids), Organization.is_active.is_(True)).all()
 
 
-def validate_api_token(db: Session, raw_token: str) -> Optional[tuple[ApiToken, Organization]]:
+def validate_api_token(db: Session, raw_token: str) -> tuple[ApiToken, Organization] | None:
     """Validate a raw API token. Returns (token_obj, organization) or None."""
     if not raw_token or not raw_token.startswith("dmarc_"):
         return None
@@ -103,7 +107,7 @@ def create_api_token(
     organization_id: str,
     user_id: str,
     name: str,
-    scopes: Optional[list[str]] = None,
+    scopes: list[str] | None = None,
 ) -> tuple[str, ApiToken]:
     """Create a new API token. Returns (raw_token, ApiToken)."""
     import json
