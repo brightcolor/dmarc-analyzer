@@ -23,7 +23,7 @@ Receives reports by email (custom SMTP inbound), processes them against RFC 7489
 ## Quickstart (Docker Compose)
 
 ```bash
-git clone https://github.com/yourorg/dmarc-analyzer.git && cd dmarc-analyzer && cp .env.example .env && docker compose up -d
+git clone https://github.com/brightcolor/dmarc-analyzer.git && cd dmarc-analyzer && cp .env.example .env && docker compose up -d
 ```
 
 Open **http://localhost:8765** — the setup wizard runs on first visit and lets you create the admin account directly in the browser. No environment variables required for the first run.
@@ -88,7 +88,7 @@ make lint          # ruff checks
 All API routes live under `/api/v1/`. Authentication uses a Bearer token:
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/me
+curl -H "Authorization: Bearer <token>" http://localhost:8765/api/v1/me
 ```
 
 Generate a token in the web UI under **API Tokens**.
@@ -149,8 +149,11 @@ docker compose exec -T db psql -U dmarc dmarc < backup.sql
 
 ### Uploaded files
 
-Mount the `uploads_data` and `raw_mail_data` volumes to a backup location,
-or use `docker run --volumes-from <container> ...` to copy them.
+Copy the bind-mount directories on the host:
+
+```bash
+cp -r ./data/uploads ./data/raw_mail /your/backup/location/
+```
 
 ---
 
