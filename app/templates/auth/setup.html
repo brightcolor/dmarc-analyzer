@@ -163,6 +163,15 @@
   </div>
 </div>
 
+<div id="pageLoader" aria-hidden="true"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+            z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:.75rem;">
+  <div class="spinner-border text-light" style="width:3.5rem;height:3.5rem;" role="status">
+    <span class="visually-hidden">Loading…</span>
+  </div>
+  <span class="text-white fw-semibold" style="font-size:.95rem;">Creating account…</span>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/js/adminlte.min.js" defer></script>
 <script>
 (function () {
@@ -354,7 +363,9 @@
       e.preventDefault();
       confirmInput.focus();
       updateMatch();
+      return;
     }
+    document.getElementById('pageLoader').style.display = 'flex';
   });
 
 })();

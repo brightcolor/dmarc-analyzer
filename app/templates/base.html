@@ -215,9 +215,51 @@
 
 </div><!-- /.app-wrapper -->
 
+<!-- ── Page-level loading overlay ───────────────────────────────────────── -->
+<div id="pageLoader" aria-hidden="true"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+            z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:.75rem;">
+  <div class="spinner-border text-light" style="width:3.5rem;height:3.5rem;" role="status">
+    <span class="visually-hidden">Loading…</span>
+  </div>
+  <span id="pageLoaderLabel" class="text-white fw-semibold" style="font-size:.95rem;letter-spacing:.02em;"></span>
+</div>
+
 <!-- AdminLTE 4 JS (includes Bootstrap 5) -->
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/js/adminlte.min.js" defer></script>
 <script src="/static/js/custom.js" defer></script>
+<script>
+(function () {
+  var loader = document.getElementById('pageLoader');
+  var label  = document.getElementById('pageLoaderLabel');
+
+  function show(text) {
+    label.textContent = text || '';
+    loader.style.display = 'flex';
+  }
+
+  // Show on any non-GET form submit
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form.method && form.method.toLowerCase() === 'get') return;
+    // Pick a sensible label based on context
+    var btn = form.querySelector('[type=submit]');
+    var hasFile = form.querySelector('[type=file]');
+    if (hasFile) {
+      show('Uploading & importing…');
+    } else if (btn && btn.textContent) {
+      show(btn.textContent.trim().replace(/\s+/g, ' ').substring(0, 40));
+    } else {
+      show('Please wait…');
+    }
+  });
+
+  // Hide if browser navigates back (bfcache restore)
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) loader.style.display = 'none';
+  });
+})();
+</script>
 {% block extra_js %}{% endblock %}
 </body>
 </html>
