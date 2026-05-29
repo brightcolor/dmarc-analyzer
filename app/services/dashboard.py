@@ -2,7 +2,7 @@
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -31,7 +31,7 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
         db.query(
             func.sum(DmarcRecord.count).label("total"),
             func.sum(
-                func.case((DmarcRecord.dmarc_pass.is_(True), DmarcRecord.count), else_=0)
+                case((DmarcRecord.dmarc_pass.is_(True), DmarcRecord.count), else_=0)
             ).label("pass"),
         )
         .join(DmarcReport)
