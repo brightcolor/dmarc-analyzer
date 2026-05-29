@@ -36,10 +36,10 @@
       </ul>
       <ul class="navbar-nav ms-auto">
         <li class="nav-item">
-          <button class="btn nav-link" id="themeToggle" title="Toggle dark / light mode"
-                  style="border:none;background:none">
+          <a class="nav-link" id="themeToggle" href="#" title="Toggle dark / light mode"
+             onclick="return false;" style="cursor:pointer">
             <i class="bi bi-moon" id="themeIcon"></i>
-          </button>
+          </a>
         </li>
         {% if user.is_superadmin %}
         <li class="nav-item">

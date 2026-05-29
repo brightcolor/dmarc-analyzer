@@ -37,7 +37,7 @@
       <div class="card-header"><h6 class="mb-0"><i class="bi bi-code-slash me-2"></i>API Upload</h6></div>
       <div class="card-body">
         <p class="text-muted small">You can also upload reports via the REST API:</p>
-        <pre class="bg-light p-3 rounded small"><code>curl -X POST {{ request.base_url }}api/v1/upload \
+        <pre class="bg-body-secondary p-3 rounded small"><code>curl -X POST {{ request.base_url }}api/v1/upload \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -F "file=@dmarc_report.xml.gz"</code></pre>
         <a href="/api-tokens" class="btn btn-sm btn-outline-secondary">

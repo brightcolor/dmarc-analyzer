@@ -40,7 +40,7 @@
       <div class="card-header"><h6 class="mb-0"><i class="bi bi-terminal me-2"></i>MX / DNS Setup</h6></div>
       <div class="card-body small">
         <p class="text-muted">To receive DMARC reports, configure a DNS MX record for your inbound domain:</p>
-        <pre class="bg-light p-2 rounded"><code>{{ smtp_config.domain }}. IN MX 10 {{ smtp_config.domain }}.</code></pre>
+        <pre class="bg-body-secondary p-2 rounded"><code>{{ smtp_config.domain }}. IN MX 10 {{ smtp_config.domain }}.</code></pre>
         <p class="text-muted mb-0">And an A/AAAA record pointing to this server's IP. Port {{ smtp_config.port }} must be reachable.</p>
       </div>
     </div>

@@ -35,6 +35,16 @@ pre { white-space: pre-wrap; word-break: break-all; }
   background: var(--bs-body-bg) !important;
 }
 
+/* bg-light is not context-aware in AdminLTE 4 — force it dark */
+[data-bs-theme="dark"] .bg-light {
+  background-color: var(--bs-secondary-bg) !important;
+  color: var(--bs-body-color) !important;
+}
+[data-bs-theme="dark"] pre,
+[data-bs-theme="dark"] code {
+  color: var(--bs-body-color);
+}
+
 /* Floating theme toggle on standalone pages (login / setup / select-org) */
 .theme-toggle-float {
   position: fixed;
