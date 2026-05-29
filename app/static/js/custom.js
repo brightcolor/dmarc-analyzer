@@ -1,5 +1,28 @@
 /* DMARC Analyzer — custom JS */
 
+// ── Dark mode toggle ──────────────────────────────────────────────────────────
+(function () {
+  var btn  = document.getElementById('themeToggle');
+  var icon = document.getElementById('themeIcon');
+  if (!btn) return;
+
+  function current() {
+    return document.documentElement.getAttribute('data-bs-theme') || 'light';
+  }
+
+  function apply(t) {
+    document.documentElement.setAttribute('data-bs-theme', t);
+    localStorage.setItem('dmarc-theme', t);
+    if (icon) icon.className = t === 'dark' ? 'bi bi-sun' : 'bi bi-moon';
+  }
+
+  apply(current()); // sync icon to whatever the inline script already set
+
+  btn.addEventListener('click', function () {
+    apply(current() === 'dark' ? 'light' : 'dark');
+  });
+})();
+
 // Auto-dismiss alerts after 6s
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.alert.alert-success').forEach(function (el) {

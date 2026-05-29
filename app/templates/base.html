@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}{{ page_title | default('DMARC Analyzer') }} — DMARC Analyzer{% endblock %}</title>
+  <!-- Apply saved theme before CSS renders to avoid flash -->
+  <script>(function(){var t=localStorage.getItem('dmarc-theme');if(t)document.documentElement.setAttribute('data-bs-theme',t);})();</script>
   <!-- AdminLTE 4 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/css/adminlte.min.css">
   <!-- Bootstrap Icons -->
@@ -33,6 +35,12 @@
         </li>
       </ul>
       <ul class="navbar-nav ms-auto">
+        <li class="nav-item">
+          <button class="btn nav-link" id="themeToggle" title="Toggle dark / light mode"
+                  style="border:none;background:none">
+            <i class="bi bi-moon" id="themeIcon"></i>
+          </button>
+        </li>
         {% if user.is_superadmin %}
         <li class="nav-item">
           <a class="nav-link" href="/organizations" title="All Organizations">

@@ -27,3 +27,28 @@ pre { white-space: pre-wrap; word-break: break-all; }
 
 /* Small progress bar */
 .progress { border-radius: 10px; }
+
+/* ── Dark mode ────────────────────────────────────────────────────────────── */
+
+/* Auth pages hard-code a light background in a <style> block — override it */
+[data-bs-theme="dark"] body {
+  background: var(--bs-body-bg) !important;
+}
+
+/* Floating theme toggle on standalone pages (login / setup / select-org) */
+.theme-toggle-float {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1080;
+  border: none;
+  background: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: inherit;
+  opacity: .55;
+  transition: opacity .15s ease;
+  padding: .25rem .35rem;
+  border-radius: .375rem;
+}
+.theme-toggle-float:hover { opacity: 1; background: rgba(128,128,128,.15); }
