@@ -41,9 +41,8 @@ async def start_smtp_server() -> None:
         port=settings.SMTP_INBOUND_PORT,
         ssl_context=ssl_context,
         server_hostname=settings.SMTP_INBOUND_DOMAIN,
-        # Enforce message size at SMTP level
-        # aiosmtpd checks DATA size via size_limit parameter
-        size_limit=settings.SMTP_INBOUND_MAX_MESSAGE_SIZE,
+        # Enforce message size at SMTP level (aiosmtpd ≥1.4 uses data_size_limit)
+        data_size_limit=settings.SMTP_INBOUND_MAX_MESSAGE_SIZE,
     )
 
     controller.start()
