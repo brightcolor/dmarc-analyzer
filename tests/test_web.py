@@ -98,6 +98,10 @@ class TestFirstRunSetup:
         assert web.get("/api/v1/health").status_code == 200
         assert web.get("/static/css/app.css").status_code == 200
 
+    def test_fonts_and_logos_have_their_media_type(self, web):
+        assert web.get("/static/bc/fonts/anton-400.woff2").headers["content-type"] == "font/woff2"
+        assert web.get("/static/bc/logo/bc-mark.svg").headers["content-type"].startswith("image/svg+xml")
+
     def test_setup_page_asks_for_code(self, web):
         page = web.get("/auth/setup")
         assert page.status_code == 200

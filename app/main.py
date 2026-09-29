@@ -2,6 +2,7 @@
 DMARC Analyzer — FastAPI application entry point.
 """
 import logging
+import mimetypes
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -22,6 +23,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Slim container images lack /etc/mime.types; without these, fonts and icons go out as text/plain
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 # Title and next step per status for pages people see
 ERROR_TEXT = {

@@ -7,6 +7,13 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.2.1] – 2026-09-29
+
+### Behoben
+
+- Schriften und Logos gehen mit dem passenden Medientyp (`font/woff2`, `image/svg+xml`) an den Browser.
+  Im schlanken Container-Abbild kamen sie bisher als `text/plain`.
+
 ## [0.2.0] – 2026-09-29
 
 ### Neu
@@ -131,6 +138,7 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.1
 [0.2.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.0
 [0.1.0]: https://github.com/brightcolor/dmarc-analyzer/commit/0ec5162
