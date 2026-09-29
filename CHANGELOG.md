@@ -7,6 +7,12 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Neu
+
+- Das Container-Abbild gibt es für `linux/amd64` und `linux/arm64`, etwa für ARM-Server wie Hetzner CAX
+  oder Raspberry Pi 4 und 5. `docker compose pull` wählt die passende Fassung selbst.
+- Pull Requests gegen `master` bauen das Abbild für beide Plattformen, ohne es zu veröffentlichen.
+
 ## [0.2.1] – 2026-09-29
 
 ### Behoben
