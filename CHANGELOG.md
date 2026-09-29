@@ -7,6 +7,12 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.5.2] – 2026-09-29
+
+### Geändert
+
+- Das Abbild gibt es für amd64 und arm64, etwa für Server mit Ampere-Prozessoren wie Oracle A1.
+
 ## [0.5.1] – 2026-09-29
 
 ### Behoben
@@ -253,7 +259,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.2
 [0.5.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.1
 [0.5.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.4.0
