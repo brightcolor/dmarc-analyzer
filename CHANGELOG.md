@@ -7,6 +7,20 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.9.2] – 2026-09-29
+
+### Geändert
+
+- Alle Listen sind auf dem Handy zweizeilig: oben fett der Titel (Domain, Host, IP-Adresse, Name),
+  darunter klein die übrigen Angaben. Knöpfe, die eine Liste braucht (Alarm bestätigen, Absender
+  freigeben, Kanal testen, Token widerrufen), stehen dort als eigene Zeile darunter. Das betrifft
+  Berichte, Fehlerberichte, Domains, Quellen, Absender, Alarme, Regeln, Kanäle, Empfang, Benutzer,
+  API-Tokens, Organisationen und die Tabellen auf den Detailseiten.
+- Die Klassen dafür kommen aus dem Werkbank-Stylesheet von bright color (`bc-row-title`,
+  `bc-row-sub`, `bc-hide-narrow`, `bc-only-narrow`); `bc-workbench.css` ist auf dem Stand des Skills
+  1.6.0.
+- Zahlen stehen mit dem passenden Wort in Einzahl oder Mehrzahl („1 Adresse“, „2 Adressen“).
+
 ## [0.9.1] – 2026-09-29
 
 ### Geändert

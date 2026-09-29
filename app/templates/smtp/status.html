@@ -54,14 +54,14 @@
     <div class="bc-panel__head"><h2 class="bc-panel__title" id="zeitplaner-titel">Zeitplaner</h2>{{ ui.state('läuft' if scheduler_enabled else 'aus', 'bc-state--on' if scheduler_enabled else 'bc-state--warn') }}</div>
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Aufgabe</th><th>Takt</th><th>Zuletzt</th><th>Ergebnis</th></tr></thead>
+        <thead><tr><th>Aufgabe</th><th class="bc-hide-narrow">Takt</th><th class="bc-hide-narrow">Zuletzt</th><th class="bc-hide-narrow">Ergebnis</th></tr></thead>
         <tbody>
           {% for job in jobs %}
           <tr>
-            <td>{{ job.label }}</td>
-            <td class="app-nowrap">{{ job.interval | interval }}</td>
-            <td class="app-nowrap">{{ job.run.last_started_at | datetime if job.run else '—' }}</td>
-            <td>
+            <td><span class="bc-row-title">{{ job.label }}</span><span class="bc-row-sub bc-only-narrow">{{ job.interval | interval }} · zuletzt {{ job.run.last_started_at | datetime if job.run else '—' }} · {% if job.run and job.run.last_status %}{{ {'ok': 'fertig', 'running': 'läuft', 'failed': 'Fehler'}.get(job.run.last_status, job.run.last_status) }}{% if job.run.last_error %}: {{ job.run.last_error }}{% endif %}{% else %}noch nicht gelaufen{% endif %}</span></td>
+            <td class="app-nowrap bc-hide-narrow">{{ job.interval | interval }}</td>
+            <td class="app-nowrap bc-hide-narrow">{{ job.run.last_started_at | datetime if job.run else '—' }}</td>
+            <td class="bc-hide-narrow">
               {% if job.run and job.run.last_status %}
                 {{ ui.state({'ok': 'fertig', 'running': 'läuft', 'failed': 'Fehler'}.get(job.run.last_status, job.run.last_status), {'ok': 'bc-state--on', 'running': 'bc-state--warn', 'failed': 'bc-state--bad'}.get(job.run.last_status, '')) }}
                 {% if job.run.last_error %}<span class="app-reason">{{ job.run.last_error }}</span>{% endif %}
@@ -80,14 +80,14 @@
   {% if addresses %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Adresse</th><th>Zweck</th><th>Status</th><th>Zuletzt genutzt</th></tr></thead>
+      <thead><tr><th>Adresse</th><th class="bc-hide-narrow">Zweck</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Zuletzt genutzt</th></tr></thead>
       <tbody>
         {% for addr in addresses %}
         <tr>
-          <td class="app-mono app-break">{{ addr.address }}</td>
-          <td>{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %}</td>
-          <td>{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
-          <td class="app-nowrap">{{ addr.last_used_at | datetime }}</td>
+          <td><span class="bc-row-title app-mono app-break">{{ addr.address }}</span><span class="bc-row-sub bc-only-narrow">{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %} · {{ addr.status | status_text }} · zuletzt genutzt {{ addr.last_used_at | datetime }}</span></td>
+          <td class="bc-hide-narrow">{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %}</td>
+          <td class="bc-hide-narrow">{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ addr.last_used_at | datetime }}</td>
         </tr>
         {% endfor %}
       </tbody>

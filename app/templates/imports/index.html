@@ -20,17 +20,17 @@
   {% if jobs %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Bericht</th><th class="app-hide-small">Status</th><th class="app-hide-small">Herkunft</th><th class="bc-num app-hide-small">Importiert</th><th class="bc-num app-hide-small">Doppelt</th><th class="bc-num app-hide-small">Fehler</th><th class="app-hide-small">Zeit</th></tr></thead>
+      <thead><tr><th>Bericht</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Herkunft</th><th class="bc-num bc-hide-narrow">Importiert</th><th class="bc-num bc-hide-narrow">Doppelt</th><th class="bc-num bc-hide-narrow">Fehler</th><th class="bc-hide-narrow">Zeit</th></tr></thead>
       <tbody>
         {% for job in jobs %}
         <tr>
           <td>{% call ui.report_file(job.file_name, "/imports/" ~ job.id) %}{{ job.status | status_text }} · {{ job.source | source_text }} · {{ job.records_imported | num }} importiert{% if job.records_failed %} · {{ job.records_failed | num }} Fehler{% endif %} · {{ job.created_at | datetime }}{% endcall %}</td>
-          <td class="app-hide-small">{{ ui.state(job.status | status_text, job.status | status_state) }}</td>
-          <td class="app-nowrap app-hide-small">{{ job.source | source_text }}</td>
-          <td class="bc-num app-hide-small">{{ job.records_imported | num }}</td>
-          <td class="bc-num app-hide-small">{{ job.records_skipped | num }}</td>
-          <td class="bc-num app-hide-small">{{ job.records_failed | num }}</td>
-          <td class="app-nowrap app-hide-small">{{ job.created_at | datetime }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(job.status | status_text, job.status | status_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ job.source | source_text }}</td>
+          <td class="bc-num bc-hide-narrow">{{ job.records_imported | num }}</td>
+          <td class="bc-num bc-hide-narrow">{{ job.records_skipped | num }}</td>
+          <td class="bc-num bc-hide-narrow">{{ job.records_failed | num }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ job.created_at | datetime }}</td>
         </tr>
         {% endfor %}
       </tbody>

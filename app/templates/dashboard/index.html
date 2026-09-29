@@ -37,14 +37,14 @@
   {% if top_ips %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>IP-Adresse</th><th class="app-hide-small">Einstufung</th><th class="bc-num app-hide-small">Nachrichten</th><th class="bc-num app-hide-small">Bestanden</th></tr></thead>
+      <thead><tr><th>IP-Adresse</th><th class="bc-hide-narrow">Einstufung</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-num bc-hide-narrow">Bestanden</th></tr></thead>
       <tbody>
         {% for ip in top_ips %}
         <tr>
-          <td><a class="app-rowtitle app-mono" href="/source-ips/{{ ip.id }}">{{ ip.ip }}</a><span class="app-rowsub">{% if ip.sender %}{{ ip.sender }}{% endif %}<span class="app-only-small">{% if ip.sender %} · {% endif %}{{ ip.classification | classification_text }} · {{ ip.total | num }} Nachrichten · {{ ip.pass_rate | percent }} bestanden</span></span></td>
-          <td class="app-hide-small">{{ ui.state(ip.classification | classification_text, ip.classification | classification_state) }}</td>
-          <td class="bc-num app-hide-small">{{ ip.total | num }}</td>
-          <td class="bc-num app-hide-small">{{ ip.pass_rate | percent }}</td>
+          <td><a class="bc-row-title app-mono" href="/source-ips/{{ ip.id }}">{{ ip.ip }}</a><span class="bc-row-sub">{% if ip.sender %}{{ ip.sender }}{% endif %}<span class="bc-only-narrow">{% if ip.sender %} · {% endif %}{{ ip.classification | classification_text }} · {{ ip.total | plural('Nachricht', 'Nachrichten') }} · {{ ip.pass_rate | percent }} bestanden</span></span></td>
+          <td class="bc-hide-narrow">{{ ui.state(ip.classification | classification_text, ip.classification | classification_state) }}</td>
+          <td class="bc-num bc-hide-narrow">{{ ip.total | num }}</td>
+          <td class="bc-num bc-hide-narrow">{{ ip.pass_rate | percent }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -62,7 +62,7 @@
     {% if format_total %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Format</th><th class="bc-num">Berichte</th><th class="app-hide-small"><span class="bc-sr">Anteil als Balken</span></th><th class="bc-num">Anteil</th></tr></thead>
+        <thead><tr><th>Format</th><th class="bc-num">Berichte</th><th class="bc-hide-narrow"><span class="bc-sr">Anteil als Balken</span></th><th class="bc-num">Anteil</th></tr></thead>
         <tbody>
           {% for code in ["rfc9990", "rfc7489", None] if formats.get(code) %}
             {{ ui.share_row(ui.format_badge(code), formats.get(code), format_total) }}
@@ -81,7 +81,7 @@
     {% if disposition_total %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Behandlung</th><th class="bc-num">Nachrichten</th><th class="app-hide-small"><span class="bc-sr">Anteil als Balken</span></th><th class="bc-num">Anteil</th></tr></thead>
+        <thead><tr><th>Behandlung</th><th class="bc-num">Nachrichten</th><th class="bc-hide-narrow"><span class="bc-sr">Anteil als Balken</span></th><th class="bc-num">Anteil</th></tr></thead>
         <tbody>
           {% for key in ["pass", "none", "quarantine", "reject"] if dispositions.get(key) %}
             {{ ui.share_row(ui.state(key | disposition_text, key | disposition_state), dispositions.get(key), disposition_total) }}
@@ -100,14 +100,14 @@
   {% if stats.recent_imports %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Bericht</th><th class="app-hide-small">Status</th><th class="app-hide-small">Herkunft</th><th class="app-hide-small">Zeit</th></tr></thead>
+      <thead><tr><th>Bericht</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Herkunft</th><th class="bc-hide-narrow">Zeit</th></tr></thead>
       <tbody>
         {% for job in stats.recent_imports %}
         <tr>
           <td>{% call ui.report_file(job.file_name, "/imports/" ~ job.id) %}{{ job.status | status_text }} · {{ job.source | source_text }} · {{ job.created_at | datetime }}{% endcall %}</td>
-          <td class="app-hide-small">{{ ui.state(job.status | status_text, job.status | status_state) }}</td>
-          <td class="app-nowrap app-hide-small">{{ job.source | source_text }}</td>
-          <td class="app-nowrap app-hide-small">{{ job.created_at | datetime }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(job.status | status_text, job.status | status_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ job.source | source_text }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ job.created_at | datetime }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -123,10 +123,10 @@
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="stille-titel">Domains ohne neue Berichte</h2></div>
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Domain</th><th class="app-hide-small">Letzter Bericht</th><th class="app-hide-small"><span class="bc-sr">Aktion</span></th></tr></thead>
+      <thead><tr><th>Domain</th><th class="bc-hide-narrow">Letzter Bericht</th><th class="bc-hide-narrow"><span class="bc-sr">Aktion</span></th></tr></thead>
       <tbody>
         {% for d in stats.domains_no_reports %}
-        <tr><td><a class="app-rowtitle" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="app-rowsub app-only-small">letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td><td class="app-hide-small">{{ d.last_report_at | date }}</td><td class="app-hide-small"><div class="bc-row-actions"><a class="bc-button bc-button--secondary" href="/domains/{{ d.id }}">Öffnen</a></div></td></tr>
+        <tr><td><a class="bc-row-title" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td><td class="bc-hide-narrow">{{ d.last_report_at | date }}</td><td class="bc-hide-narrow"><div class="bc-row-actions"><a class="bc-button bc-button--secondary" href="/domains/{{ d.id }}">Öffnen</a></div></td></tr>
         {% endfor %}
       </tbody>
     </table>

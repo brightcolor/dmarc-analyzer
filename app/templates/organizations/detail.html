@@ -17,14 +17,14 @@
   {% if memberships %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>E-Mail-Adresse</th><th>Rolle</th><th>Status</th><th>Seit</th></tr></thead>
+      <thead><tr><th>E-Mail-Adresse</th><th class="bc-hide-narrow">Rolle</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Seit</th></tr></thead>
       <tbody>
         {% for m in memberships %}
         <tr>
-          <td class="app-break">{{ m.user.email if m.user else '—' }}</td>
-          <td>{{ m.role | role_text }}</td>
-          <td>{{ ui.state('aktiv' if m.is_active else 'entfernt', 'bc-state--on' if m.is_active else '') }}</td>
-          <td class="app-nowrap">{{ m.created_at | date }}</td>
+          <td><span class="bc-row-title app-break">{{ m.user.email if m.user else '—' }}</span><span class="bc-row-sub bc-only-narrow">{{ m.role | role_text }} · {{ 'aktiv' if m.is_active else 'entfernt' }} · seit {{ m.created_at | date }}</span></td>
+          <td class="bc-hide-narrow">{{ m.role | role_text }}</td>
+          <td class="bc-hide-narrow">{{ ui.state('aktiv' if m.is_active else 'entfernt', 'bc-state--on' if m.is_active else '') }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ m.created_at | date }}</td>
         </tr>
         {% endfor %}
       </tbody>

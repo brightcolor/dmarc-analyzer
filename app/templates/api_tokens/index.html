@@ -18,24 +18,17 @@
   {% if tokens %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Name</th><th>Beginnt mit</th><th>Status</th><th>Angelegt</th><th>Zuletzt genutzt</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Name</th><th class="bc-hide-narrow">Beginnt mit</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Angelegt</th><th class="bc-hide-narrow">Zuletzt genutzt</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for t in tokens %}
         <tr>
-          <td>{{ t.name }}</td>
-          <td class="app-mono">{{ t.token_prefix }}…</td>
-          <td>{{ ui.state('aktiv' if t.is_active else 'widerrufen', 'bc-state--on' if t.is_active else '') }}</td>
-          <td class="app-nowrap">{{ t.created_at | date }}</td>
-          <td class="app-nowrap">{{ t.last_used_at | datetime }}</td>
-          <td>
-            {% if can_manage and t.is_active %}
-            <div class="bc-row-actions">
-              <form method="post" action="/api-tokens/{{ t.id }}/revoke" data-confirm="Token „{{ t.name }}“ widerrufen? Programme, die ihn nutzen, verlieren sofort den Zugriff.">
-                <button class="bc-button bc-button--secondary" type="submit">Widerrufen</button>
-              </form>
-            </div>
-            {% endif %}
-          </td>
+          {% set revoke %}<form method="post" action="/api-tokens/{{ t.id }}/revoke" data-confirm="Token „{{ t.name }}“ widerrufen? Programme, die ihn nutzen, verlieren sofort den Zugriff."><button class="bc-button bc-button--secondary" type="submit">Widerrufen</button></form>{% endset %}
+          <td><span class="bc-row-title">{{ t.name }}</span><span class="bc-row-sub bc-only-narrow"><span class="app-mono">{{ t.token_prefix }}…</span> · {{ 'aktiv' if t.is_active else 'widerrufen' }} · angelegt {{ t.created_at | date }} · zuletzt genutzt {{ t.last_used_at | datetime }}</span>{% if can_manage and t.is_active %}<div class="bc-row-actions bc-only-narrow">{{ revoke }}</div>{% endif %}</td>
+          <td class="app-mono bc-hide-narrow">{{ t.token_prefix }}…</td>
+          <td class="bc-hide-narrow">{{ ui.state('aktiv' if t.is_active else 'widerrufen', 'bc-state--on' if t.is_active else '') }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ t.created_at | date }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ t.last_used_at | datetime }}</td>
+          <td class="bc-hide-narrow">{% if can_manage and t.is_active %}<div class="bc-row-actions">{{ revoke }}</div>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

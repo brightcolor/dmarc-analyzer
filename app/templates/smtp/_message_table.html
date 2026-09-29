@@ -3,16 +3,15 @@
 {% if rows %}
 <div class="bc-table-wrap">
   <table class="bc-table">
-    <thead><tr><th>Eingang</th><th>An</th><th>Absender</th><th>Status</th><th class="bc-num">Anhänge</th><th class="bc-num">Größe</th></tr></thead>
+    <thead><tr><th>Absender</th><th class="bc-hide-narrow">An</th><th class="bc-hide-narrow">Status</th><th class="bc-num bc-hide-narrow">Anhänge</th><th class="bc-num bc-hide-narrow">Größe</th></tr></thead>
     <tbody>
       {% for msg in rows %}
       <tr>
-        <td class="app-nowrap">{{ msg.received_at | datetime }}</td>
-        <td class="app-mono app-break app-small">{{ msg.envelope_recipient }}</td>
-        <td class="app-break app-small">{{ msg.header_from or msg.envelope_sender or '—' }}{% if msg.remote_ip %}<br><span class="app-quiet app-mono">{{ msg.remote_ip }}</span>{% endif %}</td>
-        <td>{{ ui.state(msg.import_status | status_text, msg.import_status | status_state) }}{% if msg.error_message %}<br><span class="app-small app-quiet">{{ msg.error_message }}</span>{% endif %}{% if failure_links is defined and failure_links.get(msg.id) %}<br><a class="app-small" href="/failure-reports/{{ failure_links[msg.id] }}">Fehlerbericht ansehen</a>{% endif %}</td>
-        <td class="bc-num">{{ msg.attachment_count | num }}</td>
-        <td class="bc-num">{{ msg.size_bytes | filesizeformat }}</td>
+        <td><span class="bc-row-title app-break">{{ msg.header_from or msg.envelope_sender or 'ohne Absender' }}</span><span class="bc-row-sub">{{ msg.received_at | datetime }}{% if msg.remote_ip %} · <span class="app-mono">{{ msg.remote_ip }}</span>{% endif %}<span class="bc-only-narrow"> · {{ msg.import_status | status_text }}{% if msg.error_message %}: {{ msg.error_message }}{% endif %} · an <span class="app-break">{{ msg.envelope_recipient }}</span> · {{ msg.size_bytes | filesizeformat }}{% if failure_links is defined and failure_links.get(msg.id) %} · <a href="/failure-reports/{{ failure_links[msg.id] }}">Fehlerbericht ansehen</a>{% endif %}</span></span></td>
+        <td class="app-mono app-break app-small bc-hide-narrow">{{ msg.envelope_recipient }}</td>
+        <td class="bc-hide-narrow">{{ ui.state(msg.import_status | status_text, msg.import_status | status_state) }}{% if msg.error_message %}<br><span class="app-small app-quiet">{{ msg.error_message }}</span>{% endif %}{% if failure_links is defined and failure_links.get(msg.id) %}<br><a class="app-small" href="/failure-reports/{{ failure_links[msg.id] }}">Fehlerbericht ansehen</a>{% endif %}</td>
+        <td class="bc-num bc-hide-narrow">{{ msg.attachment_count | num }}</td>
+        <td class="bc-num bc-hide-narrow">{{ msg.size_bytes | filesizeformat }}</td>
       </tr>
       {% endfor %}
     </tbody>

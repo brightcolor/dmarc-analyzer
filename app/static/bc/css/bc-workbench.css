@@ -667,6 +667,21 @@
 .bc-table .bc-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bc-table .bc-row-actions { display: flex; justify-content: flex-end; gap: 6px; }
 
+/* Lists on phones: two lines per row. The first cell carries the title (host,
+   domain, name) and a quiet detail line; the other columns hide below 640 px
+   and their values stand in the detail line instead (bc-only-narrow). */
+.bc-row-title { display: block; font-weight: 700; }
+.bc-row-sub { display: block; margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--bc-text-quiet); }
+.bc-row-sub:empty { display: none; }
+.bc-only-narrow { display: none !important; }
+
+@media (max-width: 640px) {
+	.bc-hide-narrow { display: none !important; }
+	.bc-only-narrow { display: inline !important; }
+	/* Buttons the list needs stand as their own line below the details. */
+	.bc-row-actions.bc-only-narrow { display: flex !important; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin-top: 8px; }
+}
+
 .bc-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 16px; border-top: 1px solid var(--bc-rule); color: var(--bc-text-quiet); font-size: 13px; }
 
 .bc-pagination a,

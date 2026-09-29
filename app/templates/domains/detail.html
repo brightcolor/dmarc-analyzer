@@ -55,13 +55,13 @@
     {% if addresses %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Adresse</th><th>Status</th><th>Zuletzt genutzt</th></tr></thead>
+        <thead><tr><th>Adresse</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Zuletzt genutzt</th></tr></thead>
         <tbody>
           {% for addr in addresses %}
           <tr>
-            <td class="app-mono app-break">{{ addr.address }}</td>
-            <td>{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
-            <td class="app-nowrap">{{ addr.last_used_at | datetime }}</td>
+            <td><span class="bc-row-title app-mono app-break">{{ addr.address }}</span><span class="bc-row-sub bc-only-narrow">{{ addr.status | status_text }} · zuletzt genutzt {{ addr.last_used_at | datetime }}</span></td>
+            <td class="bc-hide-narrow">{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
+            <td class="app-nowrap bc-hide-narrow">{{ addr.last_used_at | datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -106,25 +106,27 @@
   {% if recipients %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Adresse</th><th>Bekommt</th><th>Letzter Wochenbericht</th>{% if can.manager %}<th><span class="bc-sr">Entfernen</span></th>{% endif %}</tr></thead>
+      <thead><tr><th>Adresse</th><th class="bc-hide-narrow">Bekommt</th><th class="bc-hide-narrow">Letzter Wochenbericht</th>{% if can.manager %}<th class="bc-hide-narrow"><span class="bc-sr">Entfernen</span></th>{% endif %}</tr></thead>
       <tbody>
         {% for r in recipients %}
-        <tr>
-          <td class="app-break">{{ r.email }}{% if r.name %}<br><span class="app-quiet app-small">{{ r.name }}</span>{% endif %}</td>
-          <td>
-            {% if can.manager %}
-            <form class="app-inline" method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}" aria-label="Was {{ r.email }} bekommt">
+        {% set switches %}<form class="app-inline" method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}" aria-label="Was {{ r.email }} bekommt">
               <label class="app-inline"><input type="checkbox" name="alerts" value="1"{% if r.alerts %} checked{% endif %}> Alarme</label>
               <label class="app-inline"><input type="checkbox" name="digest" value="1"{% if r.digest %} checked{% endif %}> Wochenbericht</label>
               <button class="bc-button bc-button--secondary" type="submit">Speichern</button>
-            </form>
+            </form>{% endset %}
+        {% set remove %}<form method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}/delete" data-confirm="{{ r.email }} entfernen? Die Adresse bekommt dann nichts mehr für {{ domain.name }}."><button class="bc-button bc-button--danger" type="submit">Entfernen</button></form>{% endset %}
+        <tr>
+          <td><span class="bc-row-title app-break">{{ r.email }}</span><span class="bc-row-sub">{{ r.name or '' }}<span class="bc-only-narrow">{% if r.name %} · {% endif %}{{ 'Alarme und Wochenbericht' if r.alerts and r.digest else ('Alarme' if r.alerts else 'Wochenbericht') }} · letzter Wochenbericht {% if r.digest_last_sent_at %}{{ r.digest_last_sent_at | datetime }}{% else %}noch keiner{% endif %}</span></span>{% if can.manager %}<div class="bc-row-actions bc-only-narrow">{{ switches }}{{ remove }}</div>{% endif %}</td>
+          <td class="bc-hide-narrow">
+            {% if can.manager %}
+            {{ switches }}
             {% else %}
             {% if r.alerts %}{{ ui.state('Alarme', 'bc-state--on') }} {% endif %}{% if r.digest %}{{ ui.state('Wochenbericht', 'bc-state--on') }}{% endif %}
             {% endif %}
           </td>
-          <td class="app-nowrap">{% if r.digest_last_sent_at %}{{ r.digest_last_sent_at | datetime }}{% else %}<span class="app-quiet">noch keiner</span>{% endif %}</td>
+          <td class="app-nowrap bc-hide-narrow">{% if r.digest_last_sent_at %}{{ r.digest_last_sent_at | datetime }}{% else %}<span class="app-quiet">noch keiner</span>{% endif %}</td>
           {% if can.manager %}
-          <td><form method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}/delete" data-confirm="{{ r.email }} entfernen? Die Adresse bekommt dann nichts mehr für {{ domain.name }}."><button class="bc-button bc-button--danger" type="submit">Entfernen</button></form></td>
+          <td class="bc-hide-narrow">{{ remove }}</td>
           {% endif %}
         </tr>
         {% endfor %}
@@ -169,9 +171,9 @@
     {% if reporters %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Berichtet von</th><th>Format</th><th class="bc-num">Berichte</th></tr></thead>
+        <thead><tr><th>Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-num bc-hide-narrow">Berichte</th></tr></thead>
         <tbody>
-          {% for r in reporters %}<tr><td class="app-break">{{ r.reporting_org }}</td><td>{{ ui.format_badge(r.report_format) }}</td><td class="bc-num">{{ r.reports | num }}</td></tr>{% endfor %}
+          {% for r in reporters %}<tr><td><span class="bc-row-title app-break">{{ r.reporting_org }}</span><span class="bc-row-sub bc-only-narrow">{{ format_info(r.report_format).label }} · {{ r.reports | plural('Bericht', 'Berichte') }}</span></td><td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td><td class="bc-num bc-hide-narrow">{{ r.reports | num }}</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>
@@ -185,14 +187,14 @@
     {% if recent_reports %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Zeitraum bis</th><th>Berichtet von</th><th>Format</th><th>Bestanden</th></tr></thead>
+        <thead><tr><th>Zeitraum bis</th><th class="bc-hide-narrow">Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-hide-narrow">Bestanden</th></tr></thead>
         <tbody>
           {% for r in recent_reports %}
           <tr>
-            <td class="app-nowrap"><a href="/reports/{{ r.id }}">{{ r.period_end | date }}</a></td>
-            <td class="app-break">{{ r.reporting_org or '—' }}</td>
-            <td>{{ ui.format_badge(r.report_format) }}</td>
-            <td>{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
+            <td><a class="bc-row-title" href="/reports/{{ r.id }}">{{ r.period_end | date }}</a><span class="bc-row-sub bc-only-narrow">{{ r.reporting_org or 'unbekannter Empfänger' }} · {{ format_info(r.report_format).label }} · {{ r.pass_rate | percent }} bestanden</span></td>
+            <td class="app-break bc-hide-narrow">{{ r.reporting_org or '—' }}</td>
+            <td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td>
+            <td class="bc-hide-narrow">{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
           </tr>
           {% endfor %}
         </tbody>

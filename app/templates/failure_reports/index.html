@@ -34,17 +34,16 @@
   <div class="bc-table-wrap">
     <table class="bc-table">
       <thead>
-        <tr><th>Eingegangen</th><th>Domain</th><th>Quelle</th><th>Gescheitert an</th><th>Zustellung</th><th>Absender der Mail</th></tr>
+        <tr><th>Domain</th><th class="bc-hide-narrow">Quelle</th><th class="bc-hide-narrow">Gescheitert an</th><th class="bc-hide-narrow">Zustellung</th><th class="bc-hide-narrow">Absender der Mail</th></tr>
       </thead>
       <tbody>
         {% for r in reports %}
         <tr>
-          <td class="app-nowrap"><a href="/failure-reports/{{ r.id }}">{{ r.created_at | datetime }}</a></td>
-          <td class="app-nowrap">{{ r.reported_domain or '—' }}</td>
-          <td class="app-mono">{{ r.source_ip or '—' }}</td>
-          <td>{% for c in r.failed_checks %}{{ ui.state(c | upper, 'bc-state--bad') }} {% else %}—{% endfor %}</td>
-          <td>{{ ui.state(r.delivery_result | delivery_text, r.delivery_result | delivery_state) if r.delivery_result else '—' }}</td>
-          <td class="app-break app-small">{{ r.header_from or '—' }}{% if r.reporter %}<br><span class="app-quiet">gemeldet von {{ r.reporter }}</span>{% endif %}</td>
+          <td><a class="bc-row-title" href="/failure-reports/{{ r.id }}">{{ r.reported_domain or 'ohne Domain' }}</a><span class="bc-row-sub">{{ r.created_at | datetime }}<span class="bc-only-narrow"> · {{ r.source_ip or 'Quelle unbekannt' }}{% if r.failed_checks %} · {{ r.failed_checks | map('upper') | join(', ') }} gescheitert{% endif %}{% if r.delivery_result %} · {{ r.delivery_result | delivery_text }}{% endif %}{% if r.header_from %} · {{ r.header_from }}{% endif %}</span></span></td>
+          <td class="app-mono bc-hide-narrow">{{ r.source_ip or '—' }}</td>
+          <td class="bc-hide-narrow">{% for c in r.failed_checks %}{{ ui.state(c | upper, 'bc-state--bad') }} {% else %}—{% endfor %}</td>
+          <td class="bc-hide-narrow">{{ ui.state(r.delivery_result | delivery_text, r.delivery_result | delivery_state) if r.delivery_result else '—' }}</td>
+          <td class="app-break app-small bc-hide-narrow">{{ r.header_from or '—' }}{% if r.reporter %}<br><span class="app-quiet">gemeldet von {{ r.reporter }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -9,15 +9,15 @@
   {% if memberships %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Name</th><th>E-Mail-Adresse</th><th>Rolle</th><th>Status</th><th>Seit</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Name</th><th class="bc-hide-narrow">E-Mail-Adresse</th><th class="bc-hide-narrow">Rolle</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Seit</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for m in memberships %}
         <tr>
-          <td>{{ m.user.full_name if m.user and m.user.full_name else '—' }}{% if m.user_id == user.id %} {{ ui.state('du') }}{% endif %}</td>
-          <td class="app-break">{{ m.user.email if m.user else '—' }}</td>
-          <td>{{ m.role | role_text }}</td>
-          <td>{{ ui.state('aktiv' if m.is_active else 'entfernt', 'bc-state--on' if m.is_active else '') }}</td>
-          <td class="app-nowrap">{{ m.created_at | date }}</td>
+          <td><span class="bc-row-title">{{ m.user.full_name if m.user and m.user.full_name else (m.user.email if m.user else '—') }}{% if m.user_id == user.id %} {{ ui.state('du') }}{% endif %}</span><span class="bc-row-sub bc-only-narrow">{% if m.user and m.user.full_name %}<span class="app-break">{{ m.user.email }}</span> · {% endif %}{{ m.role | role_text }} · {{ 'aktiv' if m.is_active else 'entfernt' }} · seit {{ m.created_at | date }}</span></td>
+          <td class="app-break bc-hide-narrow">{{ m.user.email if m.user else '—' }}</td>
+          <td class="bc-hide-narrow">{{ m.role | role_text }}</td>
+          <td class="bc-hide-narrow">{{ ui.state('aktiv' if m.is_active else 'entfernt', 'bc-state--on' if m.is_active else '') }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ m.created_at | date }}</td>
           <td>
             {% if can_manage and m.is_active and m.user_id != user.id %}
             <div class="bc-row-actions">

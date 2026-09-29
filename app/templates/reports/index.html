@@ -35,19 +35,19 @@
   <div class="bc-table-wrap">
     <table class="bc-table">
       <thead>
-        <tr><th>Domain</th><th>Zeitraum</th><th>Berichtet von</th><th>Format</th><th class="bc-num">Nachrichten</th><th>Bestanden</th><th>Policy</th><th>Herkunft</th></tr>
+        <tr><th>Domain</th><th class="bc-hide-narrow">Zeitraum</th><th class="bc-hide-narrow">Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-hide-narrow">Bestanden</th><th class="bc-hide-narrow">Policy</th><th class="bc-hide-narrow">Herkunft</th></tr>
       </thead>
       <tbody>
         {% for r in reports %}
         <tr>
-          <td class="app-break"><a href="/reports/{{ r.id }}">{{ r.policy_domain or 'ohne Domain' }}</a></td>
-          <td class="app-nowrap">{{ r.period_begin | date }} – {{ r.period_end | date }}</td>
-          <td class="app-break">{{ r.reporting_org or '—' }}</td>
-          <td>{{ ui.format_badge(r.report_format) }}</td>
-          <td class="bc-num">{{ r.total_messages | num }}</td>
-          <td>{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
-          <td class="app-nowrap"><code>p={{ r.policy_p or 'none' }}</code>{% if r.policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if r.policy_pct is not none and r.policy_pct < 100 %} <code>pct={{ r.policy_pct }}</code>{% endif %}</td>
-          <td>{{ r.import_source | source_text }}</td>
+          <td><a class="bc-row-title app-break" href="/reports/{{ r.id }}">{{ r.policy_domain or 'ohne Domain' }}</a><span class="bc-row-sub bc-only-narrow">{{ r.reporting_org or 'unbekannter Empfänger' }} · {{ r.period_begin | date }} – {{ r.period_end | date }} · {{ r.total_messages | plural('Nachricht', 'Nachrichten') }} · {{ r.pass_rate | percent }} bestanden · {{ format_info(r.report_format).label }}</span></td>
+          <td class="app-nowrap bc-hide-narrow">{{ r.period_begin | date }} – {{ r.period_end | date }}</td>
+          <td class="app-break bc-hide-narrow">{{ r.reporting_org or '—' }}</td>
+          <td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td>
+          <td class="bc-num bc-hide-narrow">{{ r.total_messages | num }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow"><code>p={{ r.policy_p or 'none' }}</code>{% if r.policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if r.policy_pct is not none and r.policy_pct < 100 %} <code>pct={{ r.policy_pct }}</code>{% endif %}</td>
+          <td class="bc-hide-narrow">{{ r.import_source | source_text }}</td>
         </tr>
         {% endfor %}
       </tbody>

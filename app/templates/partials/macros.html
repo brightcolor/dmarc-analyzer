@@ -21,8 +21,8 @@
     show in the second line instead of the hidden columns. -#}
 {% macro report_file(name, href) -%}
 {% set f = report_file_parts(name) %}
-<a class="app-rowtitle{% if not f %} app-break{% endif %}" href="{{ href }}"{% if f %} title="{{ name }}"{% endif %}>{{ f.host if f else (name or 'ohne Namen') }}</a>
-<span class="app-rowsub">{% if f %}{{ f.domain }} · {{ f.period }}{% endif %}{% if caller is defined %}<span class="app-only-small">{% if f %} · {% endif %}{{ caller() }}</span>{% endif %}</span>
+<a class="bc-row-title{% if not f %} app-break{% endif %}" href="{{ href }}"{% if f %} title="{{ name }}"{% endif %}>{{ f.host if f else (name or 'ohne Namen') }}</a>
+<span class="bc-row-sub">{% if f %}{{ f.domain }} · {{ f.period }}{% endif %}{% if caller is defined %}<span class="bc-only-narrow">{% if f %} · {% endif %}{{ caller() }}</span>{% endif %}</span>
 {%- endmacro %}
 
 {% macro copy_code(id, value, label=None) -%}
@@ -55,7 +55,7 @@
 </ul>
 <svg class="bc-chart app-bars" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-labelledby="{{ id }}-t {{ id }}-d">
   <title id="{{ id }}-t">{{ title }}</title>
-  <desc id="{{ id }}-d">{{ chart.total_pass | num }} Nachrichten bestanden DMARC, {{ chart.total_fail | num }} scheiterten. Die Tabelle unter dem Diagramm nennt jeden Tag.</desc>
+  <desc id="{{ id }}-d">{{ chart.total_pass | plural('Nachricht', 'Nachrichten') }} bestanden DMARC, {{ chart.total_fail | num }} scheiterten. Die Tabelle unter dem Diagramm nennt jeden Tag.</desc>
   {% for t in chart.ticks %}
   <line class="bc-chart__grid" x1="{{ chart.left }}" y1="{{ '%.1f' % t.y }}" x2="{{ chart.right_edge }}" y2="{{ '%.1f' % t.y }}"/>
   <text class="bc-chart__label" x="{{ chart.left - 8 }}" y="{{ '%.1f' % (t.y + 4) }}" text-anchor="end">{{ t.label }}</text>
@@ -77,10 +77,10 @@
   <summary>Werte als Tabelle</summary>
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Tag</th><th class="bc-num">Bestanden</th><th class="bc-num">Fehlgeschlagen</th><th class="bc-num">Gesamt</th></tr></thead>
+      <thead><tr><th>Tag</th><th class="bc-num bc-hide-narrow">Bestanden</th><th class="bc-num bc-hide-narrow">Fehlgeschlagen</th><th class="bc-num bc-hide-narrow">Gesamt</th></tr></thead>
       <tbody>
         {% for b in chart.bars | reverse if b.total %}
-        <tr><td>{{ b.day.strftime('%d.%m.%Y') }}</td><td class="bc-num">{{ (b.passed.value if b.passed else 0) | num }}</td><td class="bc-num">{{ (b.failed.value if b.failed else 0) | num }}</td><td class="bc-num">{{ b.total | num }}</td></tr>
+        <tr><td><span class="bc-row-title">{{ b.day.strftime('%d.%m.%Y') }}</span><span class="bc-row-sub bc-only-narrow">{{ (b.passed.value if b.passed else 0) | num }} bestanden · {{ (b.failed.value if b.failed else 0) | num }} fehlgeschlagen · {{ b.total | num }} gesamt</span></td><td class="bc-num bc-hide-narrow">{{ (b.passed.value if b.passed else 0) | num }}</td><td class="bc-num bc-hide-narrow">{{ (b.failed.value if b.failed else 0) | num }}</td><td class="bc-num bc-hide-narrow">{{ b.total | num }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -94,7 +94,7 @@
 <tr>
   <td>{{ label }}</td>
   <td class="bc-num">{{ count | num }}</td>
-  <td class="app-hide-small" style="width:40%"><span class="app-share-track" aria-hidden="true"><span class="app-share" style="width: {{ '%.1f' % share }}%"></span></span></td>
+  <td class="bc-hide-narrow" style="width:40%"><span class="app-share-track" aria-hidden="true"><span class="app-share" style="width: {{ '%.1f' % share }}%"></span></span></td>
   <td class="bc-num">{{ share | percent }}</td>
 </tr>
 {%- endmacro %}

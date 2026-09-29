@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "partials/macros.html" as ui with context %}
 
-{% block lede %}<p>Diese Quelle hat {{ sip.total_messages | num }} Nachrichten für deine Domains verschickt, zuerst am {{ sip.first_seen_at | date }}, zuletzt am {{ sip.last_seen_at | date }}.</p>{% endblock %}
+{% block lede %}<p>Diese Quelle hat {{ sip.total_messages | plural('Nachricht', 'Nachrichten') }} für deine Domains verschickt, zuerst am {{ sip.first_seen_at | date }}, zuletzt am {{ sip.last_seen_at | date }}.</p>{% endblock %}
 {% block actions %}<a class="bc-button bc-button--secondary" href="/source-ips">Alle IP-Adressen</a>{% endblock %}
 
 {% block content %}
@@ -64,15 +64,15 @@
   {% if recent_records %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Bericht</th><th>Header-From</th><th class="bc-num">Nachrichten</th><th>DMARC</th><th>Behandlung</th></tr></thead>
+      <thead><tr><th>Bericht</th><th class="bc-hide-narrow">Header-From</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-hide-narrow">DMARC</th><th class="bc-hide-narrow">Behandlung</th></tr></thead>
       <tbody>
         {% for rec in recent_records %}
         <tr>
-          <td class="app-nowrap"><a href="/reports/{{ rec.report_id }}">{{ rec.report.period_end | date }}</a> {{ ui.format_badge(rec.report.report_format) }}</td>
-          <td class="app-break">{{ rec.header_from or '—' }}</td>
-          <td class="bc-num">{{ rec.count | num }}</td>
-          <td>{{ ui.state('bestanden' if rec.dmarc_pass else 'fehlgeschlagen', 'bc-state--on' if rec.dmarc_pass else 'bc-state--bad') }}</td>
-          <td>{{ ui.state(rec.disposition | disposition_text, rec.disposition | disposition_state) }}</td>
+          <td><span class="bc-row-title app-nowrap"><a href="/reports/{{ rec.report_id }}">{{ rec.report.period_end | date }}</a> {{ ui.format_badge(rec.report.report_format) }}</span><span class="bc-row-sub bc-only-narrow">{% if rec.header_from %}{{ rec.header_from }} · {% endif %}{{ rec.count | plural('Nachricht', 'Nachrichten') }} · DMARC {{ 'bestanden' if rec.dmarc_pass else 'fehlgeschlagen' }} · {{ rec.disposition | disposition_text }}</span></td>
+          <td class="app-break bc-hide-narrow">{{ rec.header_from or '—' }}</td>
+          <td class="bc-num bc-hide-narrow">{{ rec.count | num }}</td>
+          <td class="bc-hide-narrow">{{ ui.state('bestanden' if rec.dmarc_pass else 'fehlgeschlagen', 'bc-state--on' if rec.dmarc_pass else 'bc-state--bad') }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(rec.disposition | disposition_text, rec.disposition | disposition_state) }}</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -25,18 +25,18 @@
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="unterschied-titel">Was sich ändert</h2></div>
   <div class="bc-table-wrap">
     <table class="bc-table app-compare">
-      <thead><tr><th>Thema</th><th>RFC 7489</th><th>RFC 9989 und 9990</th></tr></thead>
+      <thead><tr><th>Thema</th><th class="bc-hide-narrow">RFC 7489</th><th class="bc-hide-narrow">RFC 9989 und 9990</th></tr></thead>
       <tbody>
-        <tr><td>DNS-Eintrag</td><td><code>v=DMARC1</code></td><td><code>v=DMARC1</code>, bleibt gleich</td></tr>
-        <tr><td>Policy für einen Teil der Mails</td><td><code>pct=0</code> bis <code>pct=100</code></td><td>entfällt</td></tr>
-        <tr><td>Testbetrieb</td><td>meist über <code>pct=0</code></td><td><code>t=y</code></td></tr>
-        <tr><td>Nicht existierende Subdomains</td><td>es gilt <code>sp</code>, sonst <code>p</code></td><td>eigene Policy <code>np</code>, sonst <code>sp</code>, sonst <code>p</code></td></tr>
-        <tr><td>Organisationsdomain ermitteln</td><td>Public Suffix List</td><td>DNS-Tree-Walk mit höchstens 8 Abfragen, dazu das Kennzeichen <code>psd</code></td></tr>
-        <tr><td>Aufbau der Berichte</td><td>XML ohne Namespace</td><td>XML mit Namespace <code>urn:ietf:params:xml:ns:dmarc-2.0</code></td></tr>
-        <tr><td>Neue Felder im Bericht</td><td>—</td><td><code>np</code>, <code>testing</code>, <code>discovery_method</code>, <code>generator</code></td></tr>
-        <tr><td>Behandlung beim Empfänger</td><td>none, quarantine, reject</td><td>zusätzlich pass</td></tr>
-        <tr><td>Gründe für eine abweichende Behandlung</td><td>forwarded, sampled_out, trusted_forwarder, mailing_list, local_policy, other</td><td>ohne forwarded und sampled_out, neu policy_test_mode</td></tr>
-        <tr><td>DKIM-Selektor im Bericht</td><td>freiwillig</td><td>Pflicht</td></tr>
+        <tr><td><span class="bc-row-title">DNS-Eintrag</span><span class="bc-row-sub bc-only-narrow">RFC 7489: <code>v=DMARC1</code><br>RFC 9989 und 9990: <code>v=DMARC1</code>, bleibt gleich</span></td><td class="bc-hide-narrow"><code>v=DMARC1</code></td><td class="bc-hide-narrow"><code>v=DMARC1</code>, bleibt gleich</td></tr>
+        <tr><td><span class="bc-row-title">Policy für einen Teil der Mails</span><span class="bc-row-sub bc-only-narrow">RFC 7489: <code>pct=0</code> bis <code>pct=100</code><br>RFC 9989 und 9990: entfällt</span></td><td class="bc-hide-narrow"><code>pct=0</code> bis <code>pct=100</code></td><td class="bc-hide-narrow">entfällt</td></tr>
+        <tr><td><span class="bc-row-title">Testbetrieb</span><span class="bc-row-sub bc-only-narrow">RFC 7489: meist über <code>pct=0</code><br>RFC 9989 und 9990: <code>t=y</code></span></td><td class="bc-hide-narrow">meist über <code>pct=0</code></td><td class="bc-hide-narrow"><code>t=y</code></td></tr>
+        <tr><td><span class="bc-row-title">Nicht existierende Subdomains</span><span class="bc-row-sub bc-only-narrow">RFC 7489: es gilt <code>sp</code>, sonst <code>p</code><br>RFC 9989 und 9990: eigene Policy <code>np</code>, sonst <code>sp</code>, sonst <code>p</code></span></td><td class="bc-hide-narrow">es gilt <code>sp</code>, sonst <code>p</code></td><td class="bc-hide-narrow">eigene Policy <code>np</code>, sonst <code>sp</code>, sonst <code>p</code></td></tr>
+        <tr><td><span class="bc-row-title">Organisationsdomain ermitteln</span><span class="bc-row-sub bc-only-narrow">RFC 7489: Public Suffix List<br>RFC 9989 und 9990: DNS-Tree-Walk mit höchstens 8 Abfragen, dazu das Kennzeichen <code>psd</code></span></td><td class="bc-hide-narrow">Public Suffix List</td><td class="bc-hide-narrow">DNS-Tree-Walk mit höchstens 8 Abfragen, dazu das Kennzeichen <code>psd</code></td></tr>
+        <tr><td><span class="bc-row-title">Aufbau der Berichte</span><span class="bc-row-sub bc-only-narrow">RFC 7489: XML ohne Namespace<br>RFC 9989 und 9990: XML mit Namespace <code>urn:ietf:params:xml:ns:dmarc-2.0</code></span></td><td class="bc-hide-narrow">XML ohne Namespace</td><td class="bc-hide-narrow">XML mit Namespace <code>urn:ietf:params:xml:ns:dmarc-2.0</code></td></tr>
+        <tr><td><span class="bc-row-title">Neue Felder im Bericht</span><span class="bc-row-sub bc-only-narrow">RFC 7489: —<br>RFC 9989 und 9990: <code>np</code>, <code>testing</code>, <code>discovery_method</code>, <code>generator</code></span></td><td class="bc-hide-narrow">—</td><td class="bc-hide-narrow"><code>np</code>, <code>testing</code>, <code>discovery_method</code>, <code>generator</code></td></tr>
+        <tr><td><span class="bc-row-title">Behandlung beim Empfänger</span><span class="bc-row-sub bc-only-narrow">RFC 7489: none, quarantine, reject<br>RFC 9989 und 9990: zusätzlich pass</span></td><td class="bc-hide-narrow">none, quarantine, reject</td><td class="bc-hide-narrow">zusätzlich pass</td></tr>
+        <tr><td><span class="bc-row-title">Gründe für eine abweichende Behandlung</span><span class="bc-row-sub bc-only-narrow">RFC 7489: forwarded, sampled_out, trusted_forwarder, mailing_list, local_policy, other<br>RFC 9989 und 9990: ohne forwarded und sampled_out, neu policy_test_mode</span></td><td class="bc-hide-narrow">forwarded, sampled_out, trusted_forwarder, mailing_list, local_policy, other</td><td class="bc-hide-narrow">ohne forwarded und sampled_out, neu policy_test_mode</td></tr>
+        <tr><td><span class="bc-row-title">DKIM-Selektor im Bericht</span><span class="bc-row-sub bc-only-narrow">RFC 7489: freiwillig<br>RFC 9989 und 9990: Pflicht</span></td><td class="bc-hide-narrow">freiwillig</td><td class="bc-hide-narrow">Pflicht</td></tr>
       </tbody>
     </table>
   </div>
@@ -74,10 +74,10 @@
   {% if reporters %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Berichtet von</th><th>Format</th><th class="bc-num">Berichte</th><th>Letzter Zeitraum bis</th></tr></thead>
+      <thead><tr><th>Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-num bc-hide-narrow">Berichte</th><th class="bc-hide-narrow">Letzter Zeitraum bis</th></tr></thead>
       <tbody>
         {% for r in reporters %}
-        <tr><td class="app-break">{{ r.reporting_org }}</td><td>{{ ui.format_badge(r.report_format) }}</td><td class="bc-num">{{ r.reports | num }}</td><td>{{ r.last_period_end | date }}</td></tr>
+        <tr><td><span class="bc-row-title app-break">{{ r.reporting_org }}</span><span class="bc-row-sub bc-only-narrow">{{ format_info(r.report_format).label }} · {{ r.reports | plural('Bericht', 'Berichte') }} · zuletzt bis {{ r.last_period_end | date }}</span></td><td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td><td class="bc-num bc-hide-narrow">{{ r.reports | num }}</td><td class="bc-hide-narrow">{{ r.last_period_end | date }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

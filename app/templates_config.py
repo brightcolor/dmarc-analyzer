@@ -177,6 +177,12 @@ def _filesizeformat(value: int | None) -> str:
     return f"{_format_number(size, 1)} TB"
 
 
+def _plural(value: int | float | None, one: str, many: str) -> str:
+    """Number with its word in singular or plural, e.g. 1 Adresse, 2 Adressen."""
+    count = value or 0
+    return f"{_format_number(count)} {one if count == 1 else many}"
+
+
 def _interval(seconds: int | None) -> str:
     """Repeat interval in words, e.g. alle 5 Minuten."""
     if not seconds:
@@ -361,6 +367,7 @@ env.filters["percent"] = _format_percent
 env.filters["filesizeformat"] = _filesizeformat
 env.filters["rate_state"] = _rate_state
 env.filters["interval"] = _interval
+env.filters["plural"] = _plural
 env.filters["severity_state"] = _lookup(SEVERITY_STATE)
 env.filters["severity_text"] = _lookup(SEVERITY_TEXT, keep_unknown=True)
 env.filters["status_state"] = _lookup(STATUS_STATE)

@@ -59,27 +59,27 @@
   <div class="bc-table-wrap">
     <table class="bc-table">
       <thead>
-        <tr><th>Quelle</th><th class="bc-num">Nachrichten</th><th>DMARC</th><th>DKIM</th><th>SPF</th><th>Behandlung</th><th>Header-From</th></tr>
+        <tr><th>Quelle</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-hide-narrow">DMARC</th><th class="bc-hide-narrow">DKIM</th><th class="bc-hide-narrow">SPF</th><th class="bc-hide-narrow">Behandlung</th><th class="bc-hide-narrow">Header-From</th></tr>
       </thead>
       <tbody>
         {% for rec in records %}
         <tr>
-          <td class="app-mono">{{ rec.source_ip }}</td>
-          <td class="bc-num">{{ rec.count | num }}</td>
-          <td>{{ ui.state('bestanden' if rec.dmarc_pass else 'fehlgeschlagen', 'bc-state--on' if rec.dmarc_pass else 'bc-state--bad') }}</td>
-          <td class="app-small">
+          <td><span class="bc-row-title app-mono">{{ rec.source_ip }}</span><span class="bc-row-sub bc-only-narrow">{{ rec.count | plural('Nachricht', 'Nachrichten') }} · DMARC {{ 'bestanden' if rec.dmarc_pass else 'fehlgeschlagen' }} · DKIM {{ 'passt' if rec.dkim_aligned else 'passt nicht' }} · SPF {{ 'passt' if rec.spf_aligned else 'passt nicht' }} · {{ rec.disposition | disposition_text }}{% if rec.header_from %} · {{ rec.header_from }}{% endif %}</span></td>
+          <td class="bc-num bc-hide-narrow">{{ rec.count | num }}</td>
+          <td class="bc-hide-narrow">{{ ui.state('bestanden' if rec.dmarc_pass else 'fehlgeschlagen', 'bc-state--on' if rec.dmarc_pass else 'bc-state--bad') }}</td>
+          <td class="app-small bc-hide-narrow">
             {{ 'passt zur Domain' if rec.dkim_aligned else 'passt nicht' }}
             {% for ar in rec.auth_results if ar.auth_type == 'dkim' %}<br><span class="app-quiet">{{ ar.domain }}{% if ar.selector %} · {{ ar.selector }}{% endif %}: {{ ar.result }}</span>{% endfor %}
           </td>
-          <td class="app-small">
+          <td class="app-small bc-hide-narrow">
             {{ 'passt zur Domain' if rec.spf_aligned else 'passt nicht' }}
             {% for ar in rec.auth_results if ar.auth_type == 'spf' %}<br><span class="app-quiet">{{ ar.domain }}: {{ ar.result }}</span>{% endfor %}
           </td>
-          <td>
+          <td class="bc-hide-narrow">
             {{ ui.state(rec.disposition | disposition_text, rec.disposition | disposition_state) }}
             {% for reason in rec.override_reasons or [] %}<br><span class="app-small app-quiet">Grund: {{ reason.type | reason_text }}{% if reason.comment %} ({{ reason.comment }}){% endif %}</span>{% endfor %}
           </td>
-          <td class="app-break app-small">{{ rec.header_from or '—' }}</td>
+          <td class="app-break app-small bc-hide-narrow">{{ rec.header_from or '—' }}</td>
         </tr>
         {% endfor %}
       </tbody>

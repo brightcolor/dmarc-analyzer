@@ -14,17 +14,18 @@
   {% if rules %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Name</th><th>Art</th><th>Schwere</th><th>Zeitraum</th><th>Pause danach</th><th>Zuletzt ausgelöst</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Name</th><th class="bc-hide-narrow">Art</th><th class="bc-hide-narrow">Schwere</th><th class="bc-hide-narrow">Zeitraum</th><th class="bc-hide-narrow">Pause danach</th><th class="bc-hide-narrow">Zuletzt ausgelöst</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for rule in rules %}
         <tr>
-          <td><strong>{{ rule.name }}</strong>{% if not rule.is_active %} {{ ui.state('aus') }}{% endif %}</td>
-          <td class="app-small">{{ alert_types.get(rule.alert_type, rule.alert_type) }}</td>
-          <td>{{ ui.state(rule.severity | severity_text, rule.severity | severity_state) }}</td>
-          <td class="app-nowrap">{{ rule.time_window_minutes | num }} min</td>
-          <td class="app-nowrap">{{ rule.cooldown_minutes | num }} min</td>
-          <td class="app-nowrap">{{ rule.last_triggered_at | datetime }}</td>
-          <td>{% if can.manager %}<div class="bc-row-actions"><form method="post" action="/alerts/rules/{{ rule.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if rule.is_active else 'Einschalten' }}</button></form></div>{% endif %}</td>
+          {% set toggle %}<form method="post" action="/alerts/rules/{{ rule.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if rule.is_active else 'Einschalten' }}</button></form>{% endset %}
+          <td><span class="bc-row-title">{{ rule.name }}{% if not rule.is_active %} {{ ui.state('aus') }}{% endif %}</span><span class="bc-row-sub bc-only-narrow">{{ alert_types.get(rule.alert_type, rule.alert_type) }} · {{ rule.severity | severity_text }} · Zeitraum {{ rule.time_window_minutes | num }} min · Pause {{ rule.cooldown_minutes | num }} min{% if rule.last_triggered_at %} · zuletzt {{ rule.last_triggered_at | datetime }}{% endif %}</span>{% if can.manager %}<div class="bc-row-actions bc-only-narrow">{{ toggle }}</div>{% endif %}</td>
+          <td class="app-small bc-hide-narrow">{{ alert_types.get(rule.alert_type, rule.alert_type) }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(rule.severity | severity_text, rule.severity | severity_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ rule.time_window_minutes | num }} min</td>
+          <td class="app-nowrap bc-hide-narrow">{{ rule.cooldown_minutes | num }} min</td>
+          <td class="app-nowrap bc-hide-narrow">{{ rule.last_triggered_at | datetime }}</td>
+          <td class="bc-hide-narrow">{% if can.manager %}<div class="bc-row-actions">{{ toggle }}</div>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

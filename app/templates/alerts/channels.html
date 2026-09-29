@@ -20,16 +20,21 @@
   {% if channels %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Name</th><th>Art</th><th>Ziel</th><th>Status</th><th>Letzte Zustellung</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Name</th><th class="bc-hide-narrow">Art</th><th class="bc-hide-narrow">Ziel</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Letzte Zustellung</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for ch in channels %}
         {% set last = last_deliveries.get(ch.id) %}
+        {% set actions %}
+              <form method="post" action="/alerts/channels/{{ ch.id }}/test"><button class="bc-button bc-button--secondary" type="submit">Testen</button></form>
+              <form method="post" action="/alerts/channels/{{ ch.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if ch.is_active else 'Einschalten' }}</button></form>
+              <form method="post" action="/alerts/channels/{{ ch.id }}/delete" data-confirm="Kanal „{{ ch.name }}“ löschen? Regeln, die ihn nutzen, benachrichtigen danach nur noch ihre übrigen Kanäle."><button class="bc-button bc-button--danger" type="submit">Löschen</button></form>
+        {% endset %}
         <tr>
-          <td><strong>{{ ch.name }}</strong></td>
-          <td class="app-nowrap">{{ channel_types.get(ch.channel_type, ch.channel_type) }}</td>
-          <td class="app-small app-break">{{ summaries[ch.id] }}</td>
-          <td>{{ ui.state('aktiv' if ch.is_active else 'aus', 'bc-state--on' if ch.is_active else '') }}</td>
-          <td class="app-small">
+          <td><span class="bc-row-title">{{ ch.name }}</span><span class="bc-row-sub bc-only-narrow">{{ channel_types.get(ch.channel_type, ch.channel_type) }} · {{ 'aktiv' if ch.is_active else 'aus' }} · <span class="app-break">{{ summaries[ch.id] }}</span>{% if last %} · zuletzt {{ last.status | status_text }} {{ (last.sent_at or last.created_at) | datetime }}{% endif %}</span>{% if can_manage %}<div class="bc-row-actions bc-only-narrow">{{ actions }}</div>{% endif %}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ channel_types.get(ch.channel_type, ch.channel_type) }}</td>
+          <td class="app-small app-break bc-hide-narrow">{{ summaries[ch.id] }}</td>
+          <td class="bc-hide-narrow">{{ ui.state('aktiv' if ch.is_active else 'aus', 'bc-state--on' if ch.is_active else '') }}</td>
+          <td class="app-small bc-hide-narrow">
             {% if last %}
               {{ ui.state(last.status | status_text, last.status | status_state) }}
               <span class="app-reason">{{ (last.sent_at or last.created_at) | datetime }}{% if last.status != 'sent' and last.error_message %}: {{ last.error_message }}{% endif %}</span>
@@ -37,15 +42,7 @@
               <span class="app-quiet">noch keine</span>
             {% endif %}
           </td>
-          <td>
-            {% if can_manage %}
-            <div class="bc-row-actions">
-              <form method="post" action="/alerts/channels/{{ ch.id }}/test"><button class="bc-button bc-button--secondary" type="submit">Testen</button></form>
-              <form method="post" action="/alerts/channels/{{ ch.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if ch.is_active else 'Einschalten' }}</button></form>
-              <form method="post" action="/alerts/channels/{{ ch.id }}/delete" data-confirm="Kanal „{{ ch.name }}“ löschen? Regeln, die ihn nutzen, benachrichtigen danach nur noch ihre übrigen Kanäle."><button class="bc-button bc-button--danger" type="submit">Löschen</button></form>
-            </div>
-            {% endif %}
-          </td>
+          <td class="bc-hide-narrow">{% if can_manage %}<div class="bc-row-actions">{{ actions }}</div>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

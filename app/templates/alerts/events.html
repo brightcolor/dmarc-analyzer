@@ -27,31 +27,30 @@
   {% if events %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Alarm</th><th>Schwere</th><th>Status</th><th>Gemeldet</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Alarm</th><th class="bc-hide-narrow">Schwere</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Gemeldet</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for e in events %}
-        <tr>
-          <td>
-            <strong>{{ e.title }}</strong>{% if e.description %}<br><span class="app-small app-quiet">{{ e.description }}</span>{% endif %}
-            {% for d in e.deliveries %}
-            <span class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>
-            {% endfor %}
-          </td>
-          <td>{{ ui.state(e.severity | severity_text, e.severity | severity_state) }}</td>
-          <td>{{ ui.state(e.status | status_text, e.status | status_state) }}</td>
-          <td class="app-nowrap">{{ e.created_at | datetime }}</td>
-          <td>
-            {% if can.analyst %}
-            <div class="bc-row-actions">
+        {% set actions %}
               {% if e.status == 'open' %}
               <form method="post" action="/alerts/events/{{ e.id }}/acknowledge"><button class="bc-button bc-button--secondary" type="submit">Gesehen</button></form>
               {% endif %}
               {% if e.status != 'resolved' %}
               <form method="post" action="/alerts/events/{{ e.id }}/resolve"><button class="bc-button" type="submit">Erledigt</button></form>
               {% endif %}
-            </div>
-            {% endif %}
+        {% endset %}
+        <tr>
+          <td>
+            <span class="bc-row-title">{{ e.title }}</span>
+            <span class="bc-row-sub"><span class="bc-only-narrow">{{ e.severity | severity_text }} · {{ e.status | status_text }} · {{ e.created_at | datetime }}{% if e.description %}<br>{% endif %}</span>{{ e.description or '' }}</span>
+            {% for d in e.deliveries %}
+            <span class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>
+            {% endfor %}
+            {% if can.analyst and e.status != 'resolved' %}<div class="bc-row-actions bc-only-narrow">{{ actions }}</div>{% endif %}
           </td>
+          <td class="bc-hide-narrow">{{ ui.state(e.severity | severity_text, e.severity | severity_state) }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(e.status | status_text, e.status | status_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ e.created_at | datetime }}</td>
+          <td class="bc-hide-narrow">{% if can.analyst %}<div class="bc-row-actions">{{ actions }}</div>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

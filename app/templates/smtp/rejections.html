@@ -8,15 +8,15 @@
   {% if rejections %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Zeit</th><th>Absender-IP</th><th>Versuchte Adresse</th><th>Code</th><th>Grund</th></tr></thead>
+      <thead><tr><th>Versuchte Adresse</th><th class="bc-hide-narrow">Zeit</th><th class="bc-hide-narrow">Absender-IP</th><th class="bc-hide-narrow">Code</th><th class="bc-hide-narrow">Grund</th></tr></thead>
       <tbody>
         {% for r in rejections %}
         <tr>
-          <td class="app-nowrap">{{ r.created_at | datetime }}</td>
-          <td class="app-mono">{{ r.remote_ip or '—' }}</td>
-          <td class="app-mono app-break app-small">{{ r.attempted_recipient or '—' }}</td>
-          <td class="app-mono">{{ r.rejection_code }}</td>
-          <td class="app-small">{{ r.rejection_reason }}</td>
+          <td><span class="bc-row-title app-mono app-break">{{ r.attempted_recipient or 'ohne Adresse' }}</span><span class="bc-row-sub bc-only-narrow">{{ r.created_at | datetime }} · {{ r.remote_ip or 'IP unbekannt' }} · {{ r.rejection_code }} {{ r.rejection_reason }}</span></td>
+          <td class="app-nowrap bc-hide-narrow">{{ r.created_at | datetime }}</td>
+          <td class="app-mono bc-hide-narrow">{{ r.remote_ip or '—' }}</td>
+          <td class="app-mono bc-hide-narrow">{{ r.rejection_code }}</td>
+          <td class="app-small bc-hide-narrow">{{ r.rejection_reason }}</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -32,7 +32,26 @@ def test_dashboard_and_imports_show_two_lines(web, session_factory):
     _login(web, ids["org"])
     for path in ("/dashboard", "/imports"):
         page = web.get(path).text
-        assert '<a class="app-rowtitle" href="/imports/' in page
+        assert '<a class="bc-row-title" href="/imports/' in page
         assert ">google.com</a>" in page
         assert "example.org · 28.09.2026" in page
-        assert 'class="app-only-small"' in page
+        assert 'class="bc-only-narrow"' in page
+
+
+def test_every_list_has_two_lines_on_phones():
+    """Each list table puts its title in the first cell and hides the other columns on phones."""
+    from pathlib import Path
+
+    templates = Path(__file__).resolve().parent.parent / "app" / "templates"
+    missing = []
+    for path in sorted(templates.rglob("*.html")):
+        name = path.relative_to(templates).as_posix()
+        for table in path.read_text(encoding="utf-8").split('<table class="bc-table"')[1:]:
+            table = table.split("</table>")[0]
+            # Shares compare three short values side by side and fit a phone as they are
+            if "Anteil als Balken" in table:
+                continue
+            titled = "bc-row-title" in table or "ui.report_file(" in table
+            if "bc-hide-narrow" not in table or not titled:
+                missing.append(name)
+    assert missing == []

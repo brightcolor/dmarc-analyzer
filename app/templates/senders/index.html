@@ -31,18 +31,10 @@
   {% if rows or unassigned %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Absender</th><th class="bc-num">IP-Adressen</th><th class="bc-num">Nachrichten</th><th>Bestanden</th><th>Entscheidung</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Absender</th><th class="bc-num bc-hide-narrow">IP-Adressen</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-hide-narrow">Bestanden</th><th class="bc-hide-narrow">Entscheidung</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for row in rows %}
-        <tr>
-          <td><a href="/source-ips?sender={{ row.key }}"><strong>{{ row.name }}</strong></a><br><span class="app-small app-quiet">{{ row.kind }}</span></td>
-          <td class="bc-num">{{ row.addresses | num }}{% if row.unknown and row.decision %}<span class="app-reason">{{ row.unknown | num }} offen</span>{% endif %}</td>
-          <td class="bc-num">{{ row.messages | num }}</td>
-          <td>{{ ui.state(row.rate | percent, row.rate | rate_state) }}</td>
-          <td>{{ ui.state(decision_text.get(row.decision, 'offen'), decision_state.get(row.decision, 'bc-state--warn')) }}</td>
-          <td>
-            {% if can.analyst %}
-            <div class="bc-row-actions">
+        {% set actions %}
               {% if row.decision != 'trusted' %}
               <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="trusted"><button class="bc-button" type="submit">Freigeben</button></form>
               {% endif %}
@@ -52,19 +44,24 @@
               {% if row.decision %}
               <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="reset"><button class="bc-button bc-button--secondary" type="submit">Aufheben</button></form>
               {% endif %}
-            </div>
-            {% endif %}
-          </td>
+        {% endset %}
+        <tr>
+          <td><a class="bc-row-title" href="/source-ips?sender={{ row.key }}">{{ row.name }}</a><span class="bc-row-sub">{{ row.kind }}<span class="bc-only-narrow"> · {{ row.addresses | plural('Adresse', 'Adressen') }} · {{ row.messages | plural('Nachricht', 'Nachrichten') }} · {{ row.rate | percent }} bestanden · {{ decision_text.get(row.decision, 'offen') }}</span></span>{% if can.analyst %}<div class="bc-row-actions bc-only-narrow">{{ actions }}</div>{% endif %}</td>
+          <td class="bc-num bc-hide-narrow">{{ row.addresses | num }}{% if row.unknown and row.decision %}<span class="app-reason">{{ row.unknown | num }} offen</span>{% endif %}</td>
+          <td class="bc-num bc-hide-narrow">{{ row.messages | num }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(row.rate | percent, row.rate | rate_state) }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(decision_text.get(row.decision, 'offen'), decision_state.get(row.decision, 'bc-state--warn')) }}</td>
+          <td class="bc-hide-narrow">{% if can.analyst %}<div class="bc-row-actions">{{ actions }}</div>{% endif %}</td>
         </tr>
         {% endfor %}
         {% if unassigned %}
         <tr>
-          <td><a href="/source-ips?sender=none"><strong>Nicht zugeordnet</strong></a><br><span class="app-small app-quiet">einzeln einstufen</span></td>
-          <td class="bc-num">{{ unassigned.addresses | num }}</td>
-          <td class="bc-num">{{ unassigned.messages | num }}</td>
-          <td>{{ ui.state(unassigned.rate | percent, unassigned.rate | rate_state) }}</td>
-          <td>{% if unassigned.unknown %}{{ ui.state(unassigned.unknown | num ~ ' offen', 'bc-state--warn') }}{% endif %}</td>
-          <td></td>
+          <td><a class="bc-row-title" href="/source-ips?sender=none">Nicht zugeordnet</a><span class="bc-row-sub">einzeln einstufen<span class="bc-only-narrow"> · {{ unassigned.addresses | plural('Adresse', 'Adressen') }} · {{ unassigned.messages | plural('Nachricht', 'Nachrichten') }} · {{ unassigned.rate | percent }} bestanden{% if unassigned.unknown %} · {{ unassigned.unknown | num }} offen{% endif %}</span></span></td>
+          <td class="bc-num bc-hide-narrow">{{ unassigned.addresses | num }}</td>
+          <td class="bc-num bc-hide-narrow">{{ unassigned.messages | num }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(unassigned.rate | percent, unassigned.rate | rate_state) }}</td>
+          <td class="bc-hide-narrow">{% if unassigned.unknown %}{{ ui.state(unassigned.unknown | num ~ ' offen', 'bc-state--warn') }}{% endif %}</td>
+          <td class="bc-hide-narrow"></td>
         </tr>
         {% endif %}
       </tbody>

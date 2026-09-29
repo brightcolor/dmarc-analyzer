@@ -60,15 +60,15 @@
   {% if reports %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Domain</th><th>Zeitraum bis</th><th>Berichtet von</th><th>Format</th><th class="bc-num">Nachrichten</th></tr></thead>
+      <thead><tr><th>Domain</th><th class="bc-hide-narrow">Zeitraum bis</th><th class="bc-hide-narrow">Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-num bc-hide-narrow">Nachrichten</th></tr></thead>
       <tbody>
         {% for r in reports %}
         <tr>
-          <td class="app-break"><a href="/reports/{{ r.id }}">{{ r.policy_domain or 'ohne Domain' }}</a></td>
-          <td class="app-nowrap">{{ r.period_end | date }}</td>
-          <td class="app-break">{{ r.reporting_org or '—' }}</td>
-          <td>{{ ui.format_badge(r.report_format) }}</td>
-          <td class="bc-num">{{ r.total_messages | num }}</td>
+          <td><a class="bc-row-title app-break" href="/reports/{{ r.id }}">{{ r.policy_domain or 'ohne Domain' }}</a><span class="bc-row-sub bc-only-narrow">{{ r.reporting_org or 'unbekannter Empfänger' }} · bis {{ r.period_end | date }} · {{ r.total_messages | plural('Nachricht', 'Nachrichten') }}</span></td>
+          <td class="app-nowrap bc-hide-narrow">{{ r.period_end | date }}</td>
+          <td class="app-break bc-hide-narrow">{{ r.reporting_org or '—' }}</td>
+          <td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td>
+          <td class="bc-num bc-hide-narrow">{{ r.total_messages | num }}</td>
         </tr>
         {% endfor %}
       </tbody>
