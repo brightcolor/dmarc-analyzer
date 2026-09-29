@@ -103,6 +103,22 @@
 .app-code .bc-button { border-radius: 0 var(--bc-radius-sm) var(--bc-radius-sm) 0; }
 .app-code__label { margin: 0 0 4px; font-size: 12.5px; font-weight: 700; color: var(--bc-text-loud); }
 
+/* Preformatted text such as mail headers: wraps long lines, scrolls when very long. */
+.app-pre {
+	margin: 0;
+	padding: 10px 12px;
+	background: var(--bc-head);
+	border: 1px solid var(--bc-field-edge);
+	border-radius: var(--bc-radius-sm);
+	font-family: var(--bc-font-mono);
+	font-size: 12.5px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 28rem;
+	overflow: auto;
+}
+
 /* Report format badge: new format in cyan with deep ink (8.1:1), old format neutral. */
 .app-format {
 	display: inline-flex;

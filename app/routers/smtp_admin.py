@@ -6,6 +6,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_org, get_current_superadmin, get_current_user
 from app.models import (
+    DmarcFailureReport,
     InboundMailAddress,
     Organization,
     SchedulerRun,
@@ -14,12 +15,23 @@ from app.models import (
     User,
 )
 from app.scheduler import JOBS
-from app.services.mailer import mail_configured
+from app.services.mailer import describe_backend, mail_configured
 from app.templates_config import templates
 
 router = APIRouter(prefix="/smtp", tags=["smtp"])
 
 MESSAGE_STATUSES = ("completed", "processing", "quarantine", "failed")
+
+
+def _failure_links(db: Session, org: Organization, messages: list[SmtpInboundMessage]) -> dict[str, str]:
+    """Failure report of each received mail that carried one, for a link in the table."""
+    ids = [message.id for message in messages]
+    if not ids:
+        return {}
+    rows = db.query(DmarcFailureReport.smtp_message_id, DmarcFailureReport.id).filter(
+        DmarcFailureReport.organization_id == org.id, DmarcFailureReport.smtp_message_id.in_(ids),
+    ).all()
+    return {message_id: report_id for message_id, report_id in rows}
 
 
 @router.get("/status", response_class=HTMLResponse)
@@ -53,13 +65,13 @@ def smtp_status(
         jobs = [{"label": job.label, "interval": job.interval(), "run": runs.get(job.name)} for job in JOBS]
         mail = {
             "configured": mail_configured(),
-            "server": f"{settings.MAIL_SMTP_HOST}:{settings.MAIL_SMTP_PORT}",
-            "security": settings.MAIL_SMTP_SECURITY,
+            "backend": describe_backend(),
             "sender": settings.MAIL_FROM,
         }
     return templates.TemplateResponse(request, "smtp/status.html", {
         "user": user, "org": org,
         "addresses": addresses, "recent_messages": recent_messages, "smtp_config": smtp_config,
+        "failure_links": _failure_links(db, org, recent_messages),
         "jobs": jobs, "scheduler_enabled": settings.SCHEDULER_ENABLED, "mail": mail,
         "page_title": "Empfang",
     })
@@ -87,6 +99,7 @@ def smtp_messages(
     return templates.TemplateResponse(request, "smtp/messages.html", {
         "user": user, "org": org,
         "messages": messages, "total": total, "page": page, "pages": pages,
+        "failure_links": _failure_links(db, org, messages),
         "status_filter": import_status if import_status in MESSAGE_STATUSES else "",
         "statuses": MESSAGE_STATUSES, "page_title": "Eingegangene Mails",
     })

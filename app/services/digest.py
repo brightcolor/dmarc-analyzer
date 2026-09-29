@@ -26,7 +26,13 @@ from app.models import (
 )
 from app.security import utcnow
 from app.services import report_formats
-from app.services.mailer import MailDeliveryError, MailNotConfigured, mail_configured, send_mail
+from app.services.mailer import (
+    MailDeliveryError,
+    MailNotConfigured,
+    mail_configured,
+    not_configured_reason,
+    send_mail,
+)
 from app.services.notification import parse_addresses
 from app.services.recommendation import Recommendation, get_recommendations_for_domain
 
@@ -293,8 +299,7 @@ def send_digest(db: Session, org: Organization, now: datetime | None = None,
 
     now = now or utcnow()
     if not mail_configured():
-        raise DigestError("Der Mailversand ist nicht eingerichtet. Trage MAIL_SMTP_HOST und den Zugang in die .env "
-                          "ein und starte den Web-Container neu.")
+        raise DigestError(not_configured_reason())
     recipients = digest_recipients(db, org) if recipients is None else recipients
     if not recipients:
         raise DigestError("Für den Wochenbericht gibt es keinen Empfänger. Trage Adressen ein oder gib einem "

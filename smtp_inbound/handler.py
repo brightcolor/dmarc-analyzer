@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import get_db_context
 from app.models import ImportJob, InboundMailAttachment, SmtpInboundMessage, SmtpInboundRejection
 from app.services.alert_service import create_system_alert, evaluate_after_import
+from app.services.failure_reports import parse_failure_report, store_failure_report
 from app.services.files import safe_filename
 from app.services.import_service import process_import_job
 from app.services.mime_parser import (
@@ -182,6 +183,15 @@ class DmarcSmtpHandler:
                     addr = db.query(InboundMailAddress).filter_by(id=address_id).first()
                     if addr:
                         addr.last_used_at = datetime.now(UTC)
+
+                # Failure reports first: the reported mail inside may carry attachments that are no reports
+                failure = parse_failure_report(raw) if settings.FAILURE_REPORTS_ENABLED else None
+                if failure is not None:
+                    store_failure_report(db, failure, organization_id=organization_id, domain_id=domain_id,
+                                         smtp_message_id=msg.id, reporter=headers.get("from") or None)
+                    msg.import_status = "completed"
+                    msg.processed_at = datetime.now(UTC)
+                    return True
 
                 # Extract DMARC attachments
                 try:

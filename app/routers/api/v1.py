@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_api_auth, get_client_ip
-from app.models import AlertEvent, DmarcReport, Domain, InboundMailAddress, Organization, SourceIp
+from app.models import (
+    AlertEvent,
+    DmarcFailureReport,
+    DmarcReport,
+    Domain,
+    InboundMailAddress,
+    Organization,
+    SourceIp,
+)
 from app.services.audit import log_action
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.senders import load_catalog
@@ -171,6 +179,48 @@ def list_reports(
                     "p": r.policy_p, "sp": r.policy_sp, "np": r.policy_np, "pct": r.policy_pct,
                     "testing": r.policy_testing, "discovery_method": r.policy_discovery_method,
                 },
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in reports
+        ],
+    }
+
+
+@router.get("/failure-reports")
+def list_failure_reports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=1, le=100),
+    domain_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    api_auth=Depends(get_api_auth),
+):
+    """Failure reports (ruf), newest first. The header of the reported mail stays in the web interface."""
+    org = _org_or_403(api_auth)
+    q = db.query(DmarcFailureReport).filter_by(organization_id=org.id).order_by(DmarcFailureReport.created_at.desc())
+    if domain_id:
+        q = q.filter_by(domain_id=domain_id)
+
+    total = q.count()
+    reports = q.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "results": [
+            {
+                "id": r.id,
+                "domain": r.reported_domain,
+                "domain_id": r.domain_id,
+                "source_ip": r.source_ip,
+                "auth_failure": r.failed_checks,
+                "identity_alignment": r.identity_alignment,
+                "delivery_result": r.delivery_result,
+                "arrival_date": r.arrival_date.isoformat() if r.arrival_date else None,
+                "incidents": r.incidents,
+                "header_from": r.header_from,
+                "dkim_domain": r.dkim_domain,
+                "dkim_selector": r.dkim_selector,
+                "reporter": r.reporter,
                 "created_at": r.created_at.isoformat(),
             }
             for r in reports

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Einzelberichte über Mails, die an DMARC, DKIM oder SPF gescheitert sind. Empfänger schicken sie an die Adresse in <code>ruf</code>. Die Anwendung bewahrt sie {{ retention_days | num }} Tage auf und speichert nie den Inhalt der gemeldeten Mail.</p>{% endblock %}
+
+{% block content %}
+<section class="bc-panel">
+  <form class="app-filter" method="get" role="search" aria-label="Fehlerberichte filtern">
+    <div>
+      <label for="f-search">Domain, Quelle oder Absender</label>
+      <input class="bc-input" id="f-search" type="search" name="search" value="{{ search }}" placeholder="z. B. example.com oder 192.0.2.1">
+    </div>
+    <div>
+      <label for="f-domain">Domain</label>
+      <select class="bc-select" id="f-domain" name="domain_id">
+        <option value="">Alle Domains</option>
+        {% for d in domains %}<option value="{{ d.id }}"{% if selected_domain_id == d.id %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="f-check">Gescheitert an</label>
+      <select class="bc-select" id="f-check" name="check">
+        <option value="">Allen Prüfungen</option>
+        <option value="dmarc"{% if selected_check == 'dmarc' %} selected{% endif %}>DMARC</option>
+        <option value="dkim"{% if selected_check == 'dkim' %} selected{% endif %}>DKIM</option>
+        <option value="spf"{% if selected_check == 'spf' %} selected{% endif %}>SPF</option>
+      </select>
+    </div>
+    <button class="bc-button" type="submit">Filtern</button>
+    {% if search or selected_domain_id or selected_check %}<a class="bc-button bc-button--secondary" href="/failure-reports">Filter zurücksetzen</a>{% endif %}
+  </form>
+
+  {% if reports %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead>
+        <tr><th>Eingegangen</th><th>Domain</th><th>Quelle</th><th>Gescheitert an</th><th>Zustellung</th><th>Absender der Mail</th></tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td class="app-nowrap"><a href="/failure-reports/{{ r.id }}">{{ r.created_at | datetime }}</a></td>
+          <td class="app-nowrap">{{ r.reported_domain or '—' }}</td>
+          <td class="app-mono">{{ r.source_ip or '—' }}</td>
+          <td>{% for c in r.failed_checks %}{{ ui.state(c | upper, 'bc-state--bad') }} {% else %}—{% endfor %}</td>
+          <td>{{ ui.state(r.delivery_result | delivery_text, r.delivery_result | delivery_state) if r.delivery_result else '—' }}</td>
+          <td class="app-break app-small">{{ r.header_from or '—' }}{% if r.reporter %}<br><span class="app-quiet">gemeldet von {{ r.reporter }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ ui.pagination(page, pages, total, "Fehlerberichte") }}
+  {% elif search or selected_domain_id or selected_check %}
+    {{ ui.empty("Keine Fehlerberichte zu diesem Filter", "Ändere die Auswahl oder setze den Filter zurück.", "/failure-reports", "Filter zurücksetzen") }}
+  {% else %}
+    {{ ui.empty("Noch keine Fehlerberichte", "Fehlerberichte kommen, wenn der DMARC-Eintrag einer Domain ruf=mailto:<Empfangsadresse> enthält. Mit fo=1 melden Empfänger jede Mail, bei der SPF oder DKIM scheitert. Viele große Anbieter verschicken keine Fehlerberichte.") }}
+  {% endif %}
+</section>
+{% endblock %}

@@ -41,12 +41,11 @@
     <div class="bc-panel__body">
       {% if mail.configured %}
       <dl class="app-dl">
-        <dt>SMTP-Server</dt><dd class="app-mono">{{ mail.server }}</dd>
-        <dt>Verschlüsselung</dt><dd>{{ {'starttls': 'STARTTLS', 'ssl': 'SSL/TLS', 'none': 'keine'}[mail.security] }}</dd>
+        <dt>Weg</dt><dd class="app-mono app-break">{{ mail.backend }}</dd>
         <dt>Absender</dt><dd class="app-break">{{ mail.sender }}</dd>
       </dl>
       {% else %}
-      <p style="margin-top:0">Alarme per E-Mail und der Wochenbericht brauchen einen SMTP-Server. Trage <code>MAIL_SMTP_HOST</code>, <code>MAIL_SMTP_USER</code>, <code>MAIL_SMTP_PASSWORD</code> und <code>MAIL_FROM</code> in die <code>.env</code> ein und starte den Web-Container neu.</p>
+      <p style="margin-top:0">Alarme per E-Mail und der Wochenbericht brauchen einen Weg für ausgehende Mails. Trage <code>MAIL_SMTP_HOST</code> und den Zugang in die <code>.env</code> ein, oder <code>MAIL_BACKEND=postal</code> mit <code>POSTAL_API_URL</code> und <code>POSTAL_API_KEY</code>, und starte den Web-Container neu. Prüfen lässt sich der Weg ohne Mail mit <code>python -m app.mail_check</code>.</p>
       {% endif %}
     </div>
 </section>

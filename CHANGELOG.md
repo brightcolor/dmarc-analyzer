@@ -7,6 +7,30 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.7.0] – 2026-09-29
+
+### Neu
+
+- Fehlerberichte (`ruf`): Der Mailempfang erkennt Berichte im Abuse Reporting Format (RFC 5965,
+  RFC 6591, RFC 9991) an derselben Empfangsadresse wie die Sammelberichte. Neue Seite
+  **Berichte → Fehlerberichte** mit Filter nach Domain, Quelle und gescheiterter Prüfung, Einzelansicht
+  mit Prüfergebnis und Kopfzeilen der gemeldeten Mail, Löschen ab der Rolle Manager.
+  `GET /api/v1/failure-reports` liefert die Berichte ohne Kopfzeilen.
+- Den Inhalt der gemeldeten Mail speichert die Anwendung nie. Anhänge darin gelten nicht als
+  Sammelbericht. Neue Einstellungen `FAILURE_REPORTS_ENABLED`, `FAILURE_REPORT_RETENTION_DAYS`
+  (Vorgabe 30 Tage), `FAILURE_REPORT_STORE_HEADERS` und `FAILURE_REPORT_MAX_HEADER_BYTES`.
+- Mailversand über die HTTP-API von Postal: `MAIL_BACKEND=postal` mit `POSTAL_API_URL`,
+  `POSTAL_API_KEY` und `POSTAL_MESSAGE_TAG`. Hilft auf Hosts, deren Anbieter ausgehenden Port 25
+  sperrt.
+- `python -m app.mail_check` prüft den Mailversand, ohne eine Mail zu verschicken.
+- Eingegangene Mails mit Fehlerbericht verlinken auf den Bericht.
+
+### Geändert
+
+- **Empfang → Status** nennt den Weg für ausgehende Mails; die Hinweise zum Einrichten nennen beide
+  Wege.
+- Datenbank-Migration 0006 legt die Tabelle `dmarc_failure_reports` an.
+
 ## [0.6.1] – 2026-09-29
 
 ### Behoben

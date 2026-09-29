@@ -39,6 +39,7 @@ NAVIGATION = [
     NavModule("Domains", "globe", [NavLink("Domains", "/domains", ("/domains",))]),
     NavModule("Berichte", "file", [
         NavLink("Berichte", "/reports", ("/reports",)),
+        NavLink("Fehlerberichte", "/failure-reports", ("/failure-reports",)),
         NavLink("Hochladen", "/upload", ("/upload",)),
         NavLink("Importe", "/imports", ("/imports",)),
     ]),
@@ -226,6 +227,24 @@ DISPOSITION_STATE = {"none": "", "pass": "bc-state--on", "quarantine": "bc-state
 
 SOURCE_TEXT = {"smtp_inbound": "SMTP-Empfang", "web_upload": "Hochgeladen", "api": "API"}
 
+# Delivery-Result of a failure report (RFC 6591, 3.1)
+DELIVERY_TEXT = {"delivered": "zugestellt", "spam": "als Spam einsortiert", "policy": "nach Richtlinie behandelt",
+                 "reject": "abgewiesen", "other": "anders behandelt"}
+DELIVERY_STATE = {"delivered": "", "spam": "bc-state--warn", "policy": "bc-state--warn", "reject": "bc-state--bad",
+                  "other": ""}
+ALIGNMENT_TEXT = {"none": "weder DKIM noch SPF passen zur Domain", "dkim": "DKIM passt zur Domain",
+                  "spf": "SPF passt zur Domain"}
+
+
+def _alignment_text(value: str | None) -> str:
+    """Identity-Alignment of a failure report in words; the field lists the identifiers that matched."""
+    parts = {part.strip() for part in (value or "").split(",") if part.strip()}
+    if parts == {"dkim", "spf"}:
+        return "DKIM und SPF passen zur Domain"
+    if len(parts) == 1:
+        return ALIGNMENT_TEXT.get(parts.pop(), "")
+    return ""
+
 ROLE_TEXT = {"super_admin": "Betreiber", "org_admin": "Administrator", "manager": "Manager", "analyst": "Analyst",
              "read_only": "Lesezugriff", "member": "Mitglied", "viewer": "Lesezugriff"}
 
@@ -331,6 +350,9 @@ env.filters["disposition_text"] = _lookup(report_formats.DISPOSITION_TEXT, keep_
 env.filters["reason_text"] = _lookup(report_formats.REASON_TEXT, keep_unknown=True)
 env.filters["discovery_text"] = _lookup(report_formats.DISCOVERY_TEXT, keep_unknown=True)
 env.filters["source_text"] = _lookup(SOURCE_TEXT, keep_unknown=True)
+env.filters["delivery_text"] = _lookup(DELIVERY_TEXT, keep_unknown=True)
+env.filters["delivery_state"] = _lookup(DELIVERY_STATE)
+env.filters["alignment_text"] = _alignment_text
 env.filters["role_text"] = _lookup(ROLE_TEXT, keep_unknown=True)
 env.filters["tojson"] = _tojson
 env.globals["page_url"] = page_url

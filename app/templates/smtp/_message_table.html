@@ -10,7 +10,7 @@
         <td class="app-nowrap">{{ msg.received_at | datetime }}</td>
         <td class="app-mono app-break app-small">{{ msg.envelope_recipient }}</td>
         <td class="app-break app-small">{{ msg.header_from or msg.envelope_sender or '—' }}{% if msg.remote_ip %}<br><span class="app-quiet app-mono">{{ msg.remote_ip }}</span>{% endif %}</td>
-        <td>{{ ui.state(msg.import_status | status_text, msg.import_status | status_state) }}{% if msg.error_message %}<br><span class="app-small app-quiet">{{ msg.error_message }}</span>{% endif %}</td>
+        <td>{{ ui.state(msg.import_status | status_text, msg.import_status | status_state) }}{% if msg.error_message %}<br><span class="app-small app-quiet">{{ msg.error_message }}</span>{% endif %}{% if failure_links is defined and failure_links.get(msg.id) %}<br><a class="app-small" href="/failure-reports/{{ failure_links[msg.id] }}">Fehlerbericht ansehen</a>{% endif %}</td>
         <td class="bc-num">{{ msg.attachment_count | num }}</td>
         <td class="bc-num">{{ msg.size_bytes | filesizeformat }}</td>
       </tr>

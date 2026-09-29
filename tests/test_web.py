@@ -154,7 +154,7 @@ class TestPages:
             "/source-ips", f"/source-ips/{ids['source']}", "/alerts/events", "/alerts/rules", "/alerts/channels",
             "/alerts/digest", "/alerts/digest/preview", "/senders", "/source-ips?sender=none",
             "/users", "/users/invite", "/api-tokens", "/organizations", f"/organizations/{ids['org']}",
-            "/organizations/new", "/organizations/select", "/hilfe/dmarc-formate",
+            "/organizations/new", "/organizations/select", "/hilfe/dmarc-formate", "/failure-reports",
         ]
         for path in pages:
             response = web.get(path)

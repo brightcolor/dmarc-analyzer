@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Eingegangen am {{ report.created_at | datetime }}{% if report.domain %} für <a href="/domains/{{ report.domain.id }}">{{ report.domain.name }}</a>{% endif %}. Die Anwendung löscht den Bericht nach {{ retention_days | num }} Tagen.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/failure-reports">Alle Fehlerberichte</a>{% endblock %}
+
+{% block content %}
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="pruefung-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="pruefung-titel">Was gescheitert ist</h2>{% for c in report.failed_checks %}{{ ui.state(c | upper, 'bc-state--bad') }} {% endfor %}</div>
+    <div class="bc-panel__body">
+      <dl class="app-dl">
+        <dt>Gescheitert an</dt><dd>{{ (report.failed_checks | map('upper') | join(', ')) or '—' }}</dd>
+        <dt>Passt zur Domain (Identity-Alignment)</dt><dd>{% if report.identity_alignment %}<code>{{ report.identity_alignment }}</code> {{ report.identity_alignment | alignment_text }}{% else %}<span class="app-quiet">nicht angegeben</span>{% endif %}</dd>
+        <dt>Zustellung</dt><dd>{% if report.delivery_result %}{{ ui.state(report.delivery_result | delivery_text, report.delivery_result | delivery_state) }}{% else %}<span class="app-quiet">nicht angegeben</span>{% endif %}</dd>
+        {% if report.dkim_domain or report.dkim_selector %}<dt>DKIM-Signatur</dt><dd class="app-mono app-break">{{ report.dkim_domain or '—' }}{% if report.dkim_selector %} · Selektor {{ report.dkim_selector }}{% endif %}{% if report.dkim_identity %} · {{ report.dkim_identity }}{% endif %}</dd>{% endif %}
+        {% if report.spf_dns %}<dt>SPF-Eintrag</dt><dd class="app-mono app-break">{{ report.spf_dns }}</dd>{% endif %}
+        <dt>Meldungen</dt><dd>{{ report.incidents | num }}{% if report.incidents > 1 %} gleiche Mails in einem Bericht{% endif %}</dd>
+      </dl>
+      {% if report.authentication_results %}
+      <p class="app-small" style="margin:12px 0 4px"><strong>Prüfergebnis des Empfängers</strong></p>
+      <pre class="app-pre">{{ report.authentication_results }}</pre>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="bc-panel" aria-labelledby="mail-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="mail-titel">Die gemeldete Mail</h2></div>
+    <div class="bc-panel__body">
+      <dl class="app-dl">
+        <dt>Quelle</dt><dd class="app-mono">{{ report.source_ip or '—' }}</dd>
+        <dt>Domain</dt><dd class="app-break">{{ report.reported_domain or '—' }}</dd>
+        <dt>Absender (From)</dt><dd class="app-break">{{ report.header_from or '—' }}</dd>
+        <dt>Umschlag-Absender</dt><dd class="app-break">{{ report.original_mail_from or '—' }}</dd>
+        <dt>Empfänger</dt><dd class="app-break">{{ report.original_rcpt_to or '—' }}</dd>
+        <dt>Betreff</dt><dd class="app-break">{{ report.subject or '—' }}</dd>
+        <dt>Message-ID</dt><dd class="app-mono app-break">{{ report.message_id or '—' }}</dd>
+        <dt>Beim Empfänger angekommen</dt><dd>{{ report.arrival_date | datetime }}</dd>
+      </dl>
+    </div>
+  </section>
+</div>
+
+<section class="bc-panel" aria-labelledby="kopf-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="kopf-titel">Kopfzeilen der gemeldeten Mail</h2></div>
+  <div class="bc-panel__body">
+    {% if report.original_headers %}
+    <details class="app-details" style="margin-top:0">
+      <summary>Kopfzeilen zeigen</summary>
+      <pre class="app-pre">{{ report.original_headers }}</pre>
+    </details>
+    {% else %}
+    <p style="margin:0" class="app-quiet">Der Bericht enthielt keine Kopfzeilen, oder die Anwendung speichert sie nicht (<code>FAILURE_REPORT_STORE_HEADERS</code>).</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="bc-panel" aria-labelledby="meta-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="meta-titel">Angaben zum Bericht</h2></div>
+  <div class="bc-panel__body">
+    <dl class="app-dl">
+      <dt>Gemeldet von</dt><dd class="app-break">{{ report.reporter or '—' }}</dd>
+      {% if report.user_agent %}<dt>Programm</dt><dd class="app-break">{{ report.user_agent }}</dd>{% endif %}
+      {% if report.reporting_mta %}<dt>Mailserver des Empfängers</dt><dd class="app-mono app-break">{{ report.reporting_mta }}</dd>{% endif %}
+      <dt>Art</dt><dd><code>{{ report.feedback_type or '—' }}</code></dd>
+      <dt>Herkunft</dt><dd>{{ report.import_source | source_text }}</dd>
+    </dl>
+    {% if can.manager %}
+    <form method="post" action="/failure-reports/{{ report.id }}/delete" style="margin-top:16px" data-confirm="Diesen Fehlerbericht mit seinen Kopfzeilen löschen?">
+      <button class="bc-button bc-button--danger" type="submit">Fehlerbericht löschen</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

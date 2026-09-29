@@ -33,6 +33,7 @@ from app.models import (  # noqa: E402
 )
 from app.services.auth import create_user  # noqa: E402
 from app.services.dmarc_parser import parse_xml_bytes  # noqa: E402
+from app.services.failure_reports import ParsedFailureReport, store_failure_report  # noqa: E402
 from app.services.import_service import store_parsed_report  # noqa: E402
 from app.services.inbound_address import create_domain_address, create_org_address  # noqa: E402
 from app.services.senders import refresh_sources  # noqa: E402
@@ -49,6 +50,15 @@ SOURCES = {
 # Signing domain of the sending service; the demo addresses have no host names, DKIM names the sender
 SERVICE_DKIM = {"192.0.2.10": "gappssmtp.com", "192.0.2.11": "gappssmtp.com", "198.51.100.20": "amazonses.com",
                 "203.0.113.77": "mcsv.net"}
+# Failure reports: (domain, source, failed checks, aligned identifiers, delivery, sender, subject, reporter)
+FAILURE_REPORTS = [
+    ("example.org", "198.51.100.66", "dmarc", "none", "spam", "Buchhaltung <rechnung@example.org>",
+     "Offene Rechnung 2026-0931", "dmarc-noreply@post.example"),
+    ("example.net", "203.0.113.5", "dmarc", "none", "delivered", "Muster Farben <news@example.net>",
+     "Neuigkeiten im Oktober", "noreply@webmail.example"),
+    ("example.com", "192.0.2.11", "dkim", "spf", "delivered", "Max Mustermann <max@example.com>",
+     "Angebot Wandgestaltung", "dmarc-noreply@post.example"),
+]
 
 
 def _record(ip: str, count: int, passed: bool, domain: str, dmarcbis: bool, testing: bool) -> str:
@@ -157,6 +167,22 @@ def main() -> None:
                           severity="warning", title="Neue unbekannte Versandquelle 203.0.113.5",
                           description="203.0.113.5 verschickt Mails für example.net und besteht DMARC nicht.",
                           source_ip="203.0.113.5", status="open"))
+        for index, (name, ip, failed, aligned, delivery, sender, subject, reporter) in enumerate(FAILURE_REPORTS):
+            arrival = today - timedelta(days=index + 1, hours=-9, minutes=-17 * index)
+            headers = "\n".join([
+                f"Received: from mail.{name} ([{ip}]) by mx.post.example; {arrival:%a, %d %b %Y %H:%M:%S} +0000",
+                f"From: {sender}", "To: kundin@post.example", f"Subject: {subject}",
+                f"Message-ID: <{index}.demo@{name}>", f"Date: {arrival:%a, %d %b %Y %H:%M:%S} +0000",
+            ])
+            store_failure_report(db, ParsedFailureReport(
+                feedback_type="auth-failure", auth_failure=failed, identity_alignment=aligned,
+                delivery_result=delivery, reported_domain=name, source_ip=ip, arrival_date=arrival,
+                original_mail_from=f"bounce@{name}", original_rcpt_to="kundin@post.example",
+                reporting_mta="mx.post.example", user_agent="NordlichtFBL/2.1",
+                authentication_results=f"mx.post.example; dmarc=fail header.from={name}; "
+                                       f"spf={'pass' if aligned == 'spf' else 'fail'} smtp.mailfrom={name}",
+                header_from=sender, subject=subject, message_id=f"<{index}.demo@{name}>", original_headers=headers,
+            ), organization_id=org.id, reporter=reporter)
         db.flush()
         refresh_sources(db, everything=True)
         db.commit()

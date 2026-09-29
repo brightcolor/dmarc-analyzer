@@ -11,7 +11,7 @@
 {% if not mail_ready %}
 <div class="bc-alert bc-alert--warn">
   <p class="bc-alert__title">Mailversand ist nicht eingerichtet</p>
-  <p>E-Mail-Kanäle brauchen einen SMTP-Server. {% if user.is_superadmin %}Trage <code>MAIL_SMTP_HOST</code> und den Zugang in die <code>.env</code> ein und starte den Web-Container neu.{% else %}Bitte den Betreiber, den Mailversand einzurichten.{% endif %} Webhook, ntfy und Slack funktionieren schon jetzt.</p>
+  <p>E-Mail-Kanäle brauchen einen Weg für ausgehende Mails. {% if user.is_superadmin %}Trage <code>MAIL_SMTP_HOST</code> und den Zugang in die <code>.env</code> ein, oder <code>MAIL_BACKEND=postal</code> mit <code>POSTAL_API_URL</code> und <code>POSTAL_API_KEY</code>, und starte den Web-Container neu.{% else %}Bitte den Betreiber, den Mailversand einzurichten.{% endif %} Webhook, ntfy und Slack funktionieren schon jetzt.</p>
 </div>
 {% endif %}
 

@@ -16,6 +16,9 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
 - **Beide Berichtsformate**: RFC 7489 und RFC 9990, mit und ohne Namespace. Die Auswertung kennt
   den Testmodus `t`, die Policy `np` für nicht existierende Subdomains, `pct` und die Behandlung
   `pass`.
+- **Fehlerberichte (`ruf`)** im Abuse Reporting Format: Quelle, gescheiterte Prüfung, Zustellung und
+  die Kopfzeilen der gemeldeten Mail. Den Inhalt der Mail speichert die Anwendung nie, die Berichte
+  verschwinden nach einer eigenen, kurzen Frist.
 - **Empfehlungen je Domain**, etwa bereit für `p=quarantine` oder `p=reject`, `pct=0` ohne `t=y`,
   unbekannte Quellen und fehlende Berichte. Alle Schwellen sind einstellbar.
 - **DNS-Vorschlag** für den DMARC-Eintrag, der für Empfänger beider Standards passt, und für den
@@ -25,6 +28,8 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
   künftigen.
 - **Alarme** für 13 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten bis zu
   ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
+- **Mailversand** über einen SMTP-Server oder die HTTP-API von Postal, auch von Hosts, deren Anbieter
+  ausgehenden Port 25 sperrt.
 - **Wochenbericht** per Mail mit Bestehensquote, Quellen mit Fehlern, neuen Quellen, offenen Alarmen
   und Empfehlungen.
 - **Aufräumen nach Frist**: alte Berichte, Importe, Rohmails und abgelehnte Zustellversuche verschwinden
@@ -88,6 +93,13 @@ docker compose exec web python -m app.org_limits <kennung> --max-domains 500
    _dmarc.example.com.  TXT  "v=DMARC1; p=none; rua=mailto:dom-example-com-abc123@reports.example.com"
    ```
 
+   Für Fehlerberichte kommt dieselbe Adresse zusätzlich in `ruf`, dazu `fo=1`, damit Empfänger schon
+   melden, wenn SPF oder DKIM scheitert:
+
+   ```
+   _dmarc.example.com.  TXT  "v=DMARC1; p=none; rua=mailto:dom-example-com-abc123@reports.example.com; ruf=mailto:dom-example-com-abc123@reports.example.com; fo=1"
+   ```
+
 3. **Zustimmung der Empfangsdomain.** Liegt die Empfangsadresse auf einer anderen Domain als die
    ausgewertete, stellen Empfänger Berichte erst zu, wenn die Empfangsdomain zustimmt. Diesen
    Eintrag setzt, wer die Zone der Empfangsdomain verwaltet:
@@ -117,6 +129,28 @@ Die Anwendung erkennt RFC-9990-Berichte am Namespace oder, wenn er fehlt, an Fel
 dort gibt (`np`, `testing`, `discovery_method`, `generator`, Behandlung `pass`, Grund
 `policy_test_mode`). Alle übrigen liest sie nach RFC 7489. Die Seite **Hilfe → DMARC-Formate**
 erklärt das ausführlich und zeigt, welcher Empfänger in welchem Format berichtet.
+
+---
+
+## Fehlerberichte
+
+Fehlerberichte (RFC 5965 und RFC 6591, für DMARCbis RFC 9991) melden einzelne Mails, die an DMARC,
+DKIM oder SPF gescheitert sind. Empfänger schicken sie an die Adresse in `ruf`; die Anwendung erkennt
+sie an der Empfangsadresse der Domain und legt sie unter **Berichte → Fehlerberichte** ab. Jeder
+Bericht zeigt Quelle, gescheiterte Prüfung, ob SPF oder DKIM zur Domain passen, was der Empfänger mit
+der Mail gemacht hat, das Prüfergebnis des Empfängers und die Kopfzeilen der gemeldeten Mail.
+
+Fehlerberichte enthalten personenbezogene Daten, etwa Empfänger und Betreff. Deshalb gilt:
+
+- Den Inhalt der gemeldeten Mail speichert die Anwendung nie, auch keine Anhänge daraus.
+- Die Kopfzeilen speichert sie nur mit `FAILURE_REPORT_STORE_HEADERS=true` (Vorgabe) und höchstens
+  `FAILURE_REPORT_MAX_HEADER_BYTES` Bytes.
+- Nach `FAILURE_REPORT_RETENTION_DAYS` Tagen (Vorgabe 30) löscht der Zeitplaner jeden Bericht; bewahrt
+  die Organisation Berichte kürzer auf, gilt ihre Frist.
+- Ab der Rolle Manager lässt sich ein Bericht sofort löschen; das steht im Audit-Log.
+
+Viele große Anbieter verschicken keine Fehlerberichte. Mit `FAILURE_REPORTS_ENABLED=false` vermerkt die
+Anwendung solche Mails nur unter **Empfang → Eingegangene Mails**.
 
 ---
 
@@ -219,8 +253,10 @@ Organisation; jede Person bekommt eine eigene Mail.
 
 ### Mailversand einrichten
 
-E-Mail-Kanäle und der Wochenbericht brauchen einen SMTP-Server. Trage ihn in die `.env` ein und
-starte den Web-Container neu:
+E-Mail-Kanäle und der Wochenbericht brauchen einen Weg für ausgehende Mails: einen SMTP-Server oder
+die API eines Postal-Servers. Trage ihn in die `.env` ein und starte den Web-Container neu.
+
+Über SMTP:
 
 ```bash
 MAIL_SMTP_HOST=smtp.example.com
@@ -230,6 +266,22 @@ MAIL_SMTP_USER=dmarc@example.com
 MAIL_SMTP_PASSWORD=…
 MAIL_FROM=DMARC Analyzer <dmarc@example.com>
 ```
+
+Über die HTTP-API von [Postal](https://docs.postalserver.io/), etwa wenn der Anbieter des Hosts
+ausgehenden Port 25 sperrt und Postal nur dort lauscht. Der Schlüssel ist ein Zugang vom Typ API am
+Mailserver in Postal, die Domain von `MAIL_FROM` muss dort eingetragen und geprüft sein:
+
+```bash
+MAIL_BACKEND=postal
+POSTAL_API_URL=https://postal.example.com
+POSTAL_API_KEY=…
+MAIL_FROM=DMARC Analyzer <dmarc@example.com>
+```
+
+Postal kennzeichnet die Mails mit `POSTAL_MESSAGE_TAG` (Vorgabe `dmarc-analyzer`).
+
+Ob der Weg funktioniert, prüft `python -m app.mail_check` im Web-Container, ohne eine Mail zu
+verschicken: Über SMTP meldet es sich an, bei Postal fragt es mit dem Schlüssel an.
 
 Links, Logo und Schriften in den Mails zeigen auf `APP_URL`. Ob der Mailversand eingerichtet ist,
 sieht der Betreiber unter **Empfang → Status**.
@@ -243,7 +295,7 @@ Web-Containern. Letzten Lauf und Ergebnis jeder Aufgabe zeigt **Empfang → Stat
 Beim Aufräumen löscht die Anwendung Berichte, Importe samt Dateien und empfangene Mails, die älter
 sind als die Aufbewahrung der Organisation (`report_retention_days`, Vorgabe 365 Tage). Rohmails gehen
 nach `SMTP_INBOUND_RAW_RETENTION_DAYS`, abgelehnte Zustellversuche nach
-`SMTP_REJECTION_RETENTION_DAYS`. Ein Lauf löscht höchstens `RETENTION_BATCH_SIZE` Einträge je Art.
+`SMTP_REJECTION_RETENTION_DAYS`, Fehlerberichte nach `FAILURE_REPORT_RETENTION_DAYS`. Ein Lauf löscht höchstens `RETENTION_BATCH_SIZE` Einträge je Art.
 
 ---
 
@@ -265,7 +317,10 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `RECOMMENDATION_*` | siehe `.env.example` | Schwellen der Empfehlungen |
 | `ARCHIVE_MAX_*` | 20 MB, 50 MB, 50 Dateien | Grenzen für Anhänge und Archive |
 | `SETUP_OPEN_PATHS` | `/static,/api,/health,…` | Pfade, die während der Ersteinrichtung offen bleiben |
-| `MAIL_SMTP_*`, `MAIL_FROM` | Versand aus | SMTP-Server für Alarme und Wochenbericht |
+| `MAIL_BACKEND` | `smtp` | Weg für ausgehende Mails: `smtp` oder `postal` |
+| `MAIL_SMTP_*`, `MAIL_FROM` | Versand aus | SMTP-Server und Absender für Alarme und Wochenbericht |
+| `POSTAL_API_URL`, `POSTAL_API_KEY`, `POSTAL_MESSAGE_TAG` | leer, leer, `dmarc-analyzer` | Versand über die Postal-API |
+| `FAILURE_REPORTS_ENABLED`, `FAILURE_REPORT_*` | an, 30 Tage, Kopfzeilen bis 64 KB | Fehlerberichte |
 | `DIGEST_*` | montags, 8 Uhr, 7 Tage | Termin und Inhalt des Wochenberichts |
 | `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
 | `NOTIFICATION_*`, `NTFY_DEFAULT_URL` | 3 Versuche, `https://ntfy.sh` | Wiederholungen und Zeitlimits der Benachrichtigungen |
@@ -338,6 +393,7 @@ curl -H "Authorization: Bearer <token>" https://dmarc.example.com/api/v1/reports
 | POST | `/api/v1/domains` | Domain anlegen, liefert ihre Empfangsadresse für `rua` (ab Rolle Manager) |
 | GET | `/api/v1/domains/{id}/stats` | Kennzahlen einer Domain |
 | GET | `/api/v1/reports` | Berichte mit Format (`report_format`, `format_evidence`) und Policy |
+| GET | `/api/v1/failure-reports` | Fehlerberichte ohne die Kopfzeilen der gemeldeten Mail |
 | GET | `/api/v1/source-ips` | Versandquellen |
 | GET | `/api/v1/alerts/events` | Alarme |
 | POST | `/api/v1/alerts/events/{id}/acknowledge` | Alarm bestätigen |

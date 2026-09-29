@@ -3,6 +3,7 @@ Retention: removes data older than the limits of each organisation and the serve
 
 - DMARC reports with their records, import jobs with their files and received mails after the
   report_retention_days of the organisation,
+- failure reports after FAILURE_REPORT_RETENTION_DAYS, or earlier when the organisation keeps reports shorter,
 - stored raw mails after SMTP_INBOUND_RAW_RETENTION_DAYS,
 - rejected delivery attempts after SMTP_REJECTION_RETENTION_DAYS,
 - login attempts after LOGIN_ATTEMPT_RETENTION_DAYS.
@@ -22,6 +23,7 @@ from app.config import settings
 from app.models import (
     AlertEvent,
     DmarcAuthResult,
+    DmarcFailureReport,
     DmarcRecord,
     DmarcReport,
     ImportError,
@@ -42,6 +44,7 @@ NO_SYNC = {"synchronize_session": False}
 @dataclass
 class RetentionResult:
     reports: int = 0
+    failure_reports: int = 0
     import_jobs: int = 0
     messages: int = 0
     raw_mails: int = 0
@@ -114,10 +117,22 @@ def _purge_messages(db: Session, org: Organization, cutoff: datetime, limit: int
                .execution_options(**NO_SYNC))
     db.execute(update(AlertEvent).where(AlertEvent.smtp_message_id.in_(ids)).values(smtp_message_id=None)
                .execution_options(**NO_SYNC))
+    db.execute(update(DmarcFailureReport).where(DmarcFailureReport.smtp_message_id.in_(ids))
+               .values(smtp_message_id=None).execution_options(**NO_SYNC))
     db.execute(delete(InboundMailAttachment).where(InboundMailAttachment.message_id.in_(ids))
                .execution_options(**NO_SYNC))
     db.execute(delete(SmtpInboundMessage).where(SmtpInboundMessage.id.in_(ids)).execution_options(**NO_SYNC))
     return len(ids), files
+
+
+def _purge_failure_reports(db: Session, org: Organization, now: datetime, limit: int) -> int:
+    days = min(org.report_retention_days, settings.FAILURE_REPORT_RETENTION_DAYS)
+    ids = [rid for (rid,) in db.query(DmarcFailureReport.id).filter(
+        DmarcFailureReport.organization_id == org.id, DmarcFailureReport.created_at < now - timedelta(days=days),
+    ).order_by(DmarcFailureReport.created_at).limit(limit)]
+    if ids:
+        db.execute(delete(DmarcFailureReport).where(DmarcFailureReport.id.in_(ids)).execution_options(**NO_SYNC))
+    return len(ids)
 
 
 def _purge_raw_mails(db: Session, now: datetime, limit: int) -> int:
@@ -151,6 +166,7 @@ def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
     for org in db.query(Organization).order_by(Organization.name).all():
         cutoff = now - timedelta(days=org.report_retention_days)
         result.reports += _purge_reports(db, org, cutoff, limit)
+        result.failure_reports += _purge_failure_reports(db, org, now, limit)
         jobs, job_files = _purge_import_jobs(db, org, cutoff, limit)
         messages, mail_files = _purge_messages(db, org, cutoff, limit)
         result.import_jobs += jobs

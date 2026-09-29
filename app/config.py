@@ -93,6 +93,24 @@ class Settings(BaseSettings):
     # Raw mail storage (when STORE_RAW=true)
     RAW_MAIL_DIR: str = "./raw_mail"
 
+    # Failure reports (ruf): one report per mail that failed, in the Abuse Reporting Format
+    FAILURE_REPORTS_ENABLED: bool = Field(
+        True, description="Fehlerberichte (ruf) erkennen und speichern. Aus: Die Anwendung vermerkt solche Mails "
+                          "wie jede Mail ohne Sammelbericht.",
+    )
+    FAILURE_REPORT_RETENTION_DAYS: int = Field(
+        30, ge=1, le=3650, description="Tage, die Fehlerberichte aufbewahrt werden. Bewahrt die Organisation "
+                                       "Berichte kürzer auf, gilt ihre Frist.",
+    )
+    FAILURE_REPORT_STORE_HEADERS: bool = Field(
+        True, description="Kopfzeilen der gemeldeten Mail speichern: Absender, Empfänger, Betreff und beteiligte "
+                          "Mailserver. Den Inhalt der Mail speichert die Anwendung nie.",
+    )
+    FAILURE_REPORT_MAX_HEADER_BYTES: int = Field(
+        65_536, ge=1024, le=1_048_576,
+        description="Höchstgröße der gespeicherten Kopfzeilen in Bytes; was darüber hinausgeht, wird abgeschnitten.",
+    )
+
     # Scheduler in the web process
     SCHEDULER_ENABLED: bool = Field(
         True, description="Zeitplaner für Alarme, Benachrichtigungen, Aufräumen und Wochenbericht einschalten.",
@@ -173,6 +191,18 @@ class Settings(BaseSettings):
     )
 
     # Outgoing mail for alerts and the weekly digest
+    MAIL_BACKEND: Literal["smtp", "postal"] = Field(
+        "smtp", description="Weg für ausgehende Mails: smtp über MAIL_SMTP_HOST oder postal über die HTTP-API eines "
+                            "Postal-Servers (POSTAL_API_URL, POSTAL_API_KEY).",
+    )
+    POSTAL_API_URL: str = Field(
+        "", description="Adresse des Postal-Servers für die API, etwa https://postal.example.com.",
+    )
+    POSTAL_API_KEY: str = Field("", description="API-Schlüssel eines Mailservers in Postal (Zugang vom Typ API).")
+    POSTAL_MESSAGE_TAG: str = Field(
+        "dmarc-analyzer", max_length=100,
+        description="Kennzeichen der Mails in Postal, damit sie sich dort filtern lassen; leer für keins.",
+    )
     MAIL_SMTP_HOST: str = Field(
         "", description="SMTP-Server für ausgehende Mails. Leer lassen schaltet den Mailversand aus.",
     )
@@ -447,6 +477,14 @@ class Settings(BaseSettings):
             raise ValueError("muss mit http:// oder https:// beginnen, etwa https://ntfy.sh")
         return value.rstrip("/")
 
+    @field_validator("POSTAL_API_URL")
+    @classmethod
+    def _postal_url(cls, value: str) -> str:
+        value = value.strip()
+        if value and not value.startswith(("http://", "https://")):
+            raise ValueError("muss mit http:// oder https:// beginnen, etwa https://postal.example.com")
+        return value.rstrip("/")
+
     @model_validator(mode="after")
     def _rate_order(self):
         if self.UI_PASS_RATE_WARN > self.UI_PASS_RATE_GOOD:
@@ -504,6 +542,7 @@ _VALIDATION_MESSAGES = {
     "float_parsing": "muss eine Zahl sein",
     "bool_parsing": "muss true oder false sein",
     "literal_error": "muss einer dieser Werte sein: {expected}",
+    "string_too_long": "darf höchstens {max_length} Zeichen lang sein",
 }
 _VALIDATION_PREFIX = "Value error, "
 
