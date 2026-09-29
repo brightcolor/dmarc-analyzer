@@ -97,6 +97,61 @@
 </section>
 {% endif %}
 
+<section class="bc-panel" id="empfaenger" aria-labelledby="empfaenger-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="empfaenger-titel">Weitere Empfänger</h2><span class="app-quiet app-small">{{ recipients | length }} von {{ recipients_max }}</span></div>
+  <div class="bc-panel__body">
+    <p style="margin:0">Diese Adressen bekommen die Alarme von {{ domain.name }} und einen eigenen Wochenbericht nur für diese Domain, zusätzlich zu den <a href="/alerts/channels">Kanälen</a> und dem <a href="/alerts/digest">Wochenbericht</a> der Organisation. Alarme entstehen aus den <a href="/alerts/rules">Regeln</a>.</p>
+    {% if not mail_ready %}<p class="app-small" style="margin:8px 0 0"><strong>Der Mailversand ist nicht eingerichtet.</strong> Bis dahin wartet jede Mail an diese Adressen.</p>{% endif %}
+  </div>
+  {% if recipients %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Adresse</th><th>Bekommt</th><th>Letzter Wochenbericht</th>{% if can.manager %}<th><span class="bc-sr">Entfernen</span></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for r in recipients %}
+        <tr>
+          <td class="app-break">{{ r.email }}{% if r.name %}<br><span class="app-quiet app-small">{{ r.name }}</span>{% endif %}</td>
+          <td>
+            {% if can.manager %}
+            <form class="app-inline" method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}" aria-label="Was {{ r.email }} bekommt">
+              <label class="app-inline"><input type="checkbox" name="alerts" value="1"{% if r.alerts %} checked{% endif %}> Alarme</label>
+              <label class="app-inline"><input type="checkbox" name="digest" value="1"{% if r.digest %} checked{% endif %}> Wochenbericht</label>
+              <button class="bc-button bc-button--secondary" type="submit">Speichern</button>
+            </form>
+            {% else %}
+            {% if r.alerts %}{{ ui.state('Alarme', 'bc-state--on') }} {% endif %}{% if r.digest %}{{ ui.state('Wochenbericht', 'bc-state--on') }}{% endif %}
+            {% endif %}
+          </td>
+          <td class="app-nowrap">{% if r.digest_last_sent_at %}{{ r.digest_last_sent_at | datetime }}{% else %}<span class="app-quiet">noch keiner</span>{% endif %}</td>
+          {% if can.manager %}
+          <td><form method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}/delete" data-confirm="{{ r.email }} entfernen? Die Adresse bekommt dann nichts mehr für {{ domain.name }}."><button class="bc-button bc-button--danger" type="submit">Entfernen</button></form></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if can.manager and recipients | length < recipients_max %}
+  <form method="post" action="/domains/{{ domain.id }}/recipients">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="r-email">E-Mail-Adresse</label>
+        <input class="bc-input" id="r-email" type="email" name="email" required maxlength="320" placeholder="name@example.com" autocomplete="off">
+        <label for="r-name">Name</label>
+        <input class="bc-input" id="r-name" type="text" name="name" maxlength="200" placeholder="für die Anrede, kann leer bleiben" autocomplete="off">
+        <span class="bc-formgrid__label">Bekommt</span>
+        <div class="app-inline">
+          <label class="app-inline"><input type="checkbox" name="alerts" value="1" checked> Alarme</label>
+          <label class="app-inline"><input type="checkbox" name="digest" value="1" checked> Wochenbericht</label>
+        </div>
+      </div>
+    </div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Empfänger eintragen</button></div>
+  </form>
+  {% endif %}
+</section>
+
 <section class="bc-panel" aria-labelledby="verlauf-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="verlauf-titel">Verlauf</h2><span class="app-quiet app-small">Tage in UTC, nach Berichtszeitraum</span></div>
   <div class="bc-panel__body">

@@ -93,10 +93,18 @@ class Settings(BaseSettings):
     # Raw mail storage (when STORE_RAW=true)
     RAW_MAIL_DIR: str = "./raw_mail"
 
+    # Further recipients per domain for its alerts and weekly digest
+    DOMAIN_RECIPIENTS_MAX: int = Field(
+        20, ge=1, le=500, description="Höchstzahl weiterer Empfänger je Domain für Alarme und Wochenbericht.",
+    )
+
     # Failure reports (ruf): one report per mail that failed, in the Abuse Reporting Format
     FAILURE_REPORTS_ENABLED: bool = Field(
         True, description="Fehlerberichte (ruf) erkennen und speichern. Aus: Die Anwendung vermerkt solche Mails "
                           "wie jede Mail ohne Sammelbericht.",
+    )
+    DMARC_SUGGEST_FAILURE_REPORTS: bool = Field(
+        True, description="Der vorgeschlagene DNS-Eintrag einer Domain bittet mit ruf und fo=1 um Fehlerberichte.",
     )
     FAILURE_REPORT_RETENTION_DAYS: int = Field(
         30, ge=1, le=3650, description="Tage, die Fehlerberichte aufbewahrt werden. Bewahrt die Organisation "

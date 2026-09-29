@@ -7,6 +7,7 @@ from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.base import Base  # noqa: F401
 from app.models.dmarc_report import DmarcAuthResult, DmarcRecord, DmarcReport  # noqa: F401
 from app.models.domain import Domain  # noqa: F401
+from app.models.domain_recipient import DomainRecipient  # noqa: F401
 from app.models.failure_report import DmarcFailureReport  # noqa: F401
 from app.models.import_job import ImportError, ImportJob  # noqa: F401
 from app.models.inbound_mail_address import InboundMailAddress  # noqa: F401

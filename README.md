@@ -30,6 +30,8 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
   ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
 - **Mailversand** über einen SMTP-Server oder die HTTP-API von Postal, auch von Hosts, deren Anbieter
   ausgehenden Port 25 sperrt.
+- **Weitere Empfänger je Domain** für ihre Alarme und einen eigenen Wochenbericht, der nur diese
+  Domain zeigt, etwa für Agenturen oder Kunden.
 - **Wochenbericht** per Mail mit Bestehensquote, Quellen mit Fehlern, neuen Quellen, offenen Alarmen
   und Empfehlungen.
 - **Aufräumen nach Frist**: alte Berichte, Importe, Rohmails und abgelehnte Zustellversuche verschwinden
@@ -94,7 +96,8 @@ docker compose exec web python -m app.org_limits <kennung> --max-domains 500
    ```
 
    Für Fehlerberichte kommt dieselbe Adresse zusätzlich in `ruf`, dazu `fo=1`, damit Empfänger schon
-   melden, wenn SPF oder DKIM scheitert:
+   melden, wenn SPF oder DKIM scheitert. Der Vorschlag auf der Domainseite enthält beides, solange
+   `DMARC_SUGGEST_FAILURE_REPORTS` und `FAILURE_REPORTS_ENABLED` an sind:
 
    ```
    _dmarc.example.com.  TXT  "v=DMARC1; p=none; rua=mailto:dom-example-com-abc123@reports.example.com; ruf=mailto:dom-example-com-abc123@reports.example.com; fo=1"
@@ -251,6 +254,21 @@ Unter **Alarme → Wochenbericht** siehst du den nächsten Termin, kannst die Ma
 sie sofort verschicken und Empfänger eintragen. Ohne Eintrag geht sie an alle Administratoren der
 Organisation; jede Person bekommt eine eigene Mail.
 
+### Weitere Empfänger je Domain
+
+Auf der Seite einer Domain trägt ein Manager unter **Weitere Empfänger** Adressen ein, die zusätzlich zu
+den Kanälen und Empfängern der Organisation etwas bekommen, je Adresse wählbar:
+
+- **Alarme**: jeder Alarm, der diese Domain betrifft, als eigene Mail. Alarme ohne Domain, etwa ein
+  fehlgeschlagener Import, gehen nur an die Kanäle der Organisation.
+- **Wochenbericht**: ein eigener Bericht zum selben Termin, der nur die Domains dieser Adresse zeigt.
+  Steht eine Adresse bei mehreren Domains, bekommt sie eine Mail für alle zusammen. Der Schalter auf der
+  Seite **Wochenbericht** gilt nur für die Empfänger der Organisation; eine neu eingetragene Adresse
+  bekommt ihren ersten Bericht zum nächsten Termin.
+
+Höchstens `DOMAIN_RECIPIENTS_MAX` Adressen je Domain (Vorgabe 20). Die Mails nennen den Grund, und wie
+man sich austragen lässt. Eintragen, Ändern und Entfernen stehen im Audit-Log.
+
 ### Mailversand einrichten
 
 E-Mail-Kanäle und der Wochenbericht brauchen einen Weg für ausgehende Mails: einen SMTP-Server oder
@@ -321,6 +339,8 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `MAIL_SMTP_*`, `MAIL_FROM` | Versand aus | SMTP-Server und Absender für Alarme und Wochenbericht |
 | `POSTAL_API_URL`, `POSTAL_API_KEY`, `POSTAL_MESSAGE_TAG` | leer, leer, `dmarc-analyzer` | Versand über die Postal-API |
 | `FAILURE_REPORTS_ENABLED`, `FAILURE_REPORT_*` | an, 30 Tage, Kopfzeilen bis 64 KB | Fehlerberichte |
+| `DMARC_SUGGEST_FAILURE_REPORTS` | an | DNS-Vorschlag mit `ruf` und `fo=1` |
+| `DOMAIN_RECIPIENTS_MAX` | 20 | weitere Empfänger je Domain |
 | `DIGEST_*` | montags, 8 Uhr, 7 Tage | Termin und Inhalt des Wochenberichts |
 | `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
 | `NOTIFICATION_*`, `NTFY_DEFAULT_URL` | 3 Versuche, `https://ntfy.sh` | Wiederholungen und Zeitlimits der Benachrichtigungen |

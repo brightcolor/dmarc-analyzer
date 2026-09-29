@@ -58,8 +58,9 @@ def _render(name: str, context: dict) -> tuple[str, str]:
     return env.get_template(f"{name}.txt").render(context), env.get_template(f"{name}.html").render(context)
 
 
-def render_alert_mail(event, channel) -> tuple[str, str, str]:
-    """Subject, text and HTML for one alert event sent over an email channel."""
+def render_alert_mail(event, channel, recipient: str | None = None) -> tuple[str, str, str]:
+    """Subject, text and HTML for one alert event, sent over an email channel or to a further recipient
+    of the event's domain (channel None)."""
     from app.services.alert_service import ALERT_TYPES
     from app.services.notification import event_url
 
@@ -79,6 +80,8 @@ def render_alert_mail(event, channel) -> tuple[str, str, str]:
         **_common(),
         "event": event,
         "channel": channel,
+        "recipient": recipient,
+        "domain_url": f"{_app_url()}/domains/{event.domain_id}" if event.domain_id else _app_url(),
         "organization": event.organization or channel.organization,
         "rule": event.rule,
         "is_test": event.alert_type == TEST_ALERT_TYPE,
@@ -116,15 +119,17 @@ def _change_text(data) -> str:
 def render_digest_mail(data, recipient) -> tuple[str, str, str]:
     """Subject, text and HTML of the weekly digest for one recipient."""
     org = data.organization
+    title = ", ".join(data.scope) if data.scope else org.name
     if data.total:
-        subject = f"DMARC-Wochenbericht {org.name}: {_format_percent(data.rate)} bestanden"
+        subject = f"DMARC-Wochenbericht {title}: {_format_percent(data.rate)} bestanden"
     else:
-        subject = f"DMARC-Wochenbericht {org.name}: keine Berichte eingegangen"
+        subject = f"DMARC-Wochenbericht {title}: keine Berichte eingegangen"
     context = {
         **_common(),
         "data": data,
         "organization": org,
         "recipient": recipient,
+        "title": title,
         "period_text": f"{_format_date(data.start)} bis {_format_date(data.end)}",
         "change_text": _change_text(data),
         "summary_rows": [

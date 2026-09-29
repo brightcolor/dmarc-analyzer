@@ -4,8 +4,12 @@ Weekly digest: the DMARC results of one organisation over the last DIGEST_PERIOD
 The scheduler looks every DIGEST_CHECK_INTERVAL_SECONDS for organisations whose digest is due:
 once a week on DIGEST_WEEKDAY from DIGEST_HOUR in DISPLAY_TIMEZONE. The period counts the reports
 that arrived in it (import time), the same basis the dashboard uses for recent activity.
+
+Further recipients of a domain get their own digest at the same time, limited to their domains: one mail
+per address, covering every domain the address is entered for.
 """
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -19,6 +23,7 @@ from app.models import (
     DmarcRecord,
     DmarcReport,
     Domain,
+    DomainRecipient,
     Organization,
     OrganizationMembership,
     SourceIp,
@@ -52,6 +57,7 @@ class Recipient:
     address: str
     name: str | None = None
     listed: bool = False  # True: entered as digest recipient, False: administrator of the organisation
+    domains: list[str] | None = None  # further recipient of these domains; the digest covers only them
 
 
 @dataclass
@@ -99,6 +105,7 @@ class DigestData:
     open_alert_count: int = 0
     open_alerts: list[AlertEvent] = field(default_factory=list)
     advice: list[Advice] = field(default_factory=list)
+    scope: list[str] = field(default_factory=list)  # domain names; empty for the whole organisation
 
     @property
     def passed(self) -> int:
@@ -137,34 +144,41 @@ def _failed_sum():
     return func.coalesce(func.sum(case((DmarcRecord.dmarc_pass, 0), else_=DmarcRecord.count)), 0)
 
 
-def _period_records(db: Session, org_id: str, start: datetime, end: datetime, *columns):
-    return (
+def _period_records(db: Session, org_id: str, start: datetime, end: datetime, *columns,
+                    domain_ids: list[str] | None = None):
+    query = (
         db.query(*columns)
         .select_from(DmarcRecord)
         .join(DmarcReport, DmarcRecord.report_id == DmarcReport.id)
         .filter(DmarcReport.organization_id == org_id, DmarcReport.created_at >= start, DmarcReport.created_at < end)
     )
+    return query.filter(DmarcReport.domain_id.in_(domain_ids)) if domain_ids is not None else query
 
 
-def _totals(db: Session, org_id: str, start: datetime, end: datetime) -> tuple[int, int]:
+def _totals(db: Session, org_id: str, start: datetime, end: datetime,
+            domain_ids: list[str] | None = None) -> tuple[int, int]:
     total, failed = _period_records(
-        db, org_id, start, end, func.coalesce(func.sum(DmarcRecord.count), 0), _failed_sum()
+        db, org_id, start, end, func.coalesce(func.sum(DmarcRecord.count), 0), _failed_sum(), domain_ids=domain_ids,
     ).one()
     return int(total), int(failed)
 
 
-def build_digest(db: Session, org: Organization, end: datetime | None = None) -> DigestData:
-    """Collect the numbers for the digest of the period that ends at end."""
+def build_digest(db: Session, org: Organization, end: datetime | None = None,
+                 domain_ids: list[str] | None = None) -> DigestData:
+    """Collect the numbers for the digest of the period that ends at end; domain_ids limits it to those domains."""
     end = end or utcnow()
     length = timedelta(days=settings.DIGEST_PERIOD_DAYS)
     start = end - length
     limit = settings.DIGEST_LIST_LIMIT
     data = DigestData(organization=org, start=start, end=end)
+    scoped = domain_ids is not None
 
-    data.total, data.failed = _totals(db, org.id, start, end)
-    data.previous_total, data.previous_failed = _totals(db, org.id, start - length, start)
+    data.total, data.failed = _totals(db, org.id, start, end, domain_ids)
+    data.previous_total, data.previous_failed = _totals(db, org.id, start - length, start, domain_ids)
 
     in_period = (DmarcReport.organization_id == org.id, DmarcReport.created_at >= start, DmarcReport.created_at < end)
+    if scoped:
+        in_period = (*in_period, DmarcReport.domain_id.in_(domain_ids))
     data.reports, data.reporters = db.query(
         func.count(DmarcReport.id), func.count(func.distinct(DmarcReport.reporting_org))
     ).filter(*in_period).one()
@@ -177,17 +191,24 @@ def build_digest(db: Session, org: Organization, end: datetime | None = None) ->
     per_domain = {
         domain_id: (int(total or 0), int(failed or 0))
         for domain_id, total, failed in _period_records(
-            db, org.id, start, end, DmarcReport.domain_id, func.sum(DmarcRecord.count), _failed_sum()
+            db, org.id, start, end, DmarcReport.domain_id, func.sum(DmarcRecord.count), _failed_sum(),
+            domain_ids=domain_ids,
         ).group_by(DmarcReport.domain_id).all()
     }
-    domains = db.query(Domain).filter_by(organization_id=org.id, is_active=True).order_by(Domain.name).all()
+    domain_query = db.query(Domain).filter_by(organization_id=org.id, is_active=True)
+    if scoped:
+        domain_query = domain_query.filter(Domain.id.in_(domain_ids))
+    domains = domain_query.order_by(Domain.name).all()
+    if scoped:
+        data.scope = [d.name for d in domains]
     data.domains = sorted(
         (DomainLine(d.name, *per_domain.get(d.id, (0, 0))) for d in domains), key=lambda line: -line.total
     )
 
     failed_sum = _failed_sum()
     source_rows = (
-        _period_records(db, org.id, start, end, DmarcRecord.source_ip, func.sum(DmarcRecord.count), failed_sum)
+        _period_records(db, org.id, start, end, DmarcRecord.source_ip, func.sum(DmarcRecord.count), failed_sum,
+                        domain_ids=domain_ids)
         .group_by(DmarcRecord.source_ip)
         .having(failed_sum > 0)
         .order_by(failed_sum.desc(), DmarcRecord.source_ip)
@@ -209,6 +230,10 @@ def build_digest(db: Session, org: Organization, end: datetime | None = None) ->
     new_query = db.query(SourceIp).filter(
         SourceIp.organization_id == org.id, SourceIp.first_seen_at >= start, SourceIp.first_seen_at < end
     )
+    if scoped:
+        # Sources are kept per organisation; count those that sent for these domains in the period
+        seen = _period_records(db, org.id, start, end, DmarcRecord.source_ip, domain_ids=domain_ids).distinct()
+        new_query = new_query.filter(SourceIp.ip_address.in_(seen.scalar_subquery()))
     data.new_source_count = new_query.count()
     data.new_sources = [
         SourceLine(s.ip_address, _source_name(s), s.total_messages, s.fail_count, s.classification)
@@ -216,6 +241,8 @@ def build_digest(db: Session, org: Organization, end: datetime | None = None) ->
     ]
 
     open_alerts = db.query(AlertEvent).filter_by(organization_id=org.id, status="open")
+    if scoped:
+        open_alerts = open_alerts.filter(AlertEvent.domain_id.in_(domain_ids))
     data.open_alert_count = open_alerts.count()
     data.open_alerts = open_alerts.order_by(AlertEvent.created_at.desc()).limit(limit).all()
 
@@ -290,6 +317,52 @@ def digest_due(org: Organization, now: datetime) -> bool:
     return reference is None or _as_utc(reference) < last_slot(now)
 
 
+def domain_digest_groups(db: Session, org: Organization) -> dict[str, list[DomainRecipient]]:
+    """Further recipients with the weekly digest switched on, grouped by address; only active domains."""
+    rows = (
+        db.query(DomainRecipient)
+        .join(Domain, Domain.id == DomainRecipient.domain_id)
+        .filter(DomainRecipient.organization_id == org.id, DomainRecipient.digest.is_(True),
+                Domain.is_active.is_(True))
+        .order_by(DomainRecipient.email)
+        .all()
+    )
+    groups: dict[str, list[DomainRecipient]] = defaultdict(list)
+    for row in rows:
+        groups[row.email].append(row)
+    return dict(groups)
+
+
+def domain_digest_due(rows: list[DomainRecipient], now: datetime) -> bool:
+    slot = last_slot(now)
+    for row in rows:
+        reference = row.digest_last_sent_at or row.created_at
+        if reference is None or _as_utc(reference) < slot:
+            return True
+    return False
+
+
+def send_domain_digest(db: Session, org: Organization, rows: list[DomainRecipient],
+                       now: datetime | None = None) -> None:
+    """The digest of the given domains to one further recipient. Raises DigestError."""
+    from app.services.mail_render import render_digest_mail
+
+    now = now or utcnow()
+    if not mail_configured():
+        raise DigestError(not_configured_reason())
+    data = build_digest(db, org, now, domain_ids=[row.domain_id for row in rows])
+    recipient = Recipient(rows[0].email, next((row.name for row in rows if row.name), None), listed=True,
+                          domains=data.scope)
+    subject, text, html = render_digest_mail(data, recipient)
+    try:
+        send_mail([recipient.address], subject, text, html)
+    except (MailDeliveryError, MailNotConfigured) as exc:
+        raise DigestError(f"Der Wochenbericht an {recipient.address} ging nicht raus: {exc}") from exc
+    for row in rows:
+        row.digest_last_sent_at = now
+    logger.info("Weekly digest for %s sent to a further recipient of %d domains", org.slug, len(rows))
+
+
 # Sending --------------------------------------------------------------------------------
 
 def send_digest(db: Session, org: Organization, now: datetime | None = None,
@@ -330,18 +403,28 @@ def send_due_digests(db: Session, now: datetime | None = None) -> int:
         logger.debug("Mail delivery not configured, weekly digests wait")
         return 0
     sent = 0
-    orgs = db.query(Organization).filter_by(is_active=True, digest_enabled=True).order_by(Organization.name).all()
+    orgs = db.query(Organization).filter_by(is_active=True).order_by(Organization.name).all()
     for org in orgs:
-        if not digest_due(org, now):
-            continue
         if not db.query(Domain.id).filter_by(organization_id=org.id).first():
             continue
-        try:
-            send_digest(db, org, now)
-        except DigestError as exc:
-            db.rollback()
-            logger.warning("Weekly digest for %s not sent: %s", org.slug, exc)
-            continue
-        db.commit()
-        sent += 1
+        if digest_due(org, now):
+            try:
+                send_digest(db, org, now)
+            except DigestError as exc:
+                db.rollback()
+                logger.warning("Weekly digest for %s not sent: %s", org.slug, exc)
+            else:
+                db.commit()
+                sent += 1
+        # Further recipients of single domains follow their own switch, also when the organisation's is off
+        for rows in domain_digest_groups(db, org).values():
+            if not domain_digest_due(rows, now):
+                continue
+            try:
+                send_domain_digest(db, org, rows, now)
+            except DigestError as exc:
+                db.rollback()
+                logger.warning("Weekly digest for %s not sent: %s", org.slug, exc)
+                continue
+            db.commit()
     return sent

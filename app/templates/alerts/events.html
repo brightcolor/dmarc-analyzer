@@ -34,7 +34,7 @@
           <td>
             <strong>{{ e.title }}</strong>{% if e.description %}<br><span class="app-small app-quiet">{{ e.description }}</span>{% endif %}
             {% for d in e.deliveries %}
-            <span class="app-reason">{{ d.channel.name if d.channel else 'Gelöschter Kanal' }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>
+            <span class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>
             {% endfor %}
           </td>
           <td>{{ ui.state(e.severity | severity_text, e.severity | severity_state) }}</td>

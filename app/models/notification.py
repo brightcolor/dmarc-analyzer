@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,9 +37,11 @@ class NotificationDelivery(Base):
     alert_event_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("alert_events.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    channel_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("notification_channels.id", ondelete="CASCADE"), nullable=False
+    # Either a channel or a single address (a further recipient of the event's domain)
+    channel_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("notification_channels.id", ondelete="CASCADE"), nullable=True
     )
+    recipient: Mapped[str | None] = mapped_column(String(320), nullable=True)
     # pending, sent, failed, skipped
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -48,4 +51,4 @@ class NotificationDelivery(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
     alert_event: Mapped["AlertEvent"] = relationship("AlertEvent", back_populates="deliveries")
-    channel: Mapped["NotificationChannel"] = relationship("NotificationChannel", back_populates="deliveries")
+    channel: Mapped[Optional["NotificationChannel"]] = relationship("NotificationChannel", back_populates="deliveries")

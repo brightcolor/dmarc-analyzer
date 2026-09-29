@@ -2,13 +2,13 @@
 {% import "_parts.html" as m %}
 {% set eyebrow_text = "Wochenbericht · " ~ period_text %}
 {% set square_color = "#1dc3f3" %}
-{% block title %}DMARC-Wochenbericht {{ organization.name }}{% endblock %}
+{% block title %}DMARC-Wochenbericht {{ title }}{% endblock %}
 {% block aria_label %}Wochenbericht{% endblock %}
 {% block preheader %}{% if data.total %}{{ data.rate | percent }} der Nachrichten bestehen DMARC. {{ change_text }}{% else %}In diesem Zeitraum kam kein DMARC-Bericht an.{% endif %}{% endblock %}
 {% block heading %}Deine DMARC-Woche{% endblock %}
 {% block intro %}
       {% call m.p(margin="24px 0 0") %}Hallo{% if recipient.name %} {{ recipient.name }}{% endif %},{% endcall %}
-      {% call m.p() %}hier ist der Überblick über die DMARC-Berichte, die vom {{ period_text }} für {{ organization.name }} eingegangen sind.{% endcall %}
+      {% call m.p() %}hier ist der Überblick über die DMARC-Berichte, die vom {{ period_text }} für {{ title }} eingegangen sind.{% endcall %}
 {% endblock %}
 {% block content %}
   <tr>
@@ -81,4 +81,4 @@
   {% endcall %}
   {% endif %}
 {% endblock %}
-{% block reason %}{% if recipient.listed %}Du bekommst diese Mail, weil deine Adresse als Empfänger des Wochenberichts von {{ organization.name }} eingetragen ist.{% else %}Du bekommst diese Mail, weil du Administrator von {{ organization.name }} bist.{% endif %} Einstellen oder abschalten kannst du den Wochenbericht unter {{ m.link(app_url ~ "/alerts/digest", "Alarme → Wochenbericht") }}.{% endblock %}
+{% block reason %}{% if recipient.domains %}Du bekommst diese Mail, weil deine Adresse bei {{ recipient.domains | join(", ") }} als Empfänger des Wochenberichts eingetragen ist. Austragen kann dich ein Manager von {{ organization.name }} auf der Seite der Domain.{% else %}{% if recipient.listed %}Du bekommst diese Mail, weil deine Adresse als Empfänger des Wochenberichts von {{ organization.name }} eingetragen ist.{% else %}Du bekommst diese Mail, weil du Administrator von {{ organization.name }} bist.{% endif %} Einstellen oder abschalten kannst du den Wochenbericht unter {{ m.link(app_url ~ "/alerts/digest", "Alarme → Wochenbericht") }}.{% endif %}{% endblock %}

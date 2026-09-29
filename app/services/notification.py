@@ -263,6 +263,14 @@ def send_event(event: AlertEvent, channel: NotificationChannel) -> None:
         raise ChannelError(f"Die Kanalart {channel.channel_type!r} kennt die Anwendung nicht. Lege den Kanal neu an.")
 
 
+def send_event_to_address(event: AlertEvent, address: str) -> None:
+    """Send one event by mail to a further recipient of its domain."""
+    from app.services.mail_render import render_alert_mail
+
+    subject, text, html = render_alert_mail(event, None, recipient=address)
+    send_mail([address], subject, text, html)
+
+
 def test_event(channel: NotificationChannel) -> AlertEvent:
     """Unsaved event for the test button of a channel."""
     event = AlertEvent(
@@ -306,15 +314,27 @@ def dispatch_pending(db: Session, now: datetime | None = None) -> dict[str, int]
         .limit(settings.NOTIFICATION_BATCH_SIZE)
         .all()
     )
+    from app.services.domain_recipients import still_wants_alerts
+
     for delivery in deliveries:
-        channel = delivery.channel
-        if channel is None or not channel.is_active:
+        event, channel = delivery.alert_event, delivery.channel
+        if delivery.channel_id is None:
+            if not delivery.recipient or not still_wants_alerts(db, event.domain_id, delivery.recipient):
+                delivery.status = "skipped"
+                delivery.error_message = ("Die Adresse bekommt die Alarme dieser Domain nicht mehr. Die "
+                                          "Benachrichtigung wurde nicht verschickt.")
+                counts["skipped"] += 1
+                continue
+        elif channel is None or not channel.is_active:
             delivery.status = "skipped"
             delivery.error_message = "Der Kanal ist ausgeschaltet. Die Benachrichtigung wurde nicht verschickt."
             counts["skipped"] += 1
             continue
         try:
-            send_event(delivery.alert_event, channel)
+            if channel is None:
+                send_event_to_address(event, delivery.recipient)
+            else:
+                send_event(event, channel)
         except (ChannelError, MailNotConfigured, MailDeliveryError) as exc:
             _mark_failed(delivery, str(exc), now)
             counts["failed"] += 1

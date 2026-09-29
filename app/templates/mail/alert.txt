@@ -29,6 +29,6 @@ Viele Grüße
 {{ "-- " }}
 {% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
 {{ app_name }} · {{ organization.name }}
-Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Kanäle verwaltest du unter Alarme → Kanäle: {{ app_url }}/alerts/channels
+{% if channel %}Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Kanäle verwaltest du unter Alarme → Kanäle: {{ app_url }}/alerts/channels{% else %}Du bekommst diese Mail, weil deine Adresse bei {{ event.domain.name }} als Empfänger für Alarme eingetragen ist. Austragen kann dich ein Manager von {{ organization.name }} auf der Seite der Domain: {{ domain_url }}{% endif %}
 {% endfilter %}
 

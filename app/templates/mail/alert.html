@@ -30,4 +30,4 @@
     </td>
   </tr>
 {% endblock %}
-{% block reason %}Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Kanäle verwaltest du unter {{ m.link(app_url ~ "/alerts/channels", "Alarme → Kanäle") }}.{% endblock %}
+{% block reason %}{% if channel %}Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Kanäle verwaltest du unter {{ m.link(app_url ~ "/alerts/channels", "Alarme → Kanäle") }}.{% else %}Du bekommst diese Mail, weil deine Adresse bei {{ event.domain.name }} als Empfänger für Alarme eingetragen ist. Austragen kann dich ein Manager von {{ organization.name }} auf der {{ m.link(domain_url, "Seite der Domain") }}.{% endif %}{% endblock %}

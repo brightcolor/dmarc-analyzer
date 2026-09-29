@@ -2,7 +2,8 @@
 Alert evaluation service.
 
 Rules are checked after each import and periodically by the scheduler. Every event queues one
-notification per channel; the scheduler sends them. Evaluation never blocks SMTP or imports.
+notification per channel and per further recipient of its domain; the scheduler sends them.
+Evaluation never blocks SMTP or imports.
 """
 import json
 import logging
@@ -27,6 +28,7 @@ from app.models import (
     SourceIp,
 )
 from app.security import utcnow
+from app.services.domain_recipients import alert_addresses
 
 logger = logging.getLogger(__name__)
 
@@ -502,7 +504,7 @@ def raise_event(
     report_id: str | None = None,
     smtp_message_id: str | None = None,
 ) -> AlertEvent:
-    """Store an event and queue one notification per channel."""
+    """Store an event and queue one notification per channel and per further recipient of its domain."""
     event = AlertEvent(
         organization_id=org_id,
         domain_id=domain_id,
@@ -521,6 +523,8 @@ def raise_event(
     db.flush()
     for channel_id in _channel_ids_for(db, org_id, rule):
         db.add(NotificationDelivery(alert_event_id=event.id, channel_id=channel_id, status="pending"))
+    for address in alert_addresses(db, domain_id):
+        db.add(NotificationDelivery(alert_event_id=event.id, recipient=address, status="pending"))
     db.flush()
     return event
 

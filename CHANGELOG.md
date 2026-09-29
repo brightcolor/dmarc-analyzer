@@ -7,6 +7,25 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.8.0] – 2026-09-29
+
+### Neu
+
+- Weitere Empfänger je Domain: Auf der Domainseite trägt ein Manager Adressen ein, die die Alarme der
+  Domain bekommen, einen eigenen Wochenbericht nur für ihre Domains oder beides. Eine Adresse bei
+  mehreren Domains bekommt einen gemeinsamen Bericht. Grenze `DOMAIN_RECIPIENTS_MAX` (Vorgabe 20),
+  Änderungen im Audit-Log.
+- Der Wochenbericht lässt sich auf einzelne Domains beschränken; Betreff und Anrede nennen dann die
+  Domains.
+- Der vorgeschlagene DNS-Eintrag enthält `ruf` mit derselben Adresse und `fo=1`, abschaltbar mit
+  `DMARC_SUGGEST_FAILURE_REPORTS=false`.
+
+### Geändert
+
+- Benachrichtigungen gehen an einen Kanal oder an eine einzelne Adresse. Datenbank-Migration 0007 legt
+  `domain_recipients` an und ergänzt `notification_deliveries` um `recipient`.
+- Die Liste der Alarme nennt bei solchen Benachrichtigungen die Adresse.
+
 ## [0.7.0] – 2026-09-29
 
 ### Neu

@@ -1,7 +1,7 @@
 {% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
 Hallo{% if recipient.name %} {{ recipient.name }}{% endif %},
 
-hier ist der Überblick über die DMARC-Berichte, die vom {{ period_text }} für {{ organization.name }} eingegangen sind.
+hier ist der Überblick über die DMARC-Berichte, die vom {{ period_text }} für {{ title }} eingegangen sind.
 
 {% if data.total %}
 BESTANDEN: {{ data.rate | percent }}
@@ -77,6 +77,6 @@ Viele Grüße
 {{ "-- " }}
 {% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
 {{ app_name }} · {{ organization.name }}
-{% if recipient.listed %}Du bekommst diese Mail, weil deine Adresse als Empfänger des Wochenberichts von {{ organization.name }} eingetragen ist.{% else %}Du bekommst diese Mail, weil du Administrator von {{ organization.name }} bist.{% endif %} Einstellen oder abschalten kannst du den Wochenbericht unter Alarme → Wochenbericht: {{ app_url }}/alerts/digest
+{% if recipient.domains %}Du bekommst diese Mail, weil deine Adresse bei {{ recipient.domains | join(", ") }} als Empfänger des Wochenberichts eingetragen ist. Austragen kann dich ein Manager von {{ organization.name }} auf der Seite der Domain.{% else %}{% if recipient.listed %}Du bekommst diese Mail, weil deine Adresse als Empfänger des Wochenberichts von {{ organization.name }} eingetragen ist.{% else %}Du bekommst diese Mail, weil du Administrator von {{ organization.name }} bist.{% endif %} Einstellen oder abschalten kannst du den Wochenbericht unter Alarme → Wochenbericht: {{ app_url }}/alerts/digest{% endif %}
 {% endfilter %}
 
