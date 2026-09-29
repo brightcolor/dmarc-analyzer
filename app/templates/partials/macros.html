@@ -17,6 +17,14 @@
 </div>
 {%- endmacro %}
 
+{#- Report file as two lines: receiver on top, domain and day below. The caller adds the details that phones
+    show in the second line instead of the hidden columns. -#}
+{% macro report_file(name, href) -%}
+{% set f = report_file_parts(name) %}
+<a class="app-rowtitle{% if not f %} app-break{% endif %}" href="{{ href }}"{% if f %} title="{{ name }}"{% endif %}>{{ f.host if f else (name or 'ohne Namen') }}</a>
+<span class="app-rowsub">{% if f %}{{ f.domain }} · {{ f.period }}{% endif %}{% if caller is defined %}<span class="app-only-small">{% if f %} · {% endif %}{{ caller() }}</span>{% endif %}</span>
+{%- endmacro %}
+
 {% macro copy_code(id, value, label=None) -%}
 {% if label %}<p class="app-code__label" id="{{ id }}-label">{{ label }}</p>{% endif %}
 <div class="app-code">
@@ -86,7 +94,7 @@
 <tr>
   <td>{{ label }}</td>
   <td class="bc-num">{{ count | num }}</td>
-  <td style="width:40%"><span class="app-share-track" aria-hidden="true"><span class="app-share" style="width: {{ '%.1f' % share }}%"></span></span></td>
+  <td class="app-hide-small" style="width:40%"><span class="app-share-track" aria-hidden="true"><span class="app-share" style="width: {{ '%.1f' % share }}%"></span></span></td>
   <td class="bc-num">{{ share | percent }}</td>
 </tr>
 {%- endmacro %}

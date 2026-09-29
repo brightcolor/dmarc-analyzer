@@ -7,6 +7,15 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.9.1] – 2026-09-29
+
+### Geändert
+
+- Auf dem Handy werden die Tabellen der Übersicht und die Importliste zweizeilig: oben fett der
+  Absender-Host oder die Domain, darunter klein die übrigen Angaben. Die Anteilsbalken fallen dort weg.
+- Berichtsdateien nach dem Namensschema `Empfänger!Domain!Beginn!Ende` erscheinen als Empfänger mit
+  Domain und Berichtstag; der volle Dateiname steht im Tooltip und auf der Seite des Imports.
+
 ## [0.9.0] – 2026-09-29
 
 ### Neu

@@ -208,6 +208,16 @@
 }
 .bc-addon .app-addon-button[aria-pressed="true"] { color: var(--bc-text-loud); }
 
+/* Two-line rows: title on top, details small below. On phones the other columns move into the details. */
+.app-rowtitle { display: block; font-weight: 700; }
+.app-rowsub { display: block; margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--bc-text-quiet); }
+.app-rowsub:empty { display: none; }
+.app-only-small { display: none; }
+@media (max-width: 640px) {
+	.bc .app-hide-small { display: none; }
+	.app-only-small { display: inline; }
+}
+
 /* State pills stay on one line. */
 .bc-state { white-space: nowrap; }
 

@@ -1,8 +1,9 @@
 """Shared Jinja2 template configuration: filters, navigation and page-wide context."""
 import json
 import logging
+import re
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
@@ -259,6 +260,27 @@ def _lookup(mapping: dict, keep_unknown: bool = False):
     return lookup
 
 
+# Report file names after RFC 7489, 7.2.1.1: receiver!policy-domain!begin!end[!unique-id].extension
+REPORT_FILE_NAME = re.compile(
+    r"^(?P<host>[^!/\\]+)!(?P<domain>[^!/\\]+)!(?P<begin>\d{9,11})!(?P<end>\d{9,11})(?:![^/\\]*?)?"
+    r"\.(?:xml\.gz|xml|gz|zip)$",
+    re.IGNORECASE,
+)
+
+
+def report_file_parts(name: str | None) -> dict | None:
+    """Receiver, domain and reported days from a report file name; None for other names."""
+    match = REPORT_FILE_NAME.match(name or "")
+    if not match:
+        return None
+    begin = datetime.fromtimestamp(int(match["begin"]), UTC)
+    end = datetime.fromtimestamp(int(match["end"]), UTC)
+    first = begin.date()
+    last = (end - timedelta(seconds=1)).date() if end > begin else first
+    period = f"{first:%d.%m.%Y}" if last <= first else f"{first:%d.%m.} – {last:%d.%m.%Y}"
+    return {"host": match["host"], "domain": match["domain"], "period": period}
+
+
 def _tojson(value) -> str:
     return json.dumps(value)
 
@@ -360,4 +382,5 @@ env.globals["build_rail"] = build_rail
 env.globals["current_page"] = current_page
 env.globals["format_info"] = report_formats.format_info
 env.globals["evidence_texts"] = report_formats.evidence_texts
+env.globals["report_file_parts"] = report_file_parts
 env.globals["now"] = lambda: datetime.now(UTC)
