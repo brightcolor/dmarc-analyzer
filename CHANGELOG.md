@@ -7,6 +7,53 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-09-29
+
+### Neu
+
+- Alarme arbeiten: Die Anwendung prüft alle Regeln direkt nach jedem Import und zusätzlich im Takt von
+  `ALERT_EVAL_INTERVAL_SECONDS`. Alle 13 Arten werten aus, darunter SPF- und DKIM-Quoten, plötzlich
+  steigende oder fallende Versandmengen, neue Quellen mit vielen Nachrichten oder DMARC-Fehlern,
+  fehlgeschlagene Importe und Domains, die für eine strengere Policy bereit sind.
+- Jeder Befund kommt genau einmal: Eine Regel meldet ihn wieder, sobald der vorige Alarm erledigt ist
+  und ihre Pause abgelaufen ist.
+- Benachrichtigungen gehen raus, per E-Mail, Webhook, ntfy und Slack oder Mattermost. Scheitert eine
+  Zustellung, versucht die Anwendung es mit wachsendem Abstand erneut; Kanalliste und Alarm nennen den
+  Grund. Jeder Kanal hat einen Knopf „Testen“.
+- Kanäle entstehen über eigene Felder für Empfänger, Adresse, Thema und Zugangstoken. Die Liste zeigt
+  Ziel und letzte Zustellung; Token und der geheime Teil von Webhook-Adressen bleiben verborgen.
+- Wochenbericht per Mail mit Bestehensquote und Vergleich zur Vorwoche, Domains, Quellen mit Fehlern,
+  neuen Quellen, offenen Alarmen, Empfehlungen und Berichtsformaten. Er geht montags ab 8 Uhr an die
+  Administratoren der Organisation oder an eingetragene Empfänger. Die neue Seite
+  „Alarme → Wochenbericht“ bietet Vorschau, „Jetzt senden“ und die Einstellungen.
+- Mailversand über einen SMTP-Server aus der `.env` (`MAIL_SMTP_*`, `MAIL_FROM`). Alarm- und
+  Berichtsmails kommen im Stil von bright color und mit Nur-Text-Fassung.
+- Zeitplaner im Web-Container für Alarme, Benachrichtigungen, Wochenbericht und Aufräumen. Jede Aufgabe
+  läuft je Takt einmal, auch mit mehreren Containern. „Empfang → Status“ zeigt dem Betreiber den
+  Mailversand und die letzten Läufe.
+- Aufräumen nach Frist: Berichte, Importe samt Dateien und empfangene Mails nach der Aufbewahrung der
+  Organisation, Rohmails nach `SMTP_INBOUND_RAW_RETENTION_DAYS`, abgelehnte Zustellversuche nach
+  `SMTP_REJECTION_RETENTION_DAYS`.
+- Die Regelseite erklärt, was jede Art prüft und welche Schwelle ohne eigenen Wert gilt.
+- Nach dem Speichern, Testen oder Senden zeigt die Seite oben, was passiert ist.
+- Alle neuen Schwellen, Takte und Grenzen sind Einstellungen mit geprüften Grenzen; `.env.example`
+  nennt sie.
+
+### Geändert
+
+- Kanäle anlegen, testen und löschen sowie den Wochenbericht einstellen dürfen die Administratoren der
+  Organisation.
+- Die Alarmarten für den Mailempfang des ganzen Servers stehen nur dem Betreiber zur Wahl.
+- Empfehlungen schreiben Zahlen in deutscher Schreibweise und unterscheiden Einzahl und Mehrzahl.
+- Meldungen des Mailempfangs zu einzelnen Mails sind auf Deutsch.
+
+### Behoben
+
+- GZ-Berichte mit Zeilenumbruch oder Füllbytes hinter den Daten, wie sie etwa Mimecast verschickt,
+  werden gelesen, ebenso GZ-Dateien aus mehreren Teilen.
+- Dateinamen von Anhängen und Uploads kommen mit einem sicheren Zeichensatz auf die Platte.
+- Neue Quellen zeigen ihre Bestehensquote ab dem ersten Bericht.
+
 ## [0.2.1] – 2026-09-29
 
 ### Behoben
@@ -138,7 +185,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.3.0
 [0.2.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.1
 [0.2.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.0
 [0.1.0]: https://github.com/brightcolor/dmarc-analyzer/commit/0ec5162

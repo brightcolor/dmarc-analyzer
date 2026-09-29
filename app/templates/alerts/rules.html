@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% import "partials/macros.html" as ui with context %}
 
-{% block lede %}<p>Regeln legen fest, wann die Anwendung Alarm schlägt und über welche Kanäle sie Bescheid gibt.</p>{% endblock %}
+{% block lede %}<p>Regeln legen fest, wann die Anwendung Alarm schlägt und über welche Kanäle sie Bescheid gibt. Sie werden nach jedem Import geprüft und zusätzlich alle {{ eval_minutes }} Minuten.</p>{% endblock %}
 {% block actions %}<a class="bc-button bc-button--secondary" href="/alerts/channels">Kanäle</a>{% endblock %}
 
 {% block content %}
-{% include "alerts/_pending_notice.html" %}
 {% if error %}
 <div class="bc-alert bc-alert--bad" role="alert"><p class="bc-alert__title">Die Regel wurde nicht angelegt</p><p>{{ error }}</p></div>
 {% endif %}
@@ -44,9 +43,10 @@
         <label for="r-name">Name</label>
         <input class="bc-input" id="r-name" name="name" placeholder="z. B. Unbekannte Absender bei example.com">
         <label for="r-type">Art</label>
-        <select class="bc-select" id="r-type" name="alert_type">
-          {% for key, label in alert_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        <select class="bc-select" id="r-type" name="alert_type" aria-describedby="r-type-hint">
+          {% for key, label in choosable_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
         </select>
+        <p class="bc-formgrid__hint" id="r-type-hint">Was jede Art prüft und was ihre Schwelle bedeutet, steht unter dem Formular.</p>
         <label for="r-domain">Domain</label>
         <select class="bc-select" id="r-domain" name="domain_id">
           <option value="">alle Domains</option>
@@ -66,7 +66,7 @@
         <span class="bc-formgrid__label">Kanäle</span>
         <div class="app-stack">
           {% for ch in channels %}
-          <label class="app-inline"><input type="checkbox" name="channel_ids" value="{{ ch.id }}"> {{ ch.name }} <span class="app-quiet app-small">({{ ch.channel_type }})</span></label>
+          <label class="app-inline"><input type="checkbox" name="channel_ids" value="{{ ch.id }}"> {{ ch.name }} <span class="app-quiet app-small">({{ channel_types.get(ch.channel_type, ch.channel_type) }})</span></label>
           {% else %}
           <p class="app-small app-quiet" style="margin:0">Noch kein Kanal angelegt. <a href="/alerts/channels">Kanal anlegen</a></p>
           {% endfor %}
@@ -75,5 +75,18 @@
     </div>
     <div class="bc-panel__foot"><button class="bc-button" type="submit">Regel anlegen</button></div>
   </form>
+</section>
+
+<section class="bc-panel" aria-labelledby="arten-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="arten-titel">Was die Arten prüfen</h2></div>
+  <div class="bc-panel__body">
+    <dl class="app-dl">
+      {% for key, hint in type_hints.items() %}
+      <dt>{{ alert_types[key] }}</dt>
+      <dd>{{ hint }}</dd>
+      {% endfor %}
+    </dl>
+    <p class="app-small app-quiet" style="margin:16px 0 0">Eine Regel meldet denselben Befund erst wieder, wenn der vorige Alarm erledigt ist. Nach einem Alarm wartet sie die eingestellte Pause ab.</p>
+  </div>
 </section>
 {% endblock %}

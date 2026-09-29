@@ -1,0 +1,34 @@
+{% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
+Hallo,
+
+{% if is_test %}
+das ist eine Testnachricht an den Kanal „{{ channel.name }}“. Kommt sie an, erreichen dich über diesen Kanal auch die echten Alarme.
+{% elif rule %}
+die Regel „{{ rule.name }}“ hat für {{ organization.name }} angeschlagen.
+{% else %}
+der {{ app_name }} meldet für {{ organization.name }}:
+{% endif %}
+
+{{ severity_label | upper }}: {{ event.title }}
+{% if event.description %}
+
+{{ event.description }}
+{% endif %}
+
+{% for label, value in facts %}
+{{ label }}: {{ value }}
+{% endfor %}
+
+Alarm ansehen: {{ event_url }}
+
+Viele Grüße
+{{ app_name }}
+{% endfilter %}
+
+
+{{ "-- " }}
+{% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
+{{ app_name }} · {{ organization.name }}
+Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Kanäle verwaltest du unter Alarme → Kanäle: {{ app_url }}/alerts/channels
+{% endfilter %}
+

@@ -23,6 +23,16 @@ class Recommendation:
     data_basis: str
 
 
+def _pct(value: float) -> str:
+    """Percentage in German notation, e.g. 96,4 %."""
+    return f"{value:.1f}".replace(".", ",") + " %"
+
+
+def _n(value: int) -> str:
+    """Count with German thousands separator, e.g. 1.105."""
+    return f"{value:,}".replace(",", ".")
+
+
 def _as_utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
@@ -141,10 +151,10 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             severity="info",
             title="Bereit für p=quarantine",
             description=(
-                f"{pass_rate:.1f} % der Nachrichten der letzten {window_days} Tage bestehen DMARC. Wenn alle "
+                f"{_pct(pass_rate)} der Nachrichten der letzten {window_days} Tage bestehen DMARC. Wenn alle "
                 "Versandquellen geprüft sind, kann die Policy auf p=quarantine steigen."
             ),
-            data_basis=f"Bestehensquote {pass_rate:.1f} %, {total_msgs} Nachrichten, Policy none.",
+            data_basis=f"Bestehensquote {_pct(pass_rate)}, {_n(total_msgs)} Nachrichten, Policy none.",
         ))
 
     if (domain.dmarc_policy == "quarantine" and enough_for_policy and unknown_ips == 0
@@ -154,10 +164,10 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             severity="info",
             title="Bereit für p=reject",
             description=(
-                f"{pass_rate:.1f} % der Nachrichten bestehen DMARC, und alle Versandquellen sind eingestuft. "
+                f"{_pct(pass_rate)} der Nachrichten bestehen DMARC, und alle Versandquellen sind eingestuft. "
                 "Mit p=reject ist die Domain am besten gegen Missbrauch geschützt."
             ),
-            data_basis=f"Bestehensquote {pass_rate:.1f} %, {total_msgs} Nachrichten, 0 unbekannte Quellen.",
+            data_basis=f"Bestehensquote {_pct(pass_rate)}, {_n(total_msgs)} Nachrichten, 0 unbekannte Quellen.",
         ))
 
     enough_for_fail_rate = total_msgs >= settings.RECOMMENDATION_FAIL_MIN_MESSAGES
@@ -165,12 +175,12 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         recs.append(Recommendation(
             code="HIGH_FAIL_RATE",
             severity="warning",
-            title=f"Hohe Fehlerquote: {fail_rate:.1f} %",
+            title=f"Hohe Fehlerquote: {_pct(fail_rate)}",
             description=(
-                f"{fail_msgs} von {total_msgs} Nachrichten der letzten {window_days} Tage bestehen DMARC nicht. "
-                "Prüfe die fehlschlagenden Quellen und ihre SPF- und DKIM-Einrichtung."
+                f"{_n(fail_msgs)} von {_n(total_msgs)} Nachrichten der letzten {window_days} Tage bestehen DMARC "
+                "nicht. Prüfe die fehlschlagenden Quellen und ihre SPF- und DKIM-Einrichtung."
             ),
-            data_basis=f"Fehlerquote {fail_rate:.1f} %, {fail_msgs} von {total_msgs} Nachrichten.",
+            data_basis=f"Fehlerquote {_pct(fail_rate)}, {_n(fail_msgs)} von {_n(total_msgs)} Nachrichten.",
         ))
 
     if (domain.dmarc_policy in ENFORCING_POLICIES and enough_for_fail_rate
@@ -178,24 +188,28 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         recs.append(Recommendation(
             code="POLICY_ACTIVE_FAILURES",
             severity="critical",
-            title=f"p={domain.dmarc_policy} ist aktiv, aber {fail_rate:.1f} % scheitern",
+            title=f"p={domain.dmarc_policy} ist aktiv, aber {_pct(fail_rate)} scheitern",
             description=(
                 f"Empfänger stellen fehlschlagende Mails {POLICY_ACTION[domain.dmarc_policy]}. Darunter können "
                 "echte Mails sein. Prüfe die fehlschlagenden Quellen sofort."
             ),
-            data_basis=f"Policy {domain.dmarc_policy}, Fehlerquote {fail_rate:.1f} %.",
+            data_basis=f"Policy {domain.dmarc_policy}, Fehlerquote {_pct(fail_rate)}.",
         ))
 
     if unknown_ips > 0:
         recs.append(Recommendation(
             code="UNKNOWN_SOURCES",
             severity="warning",
-            title=f"{unknown_ips} unbekannte Versandquellen",
+            title=("Eine unbekannte Versandquelle" if unknown_ips == 1
+                   else f"{_n(unknown_ips)} unbekannte Versandquellen"),
             description=(
-                f"{unknown_ips} IP-Adressen haben Mails für diese Domain verschickt und sind noch nicht "
-                "eingestuft. Ordne sie unter „Quellen“ als vertrauenswürdig, verdächtig oder ignoriert ein."
+                ("Eine IP-Adresse hat Mails für diese Domain verschickt und ist noch nicht eingestuft. "
+                 if unknown_ips == 1 else
+                 f"{_n(unknown_ips)} IP-Adressen haben Mails für diese Domain verschickt und sind noch nicht "
+                 "eingestuft. ")
+                + "Ordne sie unter „Quellen“ als vertrauenswürdig, verdächtig oder ignoriert ein."
             ),
-            data_basis=f"{unknown_ips} Quellen mit Einstufung „unbekannt“.",
+            data_basis=f"{_n(unknown_ips)} {'Quelle' if unknown_ips == 1 else 'Quellen'} mit Einstufung „unbekannt“.",
         ))
 
     spf_only_count = sum(r.count for r in records if r.spf_aligned and not r.dkim_aligned)
@@ -205,12 +219,12 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             recs.append(Recommendation(
                 code="DKIM_MISSING_FOR_SPF_SENDERS",
                 severity="info",
-                title=f"{share:.1f} % bestehen nur per SPF",
+                title=f"{_pct(share)} bestehen nur per SPF",
                 description=(
                     "Diese Nachrichten bestehen DMARC allein über SPF. Bei Weiterleitungen bricht SPF, eine "
                     "DKIM-Signatur bleibt erhalten. Richte für diese Quellen DKIM ein."
                 ),
-                data_basis=f"{spf_only_count} von {total_msgs} Nachrichten nur mit SPF-Alignment.",
+                data_basis=f"{_n(spf_only_count)} von {_n(total_msgs)} Nachrichten nur mit SPF-Alignment.",
             ))
 
     return recs

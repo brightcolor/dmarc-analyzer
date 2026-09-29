@@ -6,6 +6,9 @@ import os
 
 # The app engine must never point at a real database file during tests
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# Tests call the jobs themselves; outgoing mail only goes to the local test server of a test
+os.environ["SCHEDULER_ENABLED"] = "false"
+os.environ["MAIL_SMTP_HOST"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -17,6 +20,8 @@ from app.database import get_db
 from app.main import app
 from app.security import hash_password, generate_inbound_token
 from app.config import settings
+
+from tests.helpers import session, session_factory, smtp_server, web  # noqa: E402,F401 - shared fixtures
 
 # Force SQLite for tests
 TEST_DB_URL = "sqlite:///:memory:"

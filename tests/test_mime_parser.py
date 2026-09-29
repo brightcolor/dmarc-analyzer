@@ -227,3 +227,29 @@ class TestLimitsFromSettings:
     def test_content_below_limit_passes(self, monkeypatch):
         monkeypatch.setattr(settings, "ARCHIVE_MAX_UNPACKED_BYTES", 1000)
         assert _safe_gunzip(_make_gz(b"A" * 999)) == b"A" * 999
+
+
+class TestGzipVariants:
+    def test_trailing_line_break_is_ignored(self):
+        # Mimecast appends CRLF after the gzip stream
+        assert _safe_gunzip(_make_gz(SAMPLE_DMARC_XML) + b"\r\n") == SAMPLE_DMARC_XML
+
+    def test_trailing_zero_padding_is_ignored(self):
+        assert _safe_gunzip(_make_gz(b"<a/>") + b"\x00" * 16) == b"<a/>"
+
+    def test_concatenated_members_are_joined(self):
+        assert _safe_gunzip(_make_gz(b"<feed") + _make_gz(b"back/>")) == b"<feedback/>"
+
+    def test_truncated_stream_is_an_error(self):
+        data = _make_gz(SAMPLE_DMARC_XML)
+        with pytest.raises(gzip.BadGzipFile, match="endet mitten"):
+            _safe_gunzip(data[: len(data) // 2])
+
+    def test_plain_bytes_are_an_error(self):
+        with pytest.raises(gzip.BadGzipFile, match="keine GZ-Datei"):
+            _safe_gunzip(b"<feedback/>")
+
+    def test_limit_applies_across_members(self, monkeypatch):
+        monkeypatch.setattr(settings, "ARCHIVE_MAX_UNPACKED_BYTES", 1000)
+        with pytest.raises(ZipBombError):
+            _safe_gunzip(_make_gz(b"A" * 600) + _make_gz(b"B" * 600))

@@ -1,6 +1,4 @@
 import hashlib
-import re
-from pathlib import PurePath
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -10,17 +8,13 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_client_ip, get_current_org, get_current_user
 from app.models import Domain, ImportJob, Organization, User
+from app.services.alert_service import evaluate_after_import
 from app.services.audit import log_action
+from app.services.files import safe_filename
 from app.services.import_service import process_import_job
 from app.templates_config import _filesizeformat, templates
 
 router = APIRouter(prefix="/upload", tags=["upload"])
-
-
-def _safe_filename(name: str) -> str:
-    """File name without directories and with a plain character set, for storing on disk."""
-    base = PurePath(name.replace("\\", "/")).name
-    return re.sub(r"[^A-Za-z0-9._-]", "_", base)[:120] or "bericht"
 
 
 def _page(request: Request, user: User, org: Organization, db: Session, error: str | None = None,
@@ -82,7 +76,7 @@ async def upload_file(
     upload_dir = settings.upload_dir_path / org.id
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_hash = hashlib.sha256(content).hexdigest()
-    save_path = upload_dir / f"{file_hash[:16]}_{_safe_filename(original_name)}"
+    save_path = upload_dir / f"{file_hash[:16]}_{safe_filename(original_name)}"
     save_path.write_bytes(content)
 
     job = ImportJob(
@@ -101,6 +95,7 @@ async def upload_file(
 
     # Processed right away; a small server needs no separate worker
     process_import_job(db, job)
+    evaluate_after_import(db, org.id)
 
     log_action(
         db, "import.upload", org_id=org.id, user_id=user.id,

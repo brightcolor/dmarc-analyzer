@@ -57,6 +57,12 @@
 .app-stack > * + * { margin-top: 12px; }
 .app-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .app-inline form { margin: 0; }
+/* Form rows that belong to one choice of a select (data-show-for); they stay part of the form grid */
+.app-contents { display: contents; }
+.app-contents[hidden] { display: none; }
+.bc-formgrid > .app-contents > label,
+.bc-formgrid > .app-contents > .bc-formgrid__label { font-weight: 700; color: var(--bc-text-loud); }
+.app-reason { display: block; margin-top: 4px; color: var(--bc-text-quiet); font-size: 12.5px; overflow-wrap: anywhere; }
 
 .bc .app-quiet { color: var(--bc-text-quiet); }
 .bc .app-small { font-size: 13px; }

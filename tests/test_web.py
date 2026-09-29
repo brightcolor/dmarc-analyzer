@@ -1,20 +1,12 @@
 """Web interface: first-run setup, login, permissions, error pages and every page rendering."""
-import re
-
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.database import get_db
-from app.main import app
 from app.models import (
     AlertEvent,
     AppSettings,
-    Base,
     Domain,
     ImportJob,
+    NotificationChannel,
     Organization,
     OrganizationMembership,
     SourceIp,
@@ -27,32 +19,6 @@ from app.services.setup import SETUP_CODE_KEY, ensure_setup_code
 from tests.conftest import DMARCBIS_XML, SAMPLE_DMARC_XML
 
 PASSWORD = "Testpasswort-2026"
-
-
-@pytest.fixture
-def session_factory():
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    yield sessionmaker(bind=engine)
-    engine.dispose()
-
-
-@pytest.fixture
-def web(session_factory):
-    def override_get_db():
-        db = session_factory()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.state.setup_done = False
-    with TestClient(app, follow_redirects=False) as client:
-        client.app.state.setup_done = False
-        yield client
-    app.dependency_overrides.clear()
-    app.state.setup_done = False
 
 
 def _seed(session_factory, role: str = "org_admin", superadmin: bool = True) -> dict:
@@ -186,6 +152,7 @@ class TestPages:
             "/reports?format=rfc9990", f"/reports/{ids['classic']}", f"/reports/{ids['bis']}", "/upload",
             "/imports", f"/imports/{ids['job']}", "/smtp/status", "/smtp/messages", "/smtp/rejections",
             "/source-ips", f"/source-ips/{ids['source']}", "/alerts/events", "/alerts/rules", "/alerts/channels",
+            "/alerts/digest", "/alerts/digest/preview",
             "/users", "/users/invite", "/api-tokens", "/organizations", f"/organizations/{ids['org']}",
             "/organizations/new", "/organizations/select", "/hilfe/dmarc-formate",
         ]
@@ -299,10 +266,64 @@ class TestForms:
         })
         assert response.status_code == 303
 
-    def test_channel_with_broken_json_is_explained(self, web, session_factory):
+    def test_channel_with_bad_topic_is_explained(self, web, session_factory):
         ids = _seed(session_factory)
         _login(web, ids["org"])
         response = web.post("/alerts/channels/new", data={"name": "ntfy", "channel_type": "ntfy",
-                                                          "config_json": "{url: kaputt"})
+                                                          "topic": "mit leerzeichen"})
         assert response.status_code == 400
-        assert re.search(r"kein gültiges JSON \(Zeile \d+", response.text)
+        assert "darf nur Buchstaben, Ziffern" in response.text
+
+    def test_mail_channel_needs_valid_addresses(self, web, session_factory):
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        response = web.post("/alerts/channels/new", data={"name": "Team", "channel_type": "email",
+                                                          "recipients": "technik@example.test\nkeine-adresse"})
+        assert response.status_code == 400
+        assert "keine-adresse" in response.text
+        response = web.post("/alerts/channels/new", data={"name": "Team", "channel_type": "email",
+                                                          "recipients": "technik@example.test"})
+        assert response.status_code == 303
+        page = web.get("/alerts/channels")
+        assert "technik@example.test" in page.text
+        assert "Kanal angelegt" in page.text
+
+    def test_channel_test_button(self, web, session_factory, monkeypatch):
+        import httpx
+
+        from app.services import notification
+
+        sent = []
+        real_client = httpx.Client
+        monkeypatch.setattr(notification.httpx, "Client", lambda **kw: real_client(
+            transport=httpx.MockTransport(lambda request: sent.append(request) or httpx.Response(200)), **kw))
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        web.post("/alerts/channels/new", data={"name": "Hook", "channel_type": "webhook",
+                                               "url": "https://hooks.example.test/dmarc"})
+        db = session_factory()
+        channel_id = db.query(NotificationChannel).one().id
+        db.close()
+        web.post(f"/alerts/channels/{channel_id}/test")
+        assert "Testnachricht verschickt" in web.get("/alerts/channels").text
+        assert "Testnachricht" in sent[0].content.decode("utf-8")
+
+
+class TestAlertsAfterImport:
+    def test_upload_checks_the_rules(self, web, session_factory, tmp_path, monkeypatch):
+        from app.config import settings
+        monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        web.post("/alerts/rules/new", data={
+            "name": "Neue Quellen", "alert_type": "new_unknown_source", "domain_id": "", "threshold": "",
+            "time_window_minutes": "60", "cooldown_minutes": "0", "severity": "warning",
+        })
+        xml = SAMPLE_DMARC_XML.replace(b"test-report-001", b"upload-002").replace(b"198.51.100.5", b"198.51.100.77")
+        assert web.post("/upload", files={"file": ("neu.xml", xml, "application/xml")}).status_code == 303
+        db = session_factory()
+        events = db.query(AlertEvent).filter(AlertEvent.rule_id.isnot(None)).all()
+        db.close()
+        # The seeded sources are new as well, all within the last hour
+        assert "198.51.100.77" in {e.source_ip for e in events}
+        assert len(events) == len({e.source_ip for e in events})

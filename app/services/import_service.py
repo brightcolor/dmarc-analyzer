@@ -64,6 +64,7 @@ def _upsert_source_ip(db: Session, org_id: str, ip: str, count: int, passed: boo
             total_messages=count,
             pass_count=count if passed else 0,
             fail_count=0 if passed else count,
+            pass_rate=(100.0 if passed else 0.0) if count else None,
         )
         db.add(sip)
     else:

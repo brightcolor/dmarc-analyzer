@@ -35,6 +35,47 @@
   </section>
 </div>
 
+{% if mail %}
+<section class="bc-panel" aria-labelledby="versand-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="versand-titel">Mailversand</h2>{{ ui.state('eingerichtet' if mail.configured else 'aus', 'bc-state--on' if mail.configured else 'bc-state--warn') }}</div>
+    <div class="bc-panel__body">
+      {% if mail.configured %}
+      <dl class="app-dl">
+        <dt>SMTP-Server</dt><dd class="app-mono">{{ mail.server }}</dd>
+        <dt>Verschlüsselung</dt><dd>{{ {'starttls': 'STARTTLS', 'ssl': 'SSL/TLS', 'none': 'keine'}[mail.security] }}</dd>
+        <dt>Absender</dt><dd class="app-break">{{ mail.sender }}</dd>
+      </dl>
+      {% else %}
+      <p style="margin-top:0">Alarme per E-Mail und der Wochenbericht brauchen einen SMTP-Server. Trage <code>MAIL_SMTP_HOST</code>, <code>MAIL_SMTP_USER</code>, <code>MAIL_SMTP_PASSWORD</code> und <code>MAIL_FROM</code> in die <code>.env</code> ein und starte den Web-Container neu.</p>
+      {% endif %}
+    </div>
+</section>
+
+<section class="bc-panel" aria-labelledby="zeitplaner-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="zeitplaner-titel">Zeitplaner</h2>{{ ui.state('läuft' if scheduler_enabled else 'aus', 'bc-state--on' if scheduler_enabled else 'bc-state--warn') }}</div>
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Aufgabe</th><th>Takt</th><th>Zuletzt</th><th>Ergebnis</th></tr></thead>
+        <tbody>
+          {% for job in jobs %}
+          <tr>
+            <td>{{ job.label }}</td>
+            <td class="app-nowrap">{{ job.interval | interval }}</td>
+            <td class="app-nowrap">{{ job.run.last_started_at | datetime if job.run else '—' }}</td>
+            <td>
+              {% if job.run and job.run.last_status %}
+                {{ ui.state({'ok': 'fertig', 'running': 'läuft', 'failed': 'Fehler'}.get(job.run.last_status, job.run.last_status), {'ok': 'bc-state--on', 'running': 'bc-state--warn', 'failed': 'bc-state--bad'}.get(job.run.last_status, '')) }}
+                {% if job.run.last_error %}<span class="app-reason">{{ job.run.last_error }}</span>{% endif %}
+              {% else %}<span class="app-quiet">noch nicht gelaufen</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+</section>
+{% endif %}
+
 <section class="bc-panel" aria-labelledby="adressen-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="adressen-titel">Empfangsadressen</h2><span class="app-quiet app-small">{{ addresses | length }} Adressen</span></div>
   {% if addresses %}

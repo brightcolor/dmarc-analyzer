@@ -20,6 +20,12 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
   unbekannte Quellen und fehlende Berichte. Alle Schwellen sind einstellbar.
 - **DNS-Vorschlag** für den DMARC-Eintrag, der für Empfänger beider Standards passt, und für den
   Zustimmungseintrag unter `_report._dmarc`.
+- **Alarme** für 13 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten bis zu
+  ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
+- **Wochenbericht** per Mail mit Bestehensquote, Quellen mit Fehlern, neuen Quellen, offenen Alarmen
+  und Empfehlungen.
+- **Aufräumen nach Frist**: alte Berichte, Importe, Rohmails und abgelehnte Zustellversuche verschwinden
+  nach den eingestellten Tagen.
 - **Mehrere Organisationen** mit getrennten Daten, Rollen und API-Tokens.
 - **Sicher beim Einlesen**: XML mit `defusedxml`, Grenzen für ZIP und GZ gegen Archivbomben.
 - **Weboberfläche** in der Werkbank von bright color, hell und dunkel, auf Deutsch.
@@ -101,6 +107,98 @@ erklärt das ausführlich und zeigt, welcher Empfänger in welchem Format berich
 
 ---
 
+## Alarme und Wochenbericht
+
+### Regeln
+
+Unter **Alarme → Regeln** legst du fest, wann die Anwendung Alarm schlägt. Jede Regel hat eine Art,
+optional eine Domain, eine Schwelle, einen Zeitraum und eine Pause nach dem Alarm. Die Anwendung prüft
+alle Regeln direkt nach jedem Import und zusätzlich im Takt von `ALERT_EVAL_INTERVAL_SECONDS`.
+
+| Art | Schlägt an, wenn … | Schwelle ohne eigenen Wert |
+|---|---|---|
+| Neue unbekannte Versandquelle | eine Quelle zum ersten Mal auftaucht und noch nicht eingestuft ist | – |
+| Neue Quelle mit vielen Nachrichten | eine neue Quelle viele Nachrichten verschickt | `ALERT_DEFAULT_HIGH_VOLUME` |
+| Neue Quelle mit DMARC-Fehlern | eine neue Quelle Nachrichten ohne DMARC-Erfolg verschickt | `ALERT_DEFAULT_NEW_SOURCE_FAILURES` |
+| DMARC-Fehlerquote über der Schwelle | der Anteil ohne DMARC-Erfolg die Schwelle erreicht | `ALERT_DEFAULT_FAIL_RATE` |
+| Viele Nachrichten ohne passendes SPF oder DKIM | der Anteil ohne passendes SPF bzw. DKIM die Schwelle erreicht | `ALERT_DEFAULT_AUTH_FAIL_RATE` |
+| Versandmenge steigt oder fällt plötzlich | die Menge vom Durchschnitt der Zeiträume davor abweicht | `ALERT_DEFAULT_VOLUME_SPIKE`, `ALERT_DEFAULT_VOLUME_DROP` |
+| Berichte bleiben aus | im Zeitraum kein Bericht ankam | – |
+| Import fehlgeschlagen | Dateien sich nicht importieren ließen | `ALERT_DEFAULT_IMPORT_FAILURES` |
+| Domain bereit für eine strengere Policy | die Zahlen `p=quarantine` oder `p=reject` tragen | – |
+| Viele Mails an unbekannte Adressen | der Mailempfang viele Mails an unbekannte Adressen ablehnt (nur Betreiber) | `ALERT_DEFAULT_INVALID_RECIPIENTS` |
+| Grenze für eingehende Mails erreicht | Absender die Mailgrenze treffen (nur Betreiber) | `ALERT_DEFAULT_RATE_LIMIT_HITS` |
+
+Eine Regel meldet denselben Befund erst wieder, wenn der vorige Alarm erledigt ist, und wartet nach
+jedem Alarm ihre Pause ab. So kommt eine neue Quelle genau einmal.
+
+### Kanäle
+
+Unter **Alarme → Kanäle** legen Administratoren fest, wohin Alarme gehen. Der Knopf **Testen** schickt
+sofort eine Probenachricht. Klappt die Zustellung nicht, versucht die Anwendung es bis zu
+`NOTIFICATION_RETRY_MAX` Mal erneut; die Wartezeit beginnt bei `NOTIFICATION_RETRY_DELAY_SECONDS` und
+verdoppelt sich mit jedem Versuch. Den Grund eines Fehlschlags zeigen Kanalliste und Alarm.
+
+| Kanal | Einstellungen | Was ankommt |
+|---|---|---|
+| E-Mail | Empfänger, eine Adresse je Zeile | Mail im Stil von bright color, mit Nur-Text-Fassung |
+| Webhook | Adresse | JSON, siehe unten |
+| ntfy | Thema, optional eigener Server und Zugangstoken | Nachricht mit Titel, Priorität nach Schwere und Link |
+| Slack oder Mattermost | Adresse des eingehenden Webhooks | Nachricht mit Farbe nach Schwere |
+
+Der Webhook bekommt:
+
+```json
+{
+  "id": "…", "type": "dmarc_fail_rate", "severity": "warning",
+  "title": "12,5 % scheitern an DMARC für example.org", "description": "…",
+  "status": "open", "domain": "example.org", "source_ip": null,
+  "metrics": {"rate": 12.5, "failed": 25, "total": 200, "threshold": 10.0},
+  "created_at": "2026-09-28T10:00:00+00:00", "url": "https://dmarc.example.com/alerts/events?status=open"
+}
+```
+
+### Wochenbericht
+
+Einmal pro Woche bekommt jede Organisation eine Mail mit den Zahlen der letzten
+`DIGEST_PERIOD_DAYS` Tage: Bestehensquote mit Vergleich zum Zeitraum davor, Domains, Quellen mit
+Fehlern, neue Quellen, offene Alarme, Empfehlungen und die Berichtsformate. Vorgabe ist montags ab
+8 Uhr (`DIGEST_WEEKDAY`, `DIGEST_HOUR` in `DISPLAY_TIMEZONE`).
+
+Unter **Alarme → Wochenbericht** siehst du den nächsten Termin, kannst die Mail als Vorschau öffnen,
+sie sofort verschicken und Empfänger eintragen. Ohne Eintrag geht sie an alle Administratoren der
+Organisation; jede Person bekommt eine eigene Mail.
+
+### Mailversand einrichten
+
+E-Mail-Kanäle und der Wochenbericht brauchen einen SMTP-Server. Trage ihn in die `.env` ein und
+starte den Web-Container neu:
+
+```bash
+MAIL_SMTP_HOST=smtp.example.com
+MAIL_SMTP_PORT=587
+MAIL_SMTP_SECURITY=starttls
+MAIL_SMTP_USER=dmarc@example.com
+MAIL_SMTP_PASSWORD=…
+MAIL_FROM=DMARC Analyzer <dmarc@example.com>
+```
+
+Links, Logo und Schriften in den Mails zeigen auf `APP_URL`. Ob der Mailversand eingerichtet ist,
+sieht der Betreiber unter **Empfang → Status**.
+
+### Zeitplaner und Aufräumen
+
+Der Zeitplaner läuft im Web-Container. Er prüft Regeln, verschickt Benachrichtigungen, sucht fällige
+Wochenberichte und räumt auf. Jede Aufgabe läuft pro Takt genau einmal, auch mit mehreren
+Web-Containern. Letzten Lauf und Ergebnis jeder Aufgabe zeigt **Empfang → Status** dem Betreiber.
+
+Beim Aufräumen löscht die Anwendung Berichte, Importe samt Dateien und empfangene Mails, die älter
+sind als die Aufbewahrung der Organisation (`report_retention_days`, Vorgabe 365 Tage). Rohmails gehen
+nach `SMTP_INBOUND_RAW_RETENTION_DAYS`, abgelehnte Zustellversuche nach
+`SMTP_REJECTION_RETENTION_DAYS`. Ein Lauf löscht höchstens `RETENTION_BATCH_SIZE` Einträge je Art.
+
+---
+
 ## Einstellungen
 
 Alle Einstellungen kommen aus Umgebungsvariablen oder der `.env`. Die Datei
@@ -111,7 +209,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 |---|---|---|
 | `SECRET_KEY` | zufällig je Start | signiert die Sitzungen; eigener Wert, damit Anmeldungen einen Neustart überstehen |
 | `DATABASE_URL` | SQLite im Arbeitsordner | Datenbank; Compose setzt PostgreSQL |
-| `APP_URL` | `http://localhost:8000` | öffentliche Adresse, erscheint im Einrichtungshinweis |
+| `APP_URL` | `http://localhost:8000` | öffentliche Adresse für Einrichtungshinweis und Links in Mails |
 | `SESSION_HTTPS_ONLY` | `false` | Sitzungscookie nur über HTTPS |
 | `SMTP_INBOUND_DOMAIN` | `reports.example.org` | Domain der Empfangsadressen |
 | `DISPLAY_TIMEZONE` | `Europe/Berlin` | Zeitzone der Oberfläche |
@@ -119,6 +217,12 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `RECOMMENDATION_*` | siehe `.env.example` | Schwellen der Empfehlungen |
 | `ARCHIVE_MAX_*` | 20 MB, 50 MB, 50 Dateien | Grenzen für Anhänge und Archive |
 | `SETUP_OPEN_PATHS` | `/static,/api,/health,…` | Pfade, die während der Ersteinrichtung offen bleiben |
+| `MAIL_SMTP_*`, `MAIL_FROM` | Versand aus | SMTP-Server für Alarme und Wochenbericht |
+| `DIGEST_*` | montags, 8 Uhr, 7 Tage | Termin und Inhalt des Wochenberichts |
+| `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
+| `NOTIFICATION_*`, `NTFY_DEFAULT_URL` | 3 Versuche, `https://ntfy.sh` | Wiederholungen und Zeitlimits der Benachrichtigungen |
+| `SCHEDULER_ENABLED`, Takte `*_INTERVAL_SECONDS` | an | Zeitplaner im Web-Container |
+| `RETENTION_*`, `SMTP_REJECTION_RETENTION_DAYS` | täglich, 30 Tage | Aufräumen |
 
 ---
 

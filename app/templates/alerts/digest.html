@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Einmal pro Woche eine Mail mit den wichtigsten Zahlen deiner Domains: Bestehensquote, Quellen mit Fehlern, neue Quellen, offene Alarme und Empfehlungen.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/alerts/digest/preview" target="_blank" rel="noopener">Vorschau ansehen</a>{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="bc-alert bc-alert--bad" role="alert"><p class="bc-alert__title">Die Einstellungen wurden nicht gespeichert</p><p>{{ error }}</p></div>
+{% endif %}
+{% if not mail_ready %}
+<div class="bc-alert bc-alert--warn">
+  <p class="bc-alert__title">Mailversand ist nicht eingerichtet</p>
+  <p>Der Wochenbericht wartet, bis ein SMTP-Server eingetragen ist. {% if user.is_superadmin %}Trage <code>MAIL_SMTP_HOST</code> und den Zugang in die <code>.env</code> ein und starte den Web-Container neu.{% else %}Bitte den Betreiber, den Mailversand einzurichten.{% endif %} Die Vorschau zeigt schon jetzt, wie der Bericht aussieht.</p>
+</div>
+{% endif %}
+
+<section class="bc-panel" aria-labelledby="plan-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="plan-titel">Versand</h2>{{ ui.state('an' if org.digest_enabled else 'aus', 'bc-state--on' if org.digest_enabled else '') }}</div>
+  <div class="bc-panel__body">
+    <dl class="app-dl">
+      <dt>Zeitpunkt</dt><dd>{{ weekday | lower }}s ab {{ hour }} Uhr</dd>
+      <dt>Zeitraum</dt><dd>die Berichte der letzten {{ period_days }} Tage</dd>
+      <dt>Nächster Versand</dt><dd>{% if next_send %}{{ next_send | datetime }}{% else %}ausgeschaltet{% endif %}</dd>
+      <dt>Zuletzt verschickt</dt><dd>{% if org.digest_last_sent_at %}{{ org.digest_last_sent_at | datetime }}{% else %}noch nie{% endif %}</dd>
+      <dt>Empfänger</dt>
+      <dd>
+        {% if recipients %}
+          {{ recipients | map(attribute='address') | join(', ') }}
+          <span class="app-reason">{% if recipients[0].listed %}eingetragene Adressen{% else %}alle Administratoren der Organisation{% endif %}</span>
+        {% else %}
+          <span class="app-quiet">niemand: Trage unten Adressen ein oder gib einem Mitglied die Rolle Administrator.</span>
+        {% endif %}
+      </dd>
+    </dl>
+  </div>
+  {% if can_manage %}
+  <div class="bc-panel__foot">
+    <form method="post" action="/alerts/digest/send"><button class="bc-button bc-button--secondary" type="submit"{% if not mail_ready %} disabled{% endif %}>Jetzt senden</button></form>
+  </div>
+  {% endif %}
+</section>
+
+{% if can_manage %}
+<section class="bc-panel" aria-labelledby="einstellungen-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="einstellungen-titel">Einstellungen</h2></div>
+  <form method="post" action="/alerts/digest">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <span class="bc-formgrid__label">Wochenbericht</span>
+        <div><label class="app-inline"><input type="checkbox" name="enabled" value="1"{% if org.digest_enabled %} checked{% endif %}> jede Woche verschicken</label></div>
+        <label for="d-recipients">Empfänger</label>
+        <textarea class="bc-textarea" id="d-recipients" name="recipients" rows="4" placeholder="leer lassen für alle Administratoren">{{ recipients_text }}</textarea>
+        <p class="bc-formgrid__hint">Eine Adresse je Zeile. Jeder Empfänger bekommt eine eigene Mail. Ohne Eintrag geht der Bericht an alle Administratoren der Organisation.</p>
+      </div>
+    </div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Speichern</button></div>
+  </form>
+</section>
+{% else %}
+<p class="app-small app-quiet">Einstellen dürfen den Wochenbericht die Administratoren der Organisation.</p>
+{% endif %}
+{% endblock %}

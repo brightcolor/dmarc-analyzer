@@ -8,10 +8,13 @@ from app.dependencies import get_current_org, get_current_superadmin, get_curren
 from app.models import (
     InboundMailAddress,
     Organization,
+    SchedulerRun,
     SmtpInboundMessage,
     SmtpInboundRejection,
     User,
 )
+from app.scheduler import JOBS
+from app.services.mailer import mail_configured
 from app.templates_config import templates
 
 router = APIRouter(prefix="/smtp", tags=["smtp"])
@@ -44,9 +47,20 @@ def smtp_status(
         "store_raw": settings.SMTP_INBOUND_STORE_RAW,
         "raw_retention_days": settings.SMTP_INBOUND_RAW_RETENTION_DAYS,
     }
+    jobs, mail = [], None
+    if user.is_superadmin:
+        runs = {run.name: run for run in db.query(SchedulerRun).all()}
+        jobs = [{"label": job.label, "interval": job.interval(), "run": runs.get(job.name)} for job in JOBS]
+        mail = {
+            "configured": mail_configured(),
+            "server": f"{settings.MAIL_SMTP_HOST}:{settings.MAIL_SMTP_PORT}",
+            "security": settings.MAIL_SMTP_SECURITY,
+            "sender": settings.MAIL_FROM,
+        }
     return templates.TemplateResponse(request, "smtp/status.html", {
         "user": user, "org": org,
         "addresses": addresses, "recent_messages": recent_messages, "smtp_config": smtp_config,
+        "jobs": jobs, "scheduler_enabled": settings.SCHEDULER_ENABLED, "mail": mail,
         "page_title": "Empfang",
     })
 

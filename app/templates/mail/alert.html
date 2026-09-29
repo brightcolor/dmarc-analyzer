@@ -1,0 +1,33 @@
+{% extends "_layout.html" %}
+{% import "_parts.html" as m %}
+{% set eyebrow_text = "Alarm · " ~ severity_label %}
+{% set square_color = square %}
+{% block title %}{{ severity_label }}: {{ event.title }}{% endblock %}
+{% block aria_label %}Alarm{% endblock %}
+{% block preheader %}{{ event.title }}.{% if event.description %} {{ event.description }}{% endif %}{% endblock %}
+{% block heading %}{{ type_label }}{% endblock %}
+{% block intro %}
+      {% call m.p(margin="24px 0 0") %}Hallo,{% endcall %}
+      {% if is_test %}
+      {% call m.p() %}das ist eine Testnachricht an den Kanal „{{ channel.name }}“. Kommt sie an, erreichen dich über diesen Kanal auch die echten Alarme.{% endcall %}
+      {% elif rule %}
+      {% call m.p() %}die Regel „{{ rule.name }}“ hat für {{ organization.name }} angeschlagen.{% endcall %}
+      {% else %}
+      {% call m.p() %}der {{ app_name }} meldet für {{ organization.name }}:{% endcall %}
+      {% endif %}
+{% endblock %}
+{% block content %}
+  <tr>
+    <td class="bc-pad" bgcolor="#ffffff" style="padding:24px 32px 0; background-color:#ffffff;">
+      {% call m.box("Befund") %}
+      <p style="margin:12px 0 0; font-family:{{ m.font }}; font-size:20px; line-height:28px; font-weight:700; color:#111111; mso-line-height-rule:exactly;">{{ event.title }}</p>
+      {% if event.description %}
+      {% call m.p(margin="8px 0 0") %}{{ event.description }}{% endcall %}
+      {% endif %}
+      <div style="margin-top:16px;">{{ m.box_rows(facts) }}</div>
+      <div style="padding-top:24px;">{{ m.button(event_url, "Alarm ansehen") }}</div>
+      {% endcall %}
+    </td>
+  </tr>
+{% endblock %}
+{% block reason %}Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Kanäle verwaltest du unter {{ m.link(app_url ~ "/alerts/channels", "Alarme → Kanäle") }}.{% endblock %}

@@ -84,6 +84,8 @@ class AlertEvent(Base):
     )
 
     rule: Mapped[Optional["AlertRule"]] = relationship("AlertRule", back_populates="events")
+    organization: Mapped["Organization"] = relationship("Organization")
+    domain: Mapped[Optional["Domain"]] = relationship("Domain")
     deliveries: Mapped[list["NotificationDelivery"]] = relationship(
         "NotificationDelivery", back_populates="alert_event", cascade="all, delete-orphan"
     )

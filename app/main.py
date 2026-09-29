@@ -78,9 +78,14 @@ async def lifespan(app: FastAPI):
     _create_default_plan()
     _announce_setup()
 
+    from app.scheduler import Scheduler
+    scheduler = Scheduler()
+    scheduler.start()
+
     logger.info("%s v%s started", APP_NAME, VERSION)
     yield
     logger.info("%s shutting down", APP_NAME)
+    await scheduler.stop()
 
 
 def _announce_setup() -> None:

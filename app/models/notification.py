@@ -39,11 +39,12 @@ class NotificationDelivery(Base):
     channel_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("notification_channels.id", ondelete="CASCADE"), nullable=False
     )
-    # pending, sent, failed
+    # pending, sent, failed, skipped
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
 
     alert_event: Mapped["AlertEvent"] = relationship("AlertEvent", back_populates="deliveries")

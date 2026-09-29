@@ -1,10 +1,14 @@
 """Schema migrations: fresh databases and databases created by v0.1.0 without migration history."""
 import pytest
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.pool import StaticPool
 
-from app.migrate import BASELINE_REVISION, _alembic_config, run_migrations
+from app.migrate import BASELINE_REVISION, PROJECT_ROOT, _alembic_config, run_migrations
+
+# Newest revision in migrations/versions
+HEAD = ScriptDirectory(str(PROJECT_ROOT / "migrations")).get_current_head()
 
 
 @pytest.fixture
@@ -29,7 +33,7 @@ def test_fresh_database_gets_full_schema(file_engine):
     assert "report_format" in _columns(file_engine, "dmarc_reports")
     assert "override_reasons" in _columns(file_engine, "dmarc_records")
     assert "dmarc_policy_testing" in _columns(file_engine, "domains")
-    assert _head(file_engine) == "0002"
+    assert _head(file_engine) == HEAD
 
 
 def test_database_without_history_is_adopted(file_engine):
@@ -49,7 +53,7 @@ def test_database_without_history_is_adopted(file_engine):
     run_migrations(file_engine)
 
     assert "report_format" in _columns(file_engine, "dmarc_reports")
-    assert _head(file_engine) == "0002"
+    assert _head(file_engine) == HEAD
     with file_engine.connect() as conn:
         assert conn.execute(text("SELECT name FROM organizations")).scalar() == "Muster Farben"
 
@@ -57,7 +61,7 @@ def test_database_without_history_is_adopted(file_engine):
 def test_running_twice_changes_nothing(file_engine):
     run_migrations(file_engine)
     run_migrations(file_engine)
-    assert _head(file_engine) == "0002"
+    assert _head(file_engine) == HEAD
 
 
 def test_migrations_match_models(file_engine):

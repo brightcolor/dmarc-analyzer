@@ -13,7 +13,8 @@ from aiosmtpd.smtp import Session as SmtpSession
 from app.config import settings
 from app.database import get_db_context
 from app.models import ImportJob, InboundMailAttachment, SmtpInboundMessage, SmtpInboundRejection
-from app.services.alert_service import create_system_alert
+from app.services.alert_service import create_system_alert, evaluate_after_import
+from app.services.files import safe_filename
 from app.services.import_service import process_import_job
 from app.services.mime_parser import (
     MimeParseError,
@@ -176,27 +177,28 @@ class DmarcSmtpHandler:
                 except ZipBombError as exc:
                     logger.warning("ZIP bomb detected from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
-                    msg.error_message = f"ZIP bomb protection triggered: {exc}"
+                    msg.error_message = f"Archivbombe abgewehrt: {exc}"
                     create_system_alert(
                         db,
                         org_id=organization_id,
                         alert_type="import_failed",
                         severity="critical",
-                        title=f"ZIP bomb blocked from {remote_ip}",
-                        description=str(exc),
+                        title=f"Archivbombe von {remote_ip} abgewehrt",
+                        description=f"Eine Mail an {envelope_recipient} enthielt ein Archiv, das sich über die "
+                                    f"erlaubte Größe hinaus entpackt. Die Mail wurde zurückgehalten ({exc}).",
                         smtp_message_id=msg.id,
                     )
                     return
                 except MimeParseError as exc:
                     logger.warning("MIME parse error from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
-                    msg.error_message = f"MIME parse error: {exc}"
+                    msg.error_message = f"Die Mail ließ sich nicht lesen: {exc}"
                     return
 
                 if not attachments:
                     logger.info("No DMARC attachments found in mail from %s to %s", remote_ip, envelope_recipient)
                     msg.import_status = "completed"
-                    msg.error_message = "No DMARC report attachments found"
+                    msg.error_message = "Die Mail enthielt keinen DMARC-Bericht als Anhang."
                     return
 
                 msg.attachment_count = len(attachments)
@@ -217,7 +219,7 @@ class DmarcSmtpHandler:
                     # Save attachment to disk for import job
                     att_dir = settings.upload_dir_path / organization_id / "smtp"
                     att_dir.mkdir(parents=True, exist_ok=True)
-                    att_path = att_dir / f"{att.sha256[:16]}_{att.filename or 'report.xml'}"
+                    att_path = att_dir / f"{att.sha256[:16]}_{safe_filename(att.filename, 'report.xml')}"
                     with open(att_path, "wb") as fh:
                         fh.write(att.data)
 
@@ -258,8 +260,10 @@ class DmarcSmtpHandler:
 
                 msg.import_status = "completed" if imported_count > 0 else "failed"
                 if imported_count == 0:
-                    msg.error_message = "All attachments failed to import"
+                    msg.error_message = "Keiner der Anhänge ließ sich importieren. Die Gründe stehen beim Import."
                 msg.processed_at = datetime.now(UTC)
+                # Also after failures: the rule for failed imports needs them
+                evaluate_after_import(db, organization_id)
 
         except Exception as exc:
             logger.exception("Error processing mail from %s to %s: %s", remote_ip, envelope_recipient, exc)

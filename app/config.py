@@ -2,6 +2,7 @@ import logging
 import secrets
 import sys
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, ValidationError, field_validator, model_validator
@@ -53,7 +54,12 @@ class Settings(BaseSettings):
     SMTP_INBOUND_MAX_RECIPIENTS: int = 1
     SMTP_INBOUND_REJECT_UNKNOWN: bool = True
     SMTP_INBOUND_STORE_RAW: bool = False
-    SMTP_INBOUND_RAW_RETENTION_DAYS: int = 7
+    SMTP_INBOUND_RAW_RETENTION_DAYS: int = Field(
+        7, ge=1, le=3650, description="Tage, die gespeicherte Rohmails aufbewahrt werden.",
+    )
+    SMTP_REJECTION_RETENTION_DAYS: int = Field(
+        30, ge=1, le=3650, description="Tage, die abgelehnte Zustellversuche in der Liste bleiben.",
+    )
     SMTP_INBOUND_RATE_LIMIT_PER_IP: int = 60       # per hour
     SMTP_INBOUND_RATE_LIMIT_PER_RECIPIENT: int = 120  # per hour
     SMTP_INBOUND_TLS_ENABLED: bool = False
@@ -63,9 +69,102 @@ class Settings(BaseSettings):
     # Raw mail storage (when STORE_RAW=true)
     RAW_MAIL_DIR: str = "./raw_mail"
 
-    # Alert scheduler
-    ALERT_EVAL_INTERVAL_SECONDS: int = 300  # 5 minutes
-    NOTIFICATION_RETRY_MAX: int = 3
+    # Scheduler in the web process
+    SCHEDULER_ENABLED: bool = Field(
+        True, description="Zeitplaner für Alarme, Benachrichtigungen, Aufräumen und Wochenbericht einschalten.",
+    )
+    SCHEDULER_TICK_SECONDS: int = Field(
+        30, ge=5, le=3600, description="Abstand in Sekunden, in dem der Zeitplaner nach fälligen Aufgaben sieht.",
+    )
+    ALERT_EVAL_INTERVAL_SECONDS: int = Field(
+        300, ge=60, le=86_400, description="Abstand in Sekunden zwischen zwei Prüfungen aller Alarmregeln.",
+    )
+    NOTIFICATION_DISPATCH_INTERVAL_SECONDS: int = Field(
+        60, ge=10, le=3600, description="Abstand in Sekunden, in dem wartende Benachrichtigungen verschickt werden.",
+    )
+    NOTIFICATION_RETRY_MAX: int = Field(
+        3, ge=0, le=20, description="Wie oft eine fehlgeschlagene Benachrichtigung erneut versucht wird.",
+    )
+    NOTIFICATION_RETRY_DELAY_SECONDS: int = Field(
+        300, ge=10, le=86_400,
+        description="Wartezeit in Sekunden vor dem ersten neuen Versuch; jeder weitere wartet doppelt so lange.",
+    )
+    NOTIFICATION_BATCH_SIZE: int = Field(
+        100, ge=1, le=10_000, description="Höchstzahl Benachrichtigungen, die ein Lauf verschickt.",
+    )
+    NOTIFICATION_HTTP_TIMEOUT_SECONDS: int = Field(
+        10, ge=1, le=120, description="Zeitlimit in Sekunden für Webhook, ntfy und Slack.",
+    )
+    NTFY_DEFAULT_URL: str = Field(
+        "https://ntfy.sh", description="ntfy-Server für Kanäle, die keinen eigenen Server angeben.",
+    )
+    RETENTION_INTERVAL_SECONDS: int = Field(
+        86_400, ge=3600, le=604_800, description="Abstand in Sekunden zwischen zwei Aufräumläufen.",
+    )
+    RETENTION_BATCH_SIZE: int = Field(
+        1000, ge=10, le=100_000, description="Höchstzahl Berichte, die ein Aufräumlauf löscht.",
+    )
+
+    # Alert defaults for rules without their own threshold
+    ALERT_DEFAULT_FAIL_RATE: float = Field(
+        10.0, ge=0.0, le=100.0, description="DMARC-Fehlerquote in Prozent, ab der eine Regel ohne Schwelle auslöst.",
+    )
+    ALERT_DEFAULT_AUTH_FAIL_RATE: float = Field(
+        20.0, ge=0.0, le=100.0,
+        description="Anteil in Prozent ohne passendes SPF bzw. DKIM, ab dem eine Regel ohne Schwelle auslöst.",
+    )
+    ALERT_DEFAULT_HIGH_VOLUME: int = Field(
+        500, ge=1, le=100_000_000, description="Nachrichten, ab denen eine neue Quelle als groß gilt.",
+    )
+    ALERT_DEFAULT_VOLUME_SPIKE: float = Field(
+        200.0, ge=1.0, le=10_000.0,
+        description="Anstieg in Prozent über dem Durchschnitt, ab dem Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_VOLUME_DROP: float = Field(
+        80.0, ge=1.0, le=100.0, description="Rückgang in Prozent unter den Durchschnitt, ab dem Alarm ausgelöst wird.",
+    )
+    ALERT_VOLUME_BASELINE_WINDOWS: int = Field(
+        7, ge=1, le=90, description="Anzahl früherer Zeiträume, aus denen der Durchschnitt für Mengenalarme entsteht.",
+    )
+    ALERT_DEFAULT_INVALID_RECIPIENTS: int = Field(
+        20, ge=1, le=1_000_000, description="Abgelehnte Mails an unbekannte Adressen, ab denen Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_RATE_LIMIT_HITS: int = Field(
+        10, ge=1, le=1_000_000, description="Treffer der Mailgrenze, ab denen Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_NEW_SOURCE_FAILURES: int = Field(
+        1, ge=1, le=1_000_000,
+        description="Nicht bestandene Nachrichten einer neuen Quelle, ab denen Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_IMPORT_FAILURES: int = Field(
+        1, ge=1, le=10_000, description="Fehlgeschlagene Importe, ab denen Alarm ausgelöst wird.",
+    )
+
+    # Outgoing mail for alerts and the weekly digest
+    MAIL_SMTP_HOST: str = Field(
+        "", description="SMTP-Server für ausgehende Mails. Leer lassen schaltet den Mailversand aus.",
+    )
+    MAIL_SMTP_PORT: int = Field(587, ge=1, le=65_535, description="Port des SMTP-Servers.")
+    MAIL_SMTP_SECURITY: Literal["starttls", "ssl", "none"] = Field(
+        "starttls", description="Verschlüsselung zum SMTP-Server: starttls, ssl oder none.",
+    )
+    MAIL_SMTP_USER: str = Field("", description="Benutzername am SMTP-Server; leer ohne Anmeldung.")
+    MAIL_SMTP_PASSWORD: str = Field("", description="Passwort am SMTP-Server.")
+    MAIL_FROM: str = Field("DMARC Analyzer <dmarc@example.org>", description="Absender der Mails.")
+    MAIL_TIMEOUT_SECONDS: int = Field(20, ge=1, le=300, description="Zeitlimit in Sekunden für den SMTP-Server.")
+
+    # Weekly digest
+    DIGEST_WEEKDAY: int = Field(0, ge=0, le=6, description="Wochentag des Wochenberichts, 0 = Montag bis 6 = Sonntag.")
+    DIGEST_HOUR: int = Field(
+        8, ge=0, le=23, description="Stunde, ab der der Wochenbericht verschickt wird (DISPLAY_TIMEZONE).",
+    )
+    DIGEST_PERIOD_DAYS: int = Field(7, ge=1, le=31, description="Tage, die der Wochenbericht zusammenfasst.")
+    DIGEST_CHECK_INTERVAL_SECONDS: int = Field(
+        900, ge=60, le=86_400, description="Abstand in Sekunden, in dem der Zeitplaner fällige Wochenberichte sucht.",
+    )
+    DIGEST_LIST_LIMIT: int = Field(
+        5, ge=1, le=50, description="Einträge je Liste im Wochenbericht: Quellen, Alarme und Empfehlungen.",
+    )
 
     # First-run setup and accounts
     SETUP_CODE_LENGTH: int = Field(
@@ -186,6 +285,13 @@ class Settings(BaseSettings):
             raise ValueError(f"unbekannte Zeitzone {value!r}, erwartet wird etwa Europe/Berlin oder UTC") from exc
         return value
 
+    @field_validator("NTFY_DEFAULT_URL")
+    @classmethod
+    def _http_url(cls, value: str) -> str:
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("muss mit http:// oder https:// beginnen, etwa https://ntfy.sh")
+        return value.rstrip("/")
+
     @model_validator(mode="after")
     def _rate_order(self):
         if self.UI_PASS_RATE_WARN > self.UI_PASS_RATE_GOOD:
@@ -219,6 +325,7 @@ _VALIDATION_MESSAGES = {
     "int_parsing": "muss eine ganze Zahl sein",
     "float_parsing": "muss eine Zahl sein",
     "bool_parsing": "muss true oder false sein",
+    "literal_error": "muss einer dieser Werte sein: {expected}",
 }
 _VALIDATION_PREFIX = "Value error, "
 
@@ -227,7 +334,8 @@ def _describe_error(error: dict) -> str:
     name = ".".join(str(part) for part in error.get("loc", ())) or "?"
     template = _VALIDATION_MESSAGES.get(error.get("type", ""))
     if template:
-        reason = template.format(**error.get("ctx", {}))
+        ctx = {key: str(value).replace(" or ", " oder ") for key, value in error.get("ctx", {}).items()}
+        reason = template.format(**ctx)
     else:
         reason = error.get("msg", "ist ungültig").removeprefix(_VALIDATION_PREFIX)
     if error.get("type") == "value_error" and not error.get("loc"):

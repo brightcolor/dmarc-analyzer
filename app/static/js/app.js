@@ -67,6 +67,21 @@
     });
   });
 
+  // Fields that belong to one choice: data-show-for lists the values of the select marked data-switch.
+  document.querySelectorAll('select[data-switch]').forEach(function (select) {
+    var form = select.form;
+    if (!form) return;
+    var update = function () {
+      form.querySelectorAll('[data-show-for]').forEach(function (group) {
+        var show = group.dataset.showFor.split(' ').indexOf(select.value) !== -1;
+        group.hidden = !show;
+        group.querySelectorAll('input, textarea, select').forEach(function (field) { field.disabled = !show; });
+      });
+    };
+    select.addEventListener('change', update);
+    update();
+  });
+
   // Copy buttons: data-copy holds the id of the element whose text is copied.
   document.querySelectorAll('[data-copy]').forEach(function (button) {
     var label = button.querySelector('.app-copy-label');

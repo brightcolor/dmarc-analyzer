@@ -7,6 +7,7 @@ import hashlib
 import io
 import logging
 import zipfile
+import zlib
 from dataclasses import dataclass
 from email import message_from_bytes
 from email.message import Message
@@ -16,6 +17,11 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = {".xml", ".xml.gz", ".gz", ".zip"}
+
+# gzip format: magic bytes and the zlib window setting that expects a gzip header
+GZIP_MAGIC = b"\x1f\x8b"
+GZIP_WBITS = 16 + zlib.MAX_WBITS
+GZIP_CHUNK = 65536
 
 
 @dataclass
@@ -93,17 +99,35 @@ def _safe_unzip(zip_bytes: bytes) -> list[tuple[str, bytes]]:
 
 
 def _safe_gunzip(gz_bytes: bytes) -> bytes:
-    """Decompress gzip data with size limit."""
-    buf = io.BytesIO(gz_bytes)
-    with gzip.GzipFile(fileobj=buf) as f:
-        out = bytearray()
-        chunk = f.read(65536)
-        while chunk:
-            out.extend(chunk)
-            if len(out) > settings.ARCHIVE_MAX_UNPACKED_BYTES:
-                raise ZipBombError(f"Der entpackte GZ-Inhalt überschreitet {settings.ARCHIVE_MAX_UNPACKED_BYTES} Bytes")
-            chunk = f.read(65536)
-        return bytes(out)
+    """
+    Decompress gzip data with size limit.
+    Reads concatenated members and ignores trailing bytes that start no new member:
+    some reporters (Mimecast) append a line break after the gzip stream.
+    """
+    limit = settings.ARCHIVE_MAX_UNPACKED_BYTES
+    out = bytearray()
+    remaining = gz_bytes
+    members = 0
+    while remaining[:2] == GZIP_MAGIC:
+        decompressor = zlib.decompressobj(wbits=GZIP_WBITS)
+        pending = remaining
+        while True:
+            piece = decompressor.decompress(pending, GZIP_CHUNK)
+            out.extend(piece)
+            if len(out) > limit:
+                raise ZipBombError(f"Der entpackte GZ-Inhalt überschreitet {limit} Bytes")
+            pending = decompressor.unconsumed_tail
+            if decompressor.eof:
+                break
+            if not pending and not piece:
+                raise gzip.BadGzipFile("Die GZ-Datei endet mitten im Inhalt")
+        remaining = decompressor.unused_data
+        members += 1
+    if members == 0:
+        raise gzip.BadGzipFile("Die Datei ist keine GZ-Datei")
+    if remaining.strip():
+        logger.warning("Ignoring %d bytes after the gzip data", len(remaining))
+    return bytes(out)
 
 
 def extract_dmarc_attachments(raw_mail: bytes) -> list[ExtractedAttachment]:

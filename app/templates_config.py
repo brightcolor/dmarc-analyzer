@@ -47,6 +47,7 @@ NAVIGATION = [
         NavLink("Ereignisse", "/alerts/events", ("/alerts/events",)),
         NavLink("Regeln", "/alerts/rules", ("/alerts/rules",)),
         NavLink("Kanäle", "/alerts/channels", ("/alerts/channels",)),
+        NavLink("Wochenbericht", "/alerts/digest", ("/alerts/digest",)),
     ]),
     NavModule("Empfang", "mail", [
         NavLink("Status", "/smtp/status", ("/smtp/status",)),
@@ -171,6 +172,18 @@ def _filesizeformat(value: int | None) -> str:
     return f"{_format_number(size, 1)} TB"
 
 
+def _interval(seconds: int | None) -> str:
+    """Repeat interval in words, e.g. alle 5 Minuten."""
+    if not seconds:
+        return "—"
+    for size, one, many in ((86_400, "täglich", "Tage"), (3600, "stündlich", "Stunden"),
+                            (60, "jede Minute", "Minuten")):
+        if seconds % size == 0:
+            count = seconds // size
+            return one if count == 1 else f"alle {_format_number(count)} {many}"
+    return f"alle {_format_number(seconds)} Sekunden"
+
+
 def _rate_state(rate: float | None) -> str:
     """State pill modifier for a DMARC pass rate."""
     if rate is None:
@@ -187,6 +200,7 @@ SEVERITY_TEXT = {"info": "Hinweis", "warning": "Warnung", "critical": "kritisch"
 
 STATUS_STATE = {
     "completed": "bc-state--on", "active": "bc-state--on", "resolved": "bc-state--on", "imported": "bc-state--on",
+    "sent": "bc-state--on", "skipped": "",
     "quarantine": "bc-state--warn",
     "processing": "bc-state--warn", "pending": "bc-state--warn", "open": "bc-state--warn",
     "acknowledged": "", "disabled": "", "ignored": "",
@@ -197,6 +211,7 @@ STATUS_TEXT = {
     "active": "aktiv", "disabled": "deaktiviert", "revoked": "widerrufen",
     "open": "offen", "acknowledged": "gesehen", "resolved": "erledigt", "ignored": "ignoriert",
     "imported": "importiert", "rejected": "abgelehnt", "error": "Fehler", "quarantine": "zurückgehalten",
+    "sent": "verschickt", "skipped": "übersprungen",
 }
 
 CLASSIFICATION_STATE = {"trusted": "bc-state--on", "unknown": "bc-state--warn", "suspicious": "bc-state--bad",
@@ -224,6 +239,11 @@ def _lookup(mapping: dict, keep_unknown: bool = False):
 
 def _tojson(value) -> str:
     return json.dumps(value)
+
+
+def flash(request: Request, kind: str, title: str, text: str = "") -> None:
+    """Message for the next page the user sees; kind is ok, warn or bad."""
+    request.session["flash"] = {"kind": kind, "title": title, "text": text}
 
 
 def page_url(request: Request, page: int) -> str:
@@ -256,6 +276,7 @@ def page_context(request: Request) -> dict:
         "app_name": APP_NAME,
         "version": VERSION,
         "open_alert_count": _open_alert_count(request),
+        "flash": request.session.pop("flash", None) if "session" in request.scope else None,
         "password_min_length": settings.PASSWORD_MIN_LENGTH,
     }
 
@@ -269,6 +290,7 @@ env.filters["num"] = _format_number
 env.filters["percent"] = _format_percent
 env.filters["filesizeformat"] = _filesizeformat
 env.filters["rate_state"] = _rate_state
+env.filters["interval"] = _interval
 env.filters["severity_state"] = _lookup(SEVERITY_STATE)
 env.filters["severity_text"] = _lookup(SEVERITY_TEXT, keep_unknown=True)
 env.filters["status_state"] = _lookup(STATUS_STATE)

@@ -1,0 +1,84 @@
+{% extends "_layout.html" %}
+{% import "_parts.html" as m %}
+{% set eyebrow_text = "Wochenbericht · " ~ period_text %}
+{% set square_color = "#1dc3f3" %}
+{% block title %}DMARC-Wochenbericht {{ organization.name }}{% endblock %}
+{% block aria_label %}Wochenbericht{% endblock %}
+{% block preheader %}{% if data.total %}{{ data.rate | percent }} der Nachrichten bestehen DMARC. {{ change_text }}{% else %}In diesem Zeitraum kam kein DMARC-Bericht an.{% endif %}{% endblock %}
+{% block heading %}Deine DMARC-Woche{% endblock %}
+{% block intro %}
+      {% call m.p(margin="24px 0 0") %}Hallo{% if recipient.name %} {{ recipient.name }}{% endif %},{% endcall %}
+      {% call m.p() %}hier ist der Überblick über die DMARC-Berichte, die vom {{ period_text }} für {{ organization.name }} eingegangen sind.{% endcall %}
+{% endblock %}
+{% block content %}
+  <tr>
+    <td class="bc-pad" bgcolor="#ffffff" style="padding:24px 32px 0; background-color:#ffffff;">
+      {% if data.total %}
+      {% call m.box("Bestanden") %}
+      <p class="bc-amount bc-display" style="margin:8px 0 0; font-family:{{ m.display }}; font-size:48px; line-height:52px; font-weight:400; letter-spacing:1px; text-transform:uppercase; color:#111111; mso-line-height-rule:exactly;">{{ data.rate | percent }}</p>
+      {% call m.p(margin="4px 0 0") %}{{ change_text }}{% endcall %}
+      <div style="margin-top:16px;">{{ m.box_rows(summary_rows) }}</div>
+      <div style="padding-top:24px;">{{ m.button(app_url ~ "/dashboard", "Übersicht öffnen") }}</div>
+      {% endcall %}
+      {% else %}
+      {% call m.box("Keine Berichte") %}
+      {% call m.p(margin="12px 0 0") %}In diesem Zeitraum kam kein DMARC-Bericht an. Prüfe, ob der DMARC-Eintrag deiner Domains die Empfangsadresse als rua enthält und die Empfangsdomain Mails annimmt.{% endcall %}
+      <div style="padding-top:24px;">{{ m.button(app_url ~ "/domains", "Domains ansehen") }}</div>
+      {% endcall %}
+      {% endif %}
+    </td>
+  </tr>
+
+  {% if domain_rows %}
+  {% call m.section("Domains") %}
+      <div style="margin-top:16px;">{{ m.rows(domain_rows) }}</div>
+  {% endcall %}
+  {% endif %}
+
+  {% if failing_rows %}
+  {% call m.section("Quellen mit Fehlern", square="#d61f7a") %}
+      {{ m.h2("Wer an DMARC scheitert") }}
+      {% call m.p() %}Diese Quellen haben Mails für deine Domains verschickt, die DMARC nicht bestehen. Gehört eine davon zu deinen eigenen Diensten, fehlt ihr ein passendes SPF oder DKIM.{% endcall %}
+      <div style="margin-top:16px;">{{ m.rows(failing_rows) }}</div>
+      {% call m.p() %}{{ m.link(app_url ~ "/source-ips", "Alle Quellen ansehen") }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+
+  {% if data.new_source_count %}
+  {% call m.section("Neue Quellen", square="#fed329") %}
+      {{ m.h2(new_heading) }}
+      {% call m.p() %}Diese Quellen tauchen zum ersten Mal in deinen Berichten auf. Stufe sie unter Quellen als vertrauenswürdig oder verdächtig ein, dann weiß der {{ app_name }}, was er melden soll.{% endcall %}
+      <div style="margin-top:16px;">{{ m.rows(new_rows) }}</div>
+      {% call m.p() %}{{ m.link(app_url ~ "/source-ips", "Quellen einstufen") }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+
+  {% if data.open_alert_count %}
+  {% call m.section("Offene Alarme", square="#d61f7a") %}
+      {{ m.h2(alert_heading) }}
+      {% for event in data.open_alerts %}
+      <p style="margin:16px 0 0; font-family:{{ m.font }}; font-size:16px; line-height:25px; font-weight:700; color:#111111; mso-line-height-rule:exactly;">{{ event.title }}</p>
+      {% call m.p(margin="2px 0 0", size=14, color="#4a4a4a") %}{{ event.severity | severity_text }} · seit {{ event.created_at | datetime }}{% endcall %}
+      {% endfor %}
+      {% call m.p() %}{{ m.link(app_url ~ "/alerts/events?status=open", "Offene Alarme ansehen") }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+
+  {% if data.advice %}
+  {% call m.section("Empfehlungen", square="#bfd535") %}
+      {{ m.h2("Was du als Nächstes tun kannst") }}
+      {% for item in data.advice %}
+      <p style="margin:16px 0 0; font-family:{{ m.font }}; font-size:16px; line-height:25px; font-weight:700; color:#111111; mso-line-height-rule:exactly;">{{ item.domain }}: {{ item.recommendation.title }}</p>
+      {% call m.p(margin="4px 0 0") %}{{ item.recommendation.description }}{% endcall %}
+      {% endfor %}
+  {% endcall %}
+  {% endif %}
+
+  {% if data.formats %}
+  {% call m.section("Berichtsformate") %}
+      {% call m.p() %}{{ formats_text }}{% endcall %}
+      {% call m.p(size=14, color="#4a4a4a") %}RFC 7489 ist das bisherige Format von 2015, RFC 9990 das neue DMARCbis-Format von 2026. Der {{ app_name }} liest beide.{% endcall %}
+  {% endcall %}
+  {% endif %}
+{% endblock %}
+{% block reason %}{% if recipient.listed %}Du bekommst diese Mail, weil deine Adresse als Empfänger des Wochenberichts von {{ organization.name }} eingetragen ist.{% else %}Du bekommst diese Mail, weil du Administrator von {{ organization.name }} bist.{% endif %} Einstellen oder abschalten kannst du den Wochenbericht unter {{ m.link(app_url ~ "/alerts/digest", "Alarme → Wochenbericht") }}.{% endblock %}

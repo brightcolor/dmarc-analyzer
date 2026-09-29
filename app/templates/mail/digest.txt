@@ -1,0 +1,82 @@
+{% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
+Hallo{% if recipient.name %} {{ recipient.name }}{% endif %},
+
+hier ist der Überblick über die DMARC-Berichte, die vom {{ period_text }} für {{ organization.name }} eingegangen sind.
+
+{% if data.total %}
+BESTANDEN: {{ data.rate | percent }}
+{{ change_text }}
+
+{% for label, value in summary_rows %}
+{{ label }}: {{ value }}
+{% endfor %}
+
+Übersicht öffnen: {{ app_url }}/dashboard
+{% else %}
+KEINE BERICHTE
+In diesem Zeitraum kam kein DMARC-Bericht an. Prüfe, ob der DMARC-Eintrag deiner Domains die Empfangsadresse als rua enthält und die Empfangsdomain Mails annimmt.
+
+Domains ansehen: {{ app_url }}/domains
+{% endif %}
+{% if domain_rows %}
+
+DOMAINS
+{% for label, value in domain_rows %}
+- {{ label }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% if failing_rows %}
+
+QUELLEN MIT FEHLERN
+Diese Quellen haben Mails für deine Domains verschickt, die DMARC nicht bestehen. Gehört eine davon zu deinen eigenen Diensten, fehlt ihr ein passendes SPF oder DKIM.
+{% for label, value in failing_rows %}
+- {{ label }}: {{ value }}
+{% endfor %}
+Alle Quellen: {{ app_url }}/source-ips
+{% endif %}
+{% if data.new_source_count %}
+
+{{ new_heading | upper }}
+Diese Quellen tauchen zum ersten Mal in deinen Berichten auf. Stufe sie unter Quellen als vertrauenswürdig oder verdächtig ein, dann weiß der {{ app_name }}, was er melden soll.
+{% for label, value in new_rows %}
+- {{ label }}: {{ value }}
+{% endfor %}
+Quellen einstufen: {{ app_url }}/source-ips
+{% endif %}
+{% if data.open_alert_count %}
+
+{{ alert_heading | upper }}
+{% for event in data.open_alerts %}
+- {{ event.title }} ({{ event.severity | severity_text }}, seit {{ event.created_at | datetime }})
+{% endfor %}
+Offene Alarme: {{ app_url }}/alerts/events?status=open
+{% endif %}
+{% if data.advice %}
+
+WAS DU ALS NÄCHSTES TUN KANNST
+{% for item in data.advice %}
+{{ item.domain }}: {{ item.recommendation.title }}
+{{ item.recommendation.description }}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if data.formats %}
+
+BERICHTSFORMATE
+{{ formats_text }}
+RFC 7489 ist das bisherige Format von 2015, RFC 9990 das neue DMARCbis-Format von 2026. Der {{ app_name }} liest beide.
+{% endif %}
+
+Viele Grüße
+{{ app_name }}
+{% endfilter %}
+
+
+{{ "-- " }}
+{% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
+{{ app_name }} · {{ organization.name }}
+{% if recipient.listed %}Du bekommst diese Mail, weil deine Adresse als Empfänger des Wochenberichts von {{ organization.name }} eingetragen ist.{% else %}Du bekommst diese Mail, weil du Administrator von {{ organization.name }} bist.{% endif %} Einstellen oder abschalten kannst du den Wochenbericht unter Alarme → Wochenbericht: {{ app_url }}/alerts/digest
+{% endfilter %}
+

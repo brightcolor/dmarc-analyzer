@@ -15,6 +15,7 @@ from app.models.organization import (  # noqa: F401
     OrganizationMembership,
     PlanDefinition,
 )
+from app.models.scheduler import SchedulerRun  # noqa: F401
 from app.models.settings import AppSettings  # noqa: F401
 from app.models.smtp_inbound import (  # noqa: F401
     InboundMailAttachment,

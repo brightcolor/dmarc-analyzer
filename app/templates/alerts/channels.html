@@ -5,9 +5,14 @@
 {% block actions %}<a class="bc-button bc-button--secondary" href="/alerts/rules">Regeln</a>{% endblock %}
 
 {% block content %}
-{% include "alerts/_pending_notice.html" %}
 {% if error %}
 <div class="bc-alert bc-alert--bad" role="alert"><p class="bc-alert__title">Der Kanal wurde nicht angelegt</p><p>{{ error }}</p></div>
+{% endif %}
+{% if not mail_ready %}
+<div class="bc-alert bc-alert--warn">
+  <p class="bc-alert__title">Mailversand ist nicht eingerichtet</p>
+  <p>E-Mail-Kanäle brauchen einen SMTP-Server. {% if user.is_superadmin %}Trage <code>MAIL_SMTP_HOST</code> und den Zugang in die <code>.env</code> ein und starte den Web-Container neu.{% else %}Bitte den Betreiber, den Mailversand einzurichten.{% endif %} Webhook, ntfy und Slack funktionieren schon jetzt.</p>
+</div>
 {% endif %}
 
 <section class="bc-panel" aria-labelledby="kanaele-titel">
@@ -15,41 +20,81 @@
   {% if channels %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Angelegt</th></tr></thead>
+      <thead><tr><th>Name</th><th>Art</th><th>Ziel</th><th>Status</th><th>Letzte Zustellung</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for ch in channels %}
+        {% set last = last_deliveries.get(ch.id) %}
         <tr>
-          <td>{{ ch.name }}</td>
-          <td>{{ channel_types.get(ch.channel_type, ch.channel_type) }}</td>
+          <td><strong>{{ ch.name }}</strong></td>
+          <td class="app-nowrap">{{ channel_types.get(ch.channel_type, ch.channel_type) }}</td>
+          <td class="app-small app-break">{{ summaries[ch.id] }}</td>
           <td>{{ ui.state('aktiv' if ch.is_active else 'aus', 'bc-state--on' if ch.is_active else '') }}</td>
-          <td class="app-nowrap">{{ ch.created_at | datetime }}</td>
+          <td class="app-small">
+            {% if last %}
+              {{ ui.state(last.status | status_text, last.status | status_state) }}
+              <span class="app-reason">{{ (last.sent_at or last.created_at) | datetime }}{% if last.status != 'sent' and last.error_message %}: {{ last.error_message }}{% endif %}</span>
+            {% else %}
+              <span class="app-quiet">noch keine</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if can_manage %}
+            <div class="bc-row-actions">
+              <form method="post" action="/alerts/channels/{{ ch.id }}/test"><button class="bc-button bc-button--secondary" type="submit">Testen</button></form>
+              <form method="post" action="/alerts/channels/{{ ch.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if ch.is_active else 'Einschalten' }}</button></form>
+              <form method="post" action="/alerts/channels/{{ ch.id }}/delete" data-confirm="Kanal „{{ ch.name }}“ löschen? Regeln, die ihn nutzen, benachrichtigen danach nur noch ihre übrigen Kanäle."><button class="bc-button bc-button--danger" type="submit">Löschen</button></form>
+            </div>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-    {{ ui.empty("Noch keine Kanäle", "Lege unten einen Webhook oder einen ntfy-Kanal an.") }}
+    {{ ui.empty("Noch keine Kanäle", "Lege unten eine E-Mail-Adresse, einen Webhook oder einen ntfy-Kanal an.") }}
   {% endif %}
 </section>
 
+{% if can_manage %}
 <section class="bc-panel" aria-labelledby="neu-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="neu-titel">Neuer Kanal</h2></div>
   <form method="post" action="/alerts/channels/new">
     <div class="bc-panel__body">
       <div class="bc-formgrid">
         <label for="k-name">Name</label>
-        <input class="bc-input" id="k-name" name="name" required placeholder="z. B. ntfy Technik">
+        <input class="bc-input" id="k-name" name="name" value="{{ values.name or '' }}" placeholder="z. B. Technik-Team">
         <label for="k-type">Art</label>
-        <select class="bc-select" id="k-type" name="channel_type">
-          {% for key, label in channel_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        <select class="bc-select" id="k-type" name="channel_type" data-switch>
+          {% for key, label in channel_types.items() %}<option value="{{ key }}"{% if values.channel_type == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
-        <label for="k-config">Einstellungen</label>
-        <textarea class="bc-textarea app-mono" id="k-config" name="config_json" rows="4" spellcheck="false" placeholder='{"url": "https://ntfy.example/alarme"}'></textarea>
-        <p class="bc-formgrid__hint">JSON mit mindestens <code>url</code>. ntfy: <code>{"url": "https://ntfy.example", "topic": "alarme", "token": "…"}</code>. Webhook und Slack: <code>{"url": "https://…"}</code>.</p>
+
+        <div class="app-contents" data-show-for="email">
+          <label for="k-recipients">Empfänger</label>
+          <textarea class="bc-textarea" id="k-recipients" name="recipients" rows="3" placeholder="technik@example.org">{{ values.recipients or '' }}</textarea>
+          <p class="bc-formgrid__hint">Eine Adresse je Zeile. Alle Empfänger bekommen dieselbe Mail.</p>
+        </div>
+
+        <div class="app-contents" data-show-for="webhook slack ntfy">
+          <label for="k-url">Adresse</label>
+          <input class="bc-input" id="k-url" name="url" type="url" value="{{ values.url or '' }}" placeholder="https://">
+          <p class="bc-formgrid__hint">Webhook: die Adresse, an die der Analyzer JSON schickt. Slack und Mattermost: die Adresse des eingehenden Webhooks. ntfy: dein eigener Server; leer lassen für {{ ntfy_default }}.</p>
+        </div>
+
+        <div class="app-contents" data-show-for="ntfy">
+          <label for="k-topic">Thema</label>
+          <input class="bc-input" id="k-topic" name="topic" value="{{ values.topic or '' }}" placeholder="z. B. dmarc-alarme" pattern="[A-Za-z0-9_\-]{1,64}">
+          <p class="bc-formgrid__hint">Buchstaben, Ziffern, - und _. Auf öffentlichen Servern liest jeder mit, der das Thema kennt; wähle es also schwer zu erraten.</p>
+          <label for="k-token">Zugangstoken</label>
+          <input class="bc-input" id="k-token" name="token" type="password" autocomplete="off" placeholder="optional">
+          <p class="bc-formgrid__hint">Für geschützte Themen. Die Liste oben zeigt das Token nicht an.</p>
+        </div>
       </div>
     </div>
     <div class="bc-panel__foot"><button class="bc-button" type="submit">Kanal anlegen</button></div>
   </form>
 </section>
+{% else %}
+<p class="app-small app-quiet">Kanäle anlegen und ändern dürfen die Administratoren der Organisation.</p>
+{% endif %}
 {% endblock %}
