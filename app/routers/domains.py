@@ -9,6 +9,7 @@ from app.dependencies import get_client_ip, get_current_org, get_current_user
 from app.models import Domain, InboundMailAddress, Organization, User
 from app.services.audit import log_action
 from app.services.dashboard import get_pass_fail_over_time
+from app.services.dmarc_record import suggest_dmarc_record
 from app.services.inbound_address import create_domain_address
 from app.services.recommendation import get_recommendations_for_domain
 from app.templates_config import templates
@@ -152,14 +153,7 @@ def domain_detail(
         if org_addr:
             rua_addr = org_addr.address
 
-    suggested_record = None
-    if rua_addr:
-        p = domain.dmarc_policy or "none"
-        suggested_record = (
-            f'v=DMARC1; p={p}; rua=mailto:{rua_addr}'
-        )
-        if domain.dmarc_policy_pct and domain.dmarc_policy_pct < 100:
-            suggested_record += f'; pct={domain.dmarc_policy_pct}'
+    suggested_record = suggest_dmarc_record(domain, rua_addr) if rua_addr else None
 
     # External DMARC destination verification record
     ext_verify_record = None

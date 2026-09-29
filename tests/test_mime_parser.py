@@ -8,9 +8,8 @@ from email.mime.text import MIMEText
 
 import pytest
 
+from app.config import settings
 from app.services.mime_parser import (
-    MAX_UNZIPPED_SIZE,
-    MAX_ZIP_FILES,
     MimeParseError,
     ZipBombError,
     _safe_gunzip,
@@ -62,8 +61,8 @@ class TestSafeGunzip:
         assert result == SAMPLE_DMARC_XML
 
     def test_gz_bomb_raises(self):
-        # Generate payload larger than MAX_UNZIPPED_SIZE
-        big_data = b"A" * (MAX_UNZIPPED_SIZE + 1)
+        # Generate payload larger than the unpack limit
+        big_data = b"A" * (settings.ARCHIVE_MAX_UNPACKED_BYTES + 1)
         gz_data = _make_gz(big_data)
         with pytest.raises(ZipBombError):
             _safe_gunzip(gz_data)
@@ -95,7 +94,7 @@ class TestSafeUnzip:
         assert "readme.txt" not in names
 
     def test_too_many_files_raises(self):
-        entries = {f"file{i}.xml": b"<a/>" for i in range(MAX_ZIP_FILES + 1)}
+        entries = {f"file{i}.xml": b"<a/>" for i in range(settings.ARCHIVE_MAX_FILES + 1)}
         data = _make_zip(entries)
         with pytest.raises(MimeParseError):
             _safe_unzip(data)
@@ -112,7 +111,7 @@ class TestSafeUnzip:
         assert "good.xml" in names
 
     def test_zip_bomb_raises(self):
-        big_data = b"A" * (MAX_UNZIPPED_SIZE + 1)
+        big_data = b"A" * (settings.ARCHIVE_MAX_UNPACKED_BYTES + 1)
         data = _make_zip({"bomb.xml": big_data})
         with pytest.raises((ZipBombError, MimeParseError)):
             _safe_unzip(data)
@@ -171,14 +170,14 @@ class TestExtractDmarcAttachments:
         assert attachments == []
 
     def test_zip_bomb_propagates(self):
-        big_data = b"A" * (MAX_UNZIPPED_SIZE + 1)
+        big_data = b"A" * (settings.ARCHIVE_MAX_UNPACKED_BYTES + 1)
         zip_data = _make_zip({"bomb.xml": big_data})
         raw = _make_email(zip_data, "bomb.zip", "application/zip")
         with pytest.raises((ZipBombError, MimeParseError)):
             extract_dmarc_attachments(raw)
 
     def test_gz_bomb_propagates(self):
-        big_data = b"A" * (MAX_UNZIPPED_SIZE + 1)
+        big_data = b"A" * (settings.ARCHIVE_MAX_UNPACKED_BYTES + 1)
         gz_data = _make_gz(big_data)
         raw = _make_email(gz_data, "bomb.xml.gz", "application/gzip")
         with pytest.raises(ZipBombError):
@@ -211,3 +210,20 @@ class TestParseMailHeaders:
     def test_garbage_returns_empty_dict(self):
         headers = parse_mail_headers(b"\x00\x01garbage")
         assert isinstance(headers, dict)
+
+
+class TestLimitsFromSettings:
+    def test_smaller_file_limit_applies(self, monkeypatch):
+        monkeypatch.setattr(settings, "ARCHIVE_MAX_FILES", 2)
+        data = _make_zip({f"file{i}.xml": b"<a/>" for i in range(3)})
+        with pytest.raises(MimeParseError, match="höchstens 2"):
+            _safe_unzip(data)
+
+    def test_smaller_unpack_limit_applies(self, monkeypatch):
+        monkeypatch.setattr(settings, "ARCHIVE_MAX_UNPACKED_BYTES", 1000)
+        with pytest.raises(ZipBombError):
+            _safe_gunzip(_make_gz(b"A" * 1001))
+
+    def test_content_below_limit_passes(self, monkeypatch):
+        monkeypatch.setattr(settings, "ARCHIVE_MAX_UNPACKED_BYTES", 1000)
+        assert _safe_gunzip(_make_gz(b"A" * 999)) == b"A" * 999

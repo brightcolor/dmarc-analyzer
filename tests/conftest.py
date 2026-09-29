@@ -2,8 +2,13 @@
 Shared test fixtures.
 Uses an in-memory SQLite database for isolation.
 """
-import pytest
-from fastapi.testclient import TestClient
+import os
+
+# The app engine must never point at a real database file during tests
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -210,3 +215,71 @@ XXE_XML = b"""<?xml version="1.0"?>
 """
 
 DUPLICATE_REPORT_XML = SAMPLE_DMARC_XML  # same report_id = test-report-001
+
+# RFC 9990 (DMARCbis) report with namespace and every new field
+DMARCBIS_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<feedback xmlns="urn:ietf:params:xml:ns:dmarc-2.0">
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>example.net</org_name>
+    <email>dmarc-reports@example.net</email>
+    <report_id>bis-report-001</report_id>
+    <date_range><begin>1790000000</begin><end>1790086399</end></date_range>
+    <generator>Example Reporter 3.1</generator>
+  </report_metadata>
+  <policy_published>
+    <domain>example.com</domain>
+    <discovery_method>treewalk</discovery_method>
+    <p>reject</p>
+    <sp>quarantine</sp>
+    <np>reject</np>
+    <testing>y</testing>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>192.0.2.20</source_ip>
+      <count>7</count>
+      <policy_evaluated>
+        <disposition>pass</disposition>
+        <dkim>pass</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.com</header_from>
+      <envelope_from>example.com</envelope_from>
+    </identifiers>
+    <auth_results>
+      <dkim><domain>example.com</domain><selector>s2026</selector><result>pass</result></dkim>
+      <spf><domain>example.com</domain><scope>mfrom</scope><result>pass</result></spf>
+    </auth_results>
+  </record>
+  <record>
+    <row>
+      <source_ip>198.51.100.30</source_ip>
+      <count>2</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>fail</dkim>
+        <spf>fail</spf>
+        <reason><type>policy_test_mode</type><comment>t=y</comment></reason>
+      </policy_evaluated>
+    </row>
+    <identifiers><header_from>example.com</header_from></identifiers>
+    <auth_results>
+      <dkim><domain>example.org</domain><selector>x1</selector><result>fail</result></dkim>
+      <spf><domain>example.org</domain><scope>mfrom</scope><result>fail</result></spf>
+    </auth_results>
+  </record>
+</feedback>
+"""
+
+# RFC 9990 content without the namespace declaration (seen in practice)
+DMARCBIS_NO_NAMESPACE_XML = DMARCBIS_XML.replace(
+    b' xmlns="urn:ietf:params:xml:ns:dmarc-2.0"', b""
+).replace(b"bis-report-001", b"bis-report-002")
+
+# RFC 7489 report with a legacy namespace some reporters declare
+LEGACY_NAMESPACE_XML = SAMPLE_DMARC_XML.replace(
+    b"<feedback>", b'<feedback xmlns="http://dmarc.org/dmarc-xml/0.1">'
+).replace(b"test-report-001", b"legacy-ns-001")

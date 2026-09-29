@@ -1,6 +1,8 @@
 import secrets
+import sys
 from pathlib import Path
 
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -76,6 +78,57 @@ class Settings(BaseSettings):
     FEATURE_SOURCE_ENRICHMENT: bool = False
     FEATURE_SAAS_MODE: bool = False
 
+    # Archive limits for report attachments and uploads
+    ARCHIVE_MAX_ATTACHMENT_BYTES: int = Field(
+        20 * 1024 * 1024, ge=1024 * 1024, le=200 * 1024 * 1024,
+        description="Größter Mailanhang in Bytes, der noch ausgewertet wird. Größere Anhänge werden übersprungen.",
+    )
+    ARCHIVE_MAX_UNPACKED_BYTES: int = Field(
+        50 * 1024 * 1024, ge=1024 * 1024, le=1024 * 1024 * 1024,
+        description="Höchstgröße in Bytes nach dem Entpacken von ZIP oder GZ. Schützt vor Archivbomben.",
+    )
+    ARCHIVE_MAX_FILES: int = Field(
+        50, ge=1, le=10_000, description="Höchstzahl Dateien in einem ZIP-Archiv.",
+    )
+
+    # Report parsing
+    DMARC_MAX_RECORDS_PER_REPORT: int = Field(
+        50_000, ge=100, le=1_000_000,
+        description="Höchstzahl der Datensätze je Bericht. Weitere Datensätze werden verworfen und protokolliert.",
+    )
+
+    # Recommendations
+    RECOMMENDATION_WINDOW_DAYS: int = Field(
+        30, ge=1, le=365, description="Zeitraum in Tagen, den die Empfehlungen je Domain auswerten.",
+    )
+    RECOMMENDATION_STALE_REPORT_DAYS: int = Field(
+        7, ge=1, le=90, description="Nach so vielen Tagen ohne Bericht meldet die Domain „keine neuen Berichte“.",
+    )
+    RECOMMENDATION_MIN_MESSAGES: int = Field(
+        100, ge=1, le=10_000_000,
+        description="Mindestzahl Nachrichten im Zeitraum, bevor eine strengere Policy empfohlen wird.",
+    )
+    RECOMMENDATION_QUARANTINE_PASS_RATE: float = Field(
+        95.0, ge=50.0, le=100.0, description="Bestehensquote in Prozent, ab der p=quarantine empfohlen wird.",
+    )
+    RECOMMENDATION_REJECT_PASS_RATE: float = Field(
+        99.0, ge=50.0, le=100.0, description="Bestehensquote in Prozent, ab der p=reject empfohlen wird.",
+    )
+    RECOMMENDATION_HIGH_FAIL_RATE: float = Field(
+        20.0, ge=0.0, le=100.0, description="Fehlerquote in Prozent, ab der eine Domain als auffällig gilt.",
+    )
+    RECOMMENDATION_ENFORCED_FAIL_RATE: float = Field(
+        10.0, ge=0.0, le=100.0,
+        description="Fehlerquote in Prozent, ab der eine aktive quarantine- oder reject-Policy als riskant gilt.",
+    )
+    RECOMMENDATION_FAIL_MIN_MESSAGES: int = Field(
+        20, ge=1, le=10_000_000, description="Mindestzahl Nachrichten, bevor Fehlerquoten bewertet werden.",
+    )
+    RECOMMENDATION_SPF_ONLY_SHARE: float = Field(
+        5.0, ge=0.0, le=100.0,
+        description="Anteil in Prozent der Nachrichten, die nur per SPF bestehen, ab dem DKIM empfohlen wird.",
+    )
+
     @property
     def upload_dir_path(self) -> Path:
         p = Path(self.UPLOAD_DIR)
@@ -93,4 +146,32 @@ class Settings(BaseSettings):
         return {ext.strip() for ext in self.UPLOAD_ALLOWED_EXTENSIONS.split(",") if ext.strip()}
 
 
-settings = Settings()
+_VALIDATION_MESSAGES = {
+    "greater_than_equal": "muss mindestens {ge} sein",
+    "less_than_equal": "darf höchstens {le} sein",
+    "int_parsing": "muss eine ganze Zahl sein",
+    "float_parsing": "muss eine Zahl sein",
+    "bool_parsing": "muss true oder false sein",
+}
+
+
+def _describe_error(error: dict) -> str:
+    name = ".".join(str(part) for part in error.get("loc", ())) or "?"
+    template = _VALIDATION_MESSAGES.get(error.get("type", ""))
+    reason = template.format(**error.get("ctx", {})) if template else error.get("msg", "ist ungültig")
+    return f"- {name}: {reason} (gesetzt: {error.get('input')!r})"
+
+
+def load_settings() -> Settings:
+    try:
+        return Settings()
+    except ValidationError as exc:
+        details = "\n".join(_describe_error(err) for err in exc.errors())
+        sys.exit(
+            "Die Anwendung startet nicht, weil Einstellungen ungültig sind:\n"
+            f"{details}\n"
+            "Bitte die Werte in der .env-Datei oder den Umgebungsvariablen korrigieren und neu starten."
+        )
+
+
+settings = load_settings()

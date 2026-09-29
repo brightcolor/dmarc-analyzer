@@ -1,13 +1,17 @@
 """
 Rule-based recommendation engine for DMARC domains.
-No AI/ML. All logic is deterministic and explainable.
+Deterministic and explainable; all thresholds come from settings.
 """
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import DmarcRecord, DmarcReport, Domain, InboundMailAddress, SourceIp
+
+ENFORCING_POLICIES = ("quarantine", "reject")
+POLICY_ACTION = {"quarantine": "in den Spam-Ordner", "reject": "abgewiesen"}
 
 
 @dataclass
@@ -19,6 +23,10 @@ class Recommendation:
     data_basis: str
 
 
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
 def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> list[Recommendation]:
     recs: list[Recommendation] = []
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org_id).first()
@@ -26,10 +34,12 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         return recs
 
     now = datetime.now(UTC)
-    thirty_days_ago = now - timedelta(days=30)
-    seven_days_ago = now - timedelta(days=7)
+    window_days = settings.RECOMMENDATION_WINDOW_DAYS
+    stale_days = settings.RECOMMENDATION_STALE_REPORT_DAYS
+    window_start = now - timedelta(days=window_days)
+    stale_since = now - timedelta(days=stale_days)
 
-    # --- Check if any inbound address is configured ---
+    # --- Report address ---
     has_address = (
         db.query(InboundMailAddress)
         .filter_by(organization_id=org_id, domain_id=domain_id, status="active")
@@ -48,19 +58,19 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             recs.append(Recommendation(
                 code="NO_INBOUND_ADDRESS",
                 severity="warning",
-                title="No active report address configured",
+                title="Keine aktive Berichtsadresse",
                 description=(
-                    "This domain has no active inbound mail address for DMARC reports. "
-                    "Without a configured rua address, this application cannot receive DMARC reports."
+                    "Für diese Domain ist keine Empfangsadresse für DMARC-Berichte aktiv. Lege eine Adresse an "
+                    "und trage sie als rua im DMARC-Eintrag ein. Erst dann kommen hier Berichte an."
                 ),
-                data_basis="No active InboundMailAddress found for this domain or organization.",
+                data_basis="Keine aktive Empfangsadresse für die Domain oder die Organisation.",
             ))
 
-    # --- Check for missing recent reports ---
+    # --- Report flow ---
     recent_report = (
         db.query(DmarcReport)
         .filter_by(organization_id=org_id, domain_id=domain_id)
-        .filter(DmarcReport.created_at >= seven_days_ago)
+        .filter(DmarcReport.created_at >= stale_since)
         .first()
     )
     if not recent_report:
@@ -74,40 +84,39 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             recs.append(Recommendation(
                 code="NO_REPORTS_EVER",
                 severity="warning",
-                title="No DMARC reports received yet",
+                title="Noch keine DMARC-Berichte empfangen",
                 description=(
-                    "No DMARC aggregate reports have been received for this domain. "
-                    "Check that the DMARC record contains the correct rua address, "
-                    "and that the DNS record is published correctly."
+                    "Für diese Domain ist noch kein Sammelbericht eingegangen. Prüfe, ob der DMARC-Eintrag im DNS "
+                    "veröffentlicht ist und die richtige rua-Adresse enthält."
                 ),
-                data_basis="Zero DmarcReport records found for this domain.",
+                data_basis="0 Berichte für diese Domain.",
             ))
         else:
-            days_since = (now - last_report.created_at).days
+            days_since = (now - _as_utc(last_report.created_at)).days
             recs.append(Recommendation(
                 code="REPORTS_STALE",
                 severity="info",
-                title="No reports received in the last 7 days",
+                title=f"Seit {days_since} Tagen keine neuen Berichte",
                 description=(
-                    f"The last report was received {days_since} day(s) ago. "
-                    "This may indicate the sending domain has stopped sending, "
-                    "or the rua address in the DMARC record needs updating."
+                    f"Der letzte Bericht kam vor {days_since} Tagen. Entweder verschickt die Domain derzeit keine "
+                    "Mails, oder die rua-Adresse im DMARC-Eintrag hat sich geändert."
                 ),
-                data_basis=f"Last report: {last_report.created_at.date()}",
+                data_basis=f"Letzter Bericht am {last_report.created_at:%d.%m.%Y}, Schwelle {stale_days} Tage.",
             ))
 
-    # --- Analyse recent records ---
+    recs.extend(_policy_tag_recommendations(domain))
+
+    # --- Traffic in the evaluation window ---
     records = (
         db.query(DmarcRecord)
         .join(DmarcReport)
         .filter(
             DmarcReport.organization_id == org_id,
             DmarcReport.domain_id == domain_id,
-            DmarcReport.created_at >= thirty_days_ago,
+            DmarcReport.created_at >= window_start,
         )
         .all()
     )
-
     if not records:
         return recs
 
@@ -115,6 +124,7 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
     pass_msgs = sum(r.count for r in records if r.dmarc_pass)
     fail_msgs = total_msgs - pass_msgs
     pass_rate = pass_msgs / total_msgs * 100 if total_msgs > 0 else 0
+    fail_rate = fail_msgs / total_msgs * 100 if total_msgs > 0 else 0
 
     unknown_ips = (
         db.query(SourceIp)
@@ -123,103 +133,135 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         .count()
     )
 
-    # --- pct < 100 ---
-    if domain.dmarc_policy_pct is not None and domain.dmarc_policy_pct < 100:
-        recs.append(Recommendation(
-            code="PCT_LESS_THAN_100",
-            severity="info",
-            title=f"Policy pct={domain.dmarc_policy_pct}% — only partial enforcement",
-            description=(
-                f"The DMARC policy is only applied to {domain.dmarc_policy_pct}% of messages. "
-                "This is common during a rollout but should be raised to 100% once the policy is validated."
-            ),
-            data_basis=f"policy_pct={domain.dmarc_policy_pct} from last parsed report.",
-        ))
-
-    # --- Policy none with high pass rate ---
-    if domain.dmarc_policy == "none" and pass_rate >= 95 and total_msgs >= 100:
+    enough_for_policy = total_msgs >= settings.RECOMMENDATION_MIN_MESSAGES
+    if (domain.dmarc_policy == "none" and enough_for_policy
+            and pass_rate >= settings.RECOMMENDATION_QUARANTINE_PASS_RATE):
         recs.append(Recommendation(
             code="READY_FOR_QUARANTINE",
             severity="info",
-            title="Domain may be ready for policy: quarantine",
+            title="Bereit für p=quarantine",
             description=(
-                f"Pass rate is {pass_rate:.1f}% over the last 30 days ({total_msgs} messages). "
-                "This is a strong signal that moving to p=quarantine is safe, "
-                "provided all sending sources have been verified."
+                f"{pass_rate:.1f} % der Nachrichten der letzten {window_days} Tage bestehen DMARC. Wenn alle "
+                "Versandquellen geprüft sind, kann die Policy auf p=quarantine steigen."
             ),
-            data_basis=f"pass_rate={pass_rate:.1f}%, total_msgs={total_msgs}, policy=none",
+            data_basis=f"Bestehensquote {pass_rate:.1f} %, {total_msgs} Nachrichten, Policy none.",
         ))
 
-    # --- Policy quarantine with high pass rate ---
-    if domain.dmarc_policy == "quarantine" and pass_rate >= 99 and total_msgs >= 100 and unknown_ips == 0:
+    if (domain.dmarc_policy == "quarantine" and enough_for_policy and unknown_ips == 0
+            and pass_rate >= settings.RECOMMENDATION_REJECT_PASS_RATE):
         recs.append(Recommendation(
             code="READY_FOR_REJECT",
             severity="info",
-            title="Domain may be ready for policy: reject",
+            title="Bereit für p=reject",
             description=(
-                f"Pass rate is {pass_rate:.1f}% with no unknown sources. "
-                "You could consider moving to p=reject for maximum protection."
+                f"{pass_rate:.1f} % der Nachrichten bestehen DMARC, und alle Versandquellen sind eingestuft. "
+                "Mit p=reject ist die Domain am besten gegen Missbrauch geschützt."
             ),
-            data_basis=f"pass_rate={pass_rate:.1f}%, unknown_ips=0",
+            data_basis=f"Bestehensquote {pass_rate:.1f} %, {total_msgs} Nachrichten, 0 unbekannte Quellen.",
         ))
 
-    # --- High fail rate ---
-    fail_rate = fail_msgs / total_msgs * 100 if total_msgs > 0 else 0
-    if fail_rate > 20 and total_msgs >= 20:
+    enough_for_fail_rate = total_msgs >= settings.RECOMMENDATION_FAIL_MIN_MESSAGES
+    if enough_for_fail_rate and fail_rate > settings.RECOMMENDATION_HIGH_FAIL_RATE:
         recs.append(Recommendation(
             code="HIGH_FAIL_RATE",
             severity="warning",
-            title=f"High DMARC fail rate: {fail_rate:.1f}%",
+            title=f"Hohe Fehlerquote: {fail_rate:.1f} %",
             description=(
-                f"{fail_msgs} of {total_msgs} messages failed DMARC in the last 30 days. "
-                "Review failing source IPs and check SPF/DKIM configuration."
+                f"{fail_msgs} von {total_msgs} Nachrichten der letzten {window_days} Tage bestehen DMARC nicht. "
+                "Prüfe die fehlschlagenden Quellen und ihre SPF- und DKIM-Einrichtung."
             ),
-            data_basis=f"fail_rate={fail_rate:.1f}%, fail_msgs={fail_msgs}, total={total_msgs}",
+            data_basis=f"Fehlerquote {fail_rate:.1f} %, {fail_msgs} von {total_msgs} Nachrichten.",
         ))
 
-    # --- quarantine/reject with high fail rate ---
-    if domain.dmarc_policy in ("quarantine", "reject") and fail_rate > 10 and total_msgs >= 20:
+    if (domain.dmarc_policy in ENFORCING_POLICIES and enough_for_fail_rate
+            and fail_rate > settings.RECOMMENDATION_ENFORCED_FAIL_RATE):
         recs.append(Recommendation(
             code="POLICY_ACTIVE_FAILURES",
             severity="critical",
-            title=f"Policy {domain.dmarc_policy} is active but {fail_rate:.1f}% of messages fail",
+            title=f"p={domain.dmarc_policy} ist aktiv, aber {fail_rate:.1f} % scheitern",
             description=(
-                f"Your policy is set to {domain.dmarc_policy} but {fail_rate:.1f}% of messages "
-                "are failing DMARC. Legitimate email may be quarantined or rejected. "
-                "Investigate failing sources immediately."
+                f"Empfänger stellen fehlschlagende Mails {POLICY_ACTION[domain.dmarc_policy]}. Darunter können "
+                "echte Mails sein. Prüfe die fehlschlagenden Quellen sofort."
             ),
-            data_basis=f"policy={domain.dmarc_policy}, fail_rate={fail_rate:.1f}%",
+            data_basis=f"Policy {domain.dmarc_policy}, Fehlerquote {fail_rate:.1f} %.",
         ))
 
-    # --- Unknown sources sending mail ---
     if unknown_ips > 0:
         recs.append(Recommendation(
             code="UNKNOWN_SOURCES",
             severity="warning",
-            title=f"{unknown_ips} unknown sending source(s) detected",
+            title=f"{unknown_ips} unbekannte Versandquellen",
             description=(
-                f"{unknown_ips} source IP(s) have been observed sending mail for this domain "
-                "but have not been classified. Review them in the Source IPs view."
+                f"{unknown_ips} IP-Adressen haben Mails für diese Domain verschickt und sind noch nicht "
+                "eingestuft. Ordne sie unter „Quellen“ als vertrauenswürdig, verdächtig oder ignoriert ein."
             ),
-            data_basis=f"unknown_ips={unknown_ips}",
+            data_basis=f"{unknown_ips} Quellen mit Einstufung „unbekannt“.",
         ))
 
-    # --- SPF pass but DKIM fail ---
-    spf_only_records = [r for r in records if r.spf_aligned and not r.dkim_aligned]
-    spf_only_count = sum(r.count for r in spf_only_records)
+    spf_only_count = sum(r.count for r in records if r.spf_aligned and not r.dkim_aligned)
     if spf_only_count > 0 and total_msgs > 0:
-        pct = spf_only_count / total_msgs * 100
-        if pct >= 5:
+        share = spf_only_count / total_msgs * 100
+        if share >= settings.RECOMMENDATION_SPF_ONLY_SHARE:
             recs.append(Recommendation(
                 code="DKIM_MISSING_FOR_SPF_SENDERS",
                 severity="info",
-                title=f"{pct:.1f}% of messages pass only via SPF (no DKIM alignment)",
+                title=f"{share:.1f} % bestehen nur per SPF",
                 description=(
-                    "SPF alignment is sufficient for DMARC to pass, but DKIM signing adds "
-                    "resilience especially for forwarded mail. Consider adding DKIM signing "
-                    "to sources that currently lack it."
+                    "Diese Nachrichten bestehen DMARC allein über SPF. Bei Weiterleitungen bricht SPF, eine "
+                    "DKIM-Signatur bleibt erhalten. Richte für diese Quellen DKIM ein."
                 ),
-                data_basis=f"spf_only_msgs={spf_only_count}, total={total_msgs}",
+                data_basis=f"{spf_only_count} von {total_msgs} Nachrichten nur mit SPF-Alignment.",
             ))
+
+    return recs
+
+
+def _policy_tag_recommendations(domain: Domain) -> list[Recommendation]:
+    """Hints about pct (RFC 7489) and t (RFC 9989) in the published record."""
+    recs: list[Recommendation] = []
+    policy = domain.dmarc_policy
+    if policy not in ENFORCING_POLICIES:
+        return recs
+
+    pct = domain.dmarc_policy_pct
+    testing = (domain.dmarc_policy_testing or "").lower() == "y"
+
+    if pct == 0 and not testing:
+        recs.append(Recommendation(
+            code="PCT_ZERO_WITHOUT_TESTING",
+            severity="warning",
+            title="pct=0: Testbetrieb gilt nur für ältere Empfänger",
+            description=(
+                f"Mit pct=0 stufen Empfänger nach RFC 7489 die Policy p={policy} für alle fehlgeschlagenen Mails "
+                "um eine Stufe ab. RFC 9989 kennt pct nicht mehr: Empfänger nach dem neuen Standard wenden "
+                f"p={policy} voll an. Soll die Domain im Testbetrieb bleiben, ergänze t=y im DMARC-Eintrag."
+            ),
+            data_basis="pct=0 laut letztem Bericht nach RFC 7489, kein t=y in Berichten nach RFC 9990.",
+        ))
+    elif pct is not None and 0 < pct < 100:
+        recs.append(Recommendation(
+            code="PCT_PARTIAL",
+            severity="info",
+            title=f"pct={pct}: Policy gilt nur für einen Teil der Mails",
+            description=(
+                f"Empfänger nach RFC 7489 wenden p={policy} auf {pct} % der fehlgeschlagenen Mails an. RFC 9989 "
+                "kennt pct nicht mehr: Empfänger nach dem neuen Standard wenden die Policy auf alle an. Setze pct "
+                "auf 100 oder entferne es, sobald alle Quellen sauber authentifiziert sind."
+            ),
+            data_basis=f"pct={pct} laut letztem Bericht nach RFC 7489.",
+        ))
+
+    if testing:
+        recs.append(Recommendation(
+            code="TESTING_MODE",
+            severity="info",
+            title="Testmodus aktiv (t=y)",
+            description=(
+                f"Die Domain bittet Empfänger nach RFC 9989, p={policy} vorerst nicht anzuwenden. Entferne t=y, "
+                "sobald alle Quellen sauber authentifiziert sind. Empfänger nach RFC 7489 kennen t nicht und "
+                "richten sich weiter nach p und pct."
+            ),
+            data_basis="t=y laut letztem Bericht nach RFC 9990.",
+        ))
 
     return recs

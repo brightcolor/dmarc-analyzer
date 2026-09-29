@@ -25,6 +25,7 @@ from app.services.dmarc_evaluator import (
     evaluate_record,
 )
 from app.services.dmarc_parser import (
+    FORMAT_RFC9990,
     PARSER_VERSION,
     DmarcParseError,
     ParsedReport,
@@ -32,6 +33,9 @@ from app.services.dmarc_parser import (
 )
 
 logger = logging.getLogger(__name__)
+
+# RFC 9989: "t" defaults to "n" when absent.
+RFC9989_DEFAULT_TESTING = "n"
 
 
 def _file_hash(data: bytes) -> str:
@@ -114,6 +118,13 @@ def store_parsed_report(
         policy_sp=parsed.policy_sp,
         policy_pct=parsed.policy_pct,
         policy_fo=parsed.policy_fo,
+        policy_np=parsed.policy_np,
+        policy_testing=parsed.policy_testing,
+        policy_discovery_method=parsed.policy_discovery_method,
+        report_format=parsed.report_format,
+        format_evidence=",".join(parsed.format_evidence) or None,
+        schema_version=parsed.schema_version,
+        generator=parsed.generator,
         import_source=import_source,
         parser_version=PARSER_VERSION,
     )
@@ -125,8 +136,10 @@ def store_parsed_report(
         adkim=parsed.policy_adkim or "r",
         aspf=parsed.policy_aspf or "r",
         p=parsed.policy_p or "none",
-        sp=parsed.policy_sp or "none",
-        pct=parsed.policy_pct or 100,
+        sp=parsed.policy_sp,
+        pct=parsed.policy_pct,
+        np=parsed.policy_np,
+        testing=parsed.policy_testing,
     )
 
     total = pass_count = fail_count = 0
@@ -159,6 +172,7 @@ def store_parsed_report(
             source_ip=pr.source_ip,
             count=pr.count,
             disposition=pr.disposition,
+            override_reasons=[{"type": r.type, "comment": r.comment} for r in pr.reasons] or None,
             dkim_result=pr.dkim_result,
             spf_result=pr.spf_result,
             header_from=pr.header_from,
@@ -200,7 +214,13 @@ def store_parsed_report(
         domain.last_report_at = datetime.now(UTC)
         domain.dmarc_policy = parsed.policy_p
         domain.dmarc_policy_sp = parsed.policy_sp
-        domain.dmarc_policy_pct = parsed.policy_pct
+        domain.last_report_format = parsed.report_format
+        # Each format reports only its own tags; keep the other format's last known values.
+        if parsed.report_format == FORMAT_RFC9990:
+            domain.dmarc_policy_np = parsed.policy_np
+            domain.dmarc_policy_testing = parsed.policy_testing or RFC9989_DEFAULT_TESTING
+        else:
+            domain.dmarc_policy_pct = parsed.policy_pct
 
     db.flush()
     return report
@@ -224,7 +244,8 @@ def process_import_job(db: Session, job: ImportJob) -> None:
 
     try:
         if not job.file_path or not os.path.exists(job.file_path):
-            raise FileNotFoundError(f"Import file not found: {job.file_path}")
+            logger.error("Import job %s: file %s is missing", job.id, job.file_path)
+            raise FileNotFoundError("upload file missing")
 
         with open(job.file_path, "rb") as fh:
             raw = fh.read()
@@ -242,7 +263,8 @@ def process_import_job(db: Session, job: ImportJob) -> None:
                     try:
                         xml_blobs.append((name, _safe_gunzip(data)))
                     except Exception as exc:
-                        _record_error(db, job.id, "gunzip", str(exc), name)
+                        logger.warning("Import job %s: cannot unpack %s: %s", job.id, name, exc)
+                        _record_error(db, job.id, "gunzip", _describe_import_failure(exc), name)
                 else:
                     xml_blobs.append((name, data))
         elif file_type in ("xml_gz", "gz") or (job.file_name or "").lower().endswith(".gz"):
@@ -261,7 +283,12 @@ def process_import_job(db: Session, job: ImportJob) -> None:
                 continue
 
             if not parsed.report_id:
-                _record_error(db, job.id, "missing_report_id", "Report has no report_id", fname)
+                _record_error(
+                    db, job.id, "missing_report_id",
+                    "Der Bericht enthält keine Berichtsnummer (report_id). Ohne sie lässt er sich nicht "
+                    "eindeutig speichern und wurde übersprungen.",
+                    fname,
+                )
                 failed += 1
                 continue
 
@@ -281,10 +308,34 @@ def process_import_job(db: Session, job: ImportJob) -> None:
 
     except Exception as exc:
         logger.exception("Import job %s failed: %s", job.id, exc)
+        message = _describe_import_failure(exc, job.id)
         job.status = "failed"
-        job.error_message = str(exc)[:2000]
+        job.error_message = message
         job.completed_at = datetime.now(UTC)
-        _record_error(db, job.id, "fatal", str(exc))
+        _record_error(db, job.id, "fatal", message)
+
+
+def _describe_import_failure(exc: Exception, job_id: str | None = None) -> str:
+    """User-facing German message for an import failure; technical details go to the log."""
+    import gzip
+    import zipfile
+
+    from app.services.mime_parser import MimeParseError, ZipBombError
+
+    if isinstance(exc, FileNotFoundError):
+        return "Die hochgeladene Datei ist auf dem Server nicht mehr vorhanden. Bitte lade den Bericht erneut hoch."
+    if isinstance(exc, ZipBombError):
+        return ("Das Archiv entpackt sich auf mehr als die erlaubte Größe und wurde aus Sicherheitsgründen "
+                "verworfen. Prüfe, ob die Datei wirklich ein DMARC-Bericht ist.")
+    if isinstance(exc, zipfile.BadZipFile):
+        return "Die ZIP-Datei ist beschädigt oder unvollständig. Bitte lade sie erneut hoch."
+    if isinstance(exc, gzip.BadGzipFile | EOFError):
+        return "Die GZ-Datei ist beschädigt oder unvollständig. Bitte lade sie erneut hoch."
+    if isinstance(exc, MimeParseError):
+        return f"Das Archiv ließ sich nicht entpacken ({exc})."
+    reference = f" (Import {job_id})" if job_id else ""
+    return ("Beim Import ist ein unerwarteter Fehler aufgetreten" + reference +
+            ". Die Einzelheiten stehen im Serverlog; bitte wende dich an den Administrator.")
 
 
 def _record_error(db: Session, job_id: str, error_type: str, msg: str, ctx: str = "") -> None:

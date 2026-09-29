@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, now_utc, uuid_pk
@@ -36,8 +36,17 @@ class DmarcReport(Base):
     policy_aspf: Mapped[str | None] = mapped_column(String(1), nullable=True)   # r or s
     policy_p: Mapped[str | None] = mapped_column(String(20), nullable=True)     # none/quarantine/reject
     policy_sp: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    policy_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    policy_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)  # RFC 7489 only
     policy_fo: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    policy_np: Mapped[str | None] = mapped_column(String(20), nullable=True)  # RFC 9990 only
+    policy_testing: Mapped[str | None] = mapped_column(String(1), nullable=True)  # RFC 9990 "t": y/n
+    policy_discovery_method: Mapped[str | None] = mapped_column(String(20), nullable=True)  # psl/treewalk
+
+    # Report format: rfc7489 or rfc9990; NULL for reports imported before format detection existed
+    report_format: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    format_evidence: Mapped[str | None] = mapped_column(String(200), nullable=True)  # comma-separated codes
+    schema_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    generator: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Aggregated counts (computed on import)
     total_messages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -76,8 +85,10 @@ class DmarcRecord(Base):
 
     source_ip: Mapped[str] = mapped_column(String(45), nullable=False, index=True)
     count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    # none, quarantine, reject
+    # none, quarantine, reject; RFC 9990 adds pass
     disposition: Mapped[str] = mapped_column(String(20), nullable=False, default="none", index=True)
+    # Policy override reasons reported by the receiver: [{"type": ..., "comment": ...}]
+    override_reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Row-level auth results
     dkim_result: Mapped[str | None] = mapped_column(String(20), nullable=True)

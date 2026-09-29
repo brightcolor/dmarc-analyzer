@@ -142,12 +142,12 @@ class TestBrokenXml:
 
     def test_wrong_root_element_raises(self):
         xml = b"<?xml version='1.0'?><not_feedback/>"
-        with pytest.raises(DmarcParseError, match="Unexpected root element"):
+        with pytest.raises(DmarcParseError, match="beginnt mit <not_feedback>"):
             parse_xml_bytes(xml)
 
     def test_missing_report_metadata_raises(self):
         xml = b"<?xml version='1.0'?><feedback><policy_published/></feedback>"
-        with pytest.raises(DmarcParseError, match="Missing"):
+        with pytest.raises(DmarcParseError, match="report_metadata"):
             parse_xml_bytes(xml)
 
 
@@ -180,28 +180,39 @@ class TestXxeProtection:
             pass  # raising is also acceptable
 
 
+def _report_with_records(n: int) -> bytes:
+    records_xml = b"\n".join(
+        b"""<record>
+          <row><source_ip>1.2.3.4</source_ip><count>1</count>
+            <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+          </row>
+          <identifiers><header_from>example.com</header_from></identifiers>
+          <auth_results/>
+        </record>"""
+        for _ in range(n)
+    )
+    return (
+        b"<?xml version='1.0'?><feedback>"
+        b"<report_metadata><org_name>T</org_name><report_id>big-001</report_id>"
+        b"<date_range><begin>1700000000</begin><end>1700086399</end></date_range></report_metadata>"
+        b"<policy_published><domain>example.com</domain><adkim>r</adkim><aspf>r</aspf>"
+        b"<p>none</p><sp>none</sp><pct>100</pct></policy_published>"
+        + records_xml
+        + b"</feedback>"
+    )
+
+
 class TestMaxRecords:
-    def test_large_report_truncated(self):
-        """A report with > MAX_RECORDS records is silently truncated."""
-        from app.services.dmarc_parser import MAX_RECORDS
-        records_xml = b"\n".join(
-            b"""<record>
-              <row><source_ip>1.2.3.4</source_ip><count>1</count>
-                <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
-              </row>
-              <identifiers><header_from>example.com</header_from></identifiers>
-              <auth_results/>
-            </record>"""
-            for _ in range(MAX_RECORDS + 5)
-        )
-        xml = (
-            b"<?xml version='1.0'?><feedback>"
-            b"<report_metadata><org_name>T</org_name><report_id>big-001</report_id>"
-            b"<date_range><begin>1700000000</begin><end>1700086399</end></date_range></report_metadata>"
-            b"<policy_published><domain>example.com</domain><adkim>r</adkim><aspf>r</aspf>"
-            b"<p>none</p><sp>none</sp><pct>100</pct></policy_published>"
-            + records_xml
-            + b"</feedback>"
-        )
-        report = parse_xml_bytes(xml)
-        assert len(report.records) == MAX_RECORDS
+    def test_report_truncated_at_limit(self):
+        report = parse_xml_bytes(_report_with_records(15), max_records=10)
+        assert len(report.records) == 10
+
+    def test_limit_comes_from_settings(self, monkeypatch):
+        from app.config import settings
+        monkeypatch.setattr(settings, "DMARC_MAX_RECORDS_PER_REPORT", 3)
+        report = parse_xml_bytes(_report_with_records(5))
+        assert len(report.records) == 3
+
+    def test_report_below_limit_complete(self):
+        report = parse_xml_bytes(_report_with_records(5), max_records=10)
+        assert len(report.records) == 5

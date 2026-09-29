@@ -27,6 +27,9 @@ class Domain(Base):
     dmarc_policy: Mapped[str | None] = mapped_column(String(20), nullable=True)
     dmarc_policy_sp: Mapped[str | None] = mapped_column(String(20), nullable=True)
     dmarc_policy_pct: Mapped[int | None] = mapped_column(nullable=True)
+    dmarc_policy_np: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    dmarc_policy_testing: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    last_report_format: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)

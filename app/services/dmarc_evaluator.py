@@ -1,5 +1,5 @@
 """
-DMARC evaluation logic per RFC 7489.
+DMARC evaluation logic per RFC 7489 and RFC 9989 (DMARCbis).
 
 All rules are pure functions operating on plain data structures
 so they can be tested in isolation without a database.
@@ -33,8 +33,10 @@ class PolicyConfig:
     adkim: str = "r"   # r = relaxed, s = strict
     aspf: str = "r"    # r = relaxed, s = strict
     p: str = "none"    # none / quarantine / reject
-    sp: str = "none"   # subdomain policy
-    pct: int = 100
+    sp: str | None = None  # subdomain policy; falls back to p when absent
+    pct: int | None = 100  # RFC 7489 only
+    np: str | None = None  # RFC 9989: policy for non-existent subdomains
+    testing: str | None = None  # RFC 9989 "t": "y" asks receivers not to apply the policy
 
 
 @dataclass
@@ -126,8 +128,10 @@ def evaluate_record(record: RecordEvalInput, policy: PolicyConfig) -> EvalResult
 
     dmarc_pass = dkim_aligned or spf_aligned
 
-    # Policy enforcement: policy_applied = True when mail was acted on per policy
-    policy_applied = dmarc_pass is False and effective_p in ("quarantine", "reject")
+    # policy_applied: the published policy asks receivers to act on this failing mail.
+    # Test mode (t=y) asks them not to apply it.
+    testing = (policy.testing or "").lower() == "y"
+    policy_applied = not dmarc_pass and effective_p in ("quarantine", "reject") and not testing
 
     if dmarc_pass:
         detail = "DMARC pass"

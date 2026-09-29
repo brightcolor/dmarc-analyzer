@@ -11,12 +11,10 @@ from dataclasses import dataclass
 from email import message_from_bytes
 from email.message import Message
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
-# Security limits
-MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024   # 20MB raw
-MAX_UNZIPPED_SIZE = 50 * 1024 * 1024     # 50MB unzipped
-MAX_ZIP_FILES = 50
 SUPPORTED_EXTENSIONS = {".xml", ".xml.gz", ".gz", ".zip"}
 
 
@@ -49,8 +47,10 @@ def _safe_unzip(zip_bytes: bytes) -> list[tuple[str, bytes]]:
     results = []
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         names = zf.namelist()
-        if len(names) > MAX_ZIP_FILES:
-            raise MimeParseError(f"ZIP contains too many files: {len(names)}")
+        if len(names) > settings.ARCHIVE_MAX_FILES:
+            raise MimeParseError(
+                f"Das ZIP-Archiv enthält {len(names)} Dateien, erlaubt sind höchstens {settings.ARCHIVE_MAX_FILES}"
+            )
 
         total_unzipped = 0
         for name in names:
@@ -61,9 +61,10 @@ def _safe_unzip(zip_bytes: bytes) -> list[tuple[str, bytes]]:
                 continue
 
             # Check declared uncompressed size (can be spoofed, checked again on read)
-            if info.file_size > MAX_UNZIPPED_SIZE:
+            if info.file_size > settings.ARCHIVE_MAX_UNPACKED_BYTES:
                 raise ZipBombError(
-                    f"ZIP entry {name!r} declares size {info.file_size} exceeding limit"
+                    f"Der ZIP-Eintrag {name!r} gibt {info.file_size} Bytes an, "
+                    f"erlaubt sind höchstens {settings.ARCHIVE_MAX_UNPACKED_BYTES}"
                 )
 
             lower = name.lower()
@@ -79,8 +80,10 @@ def _safe_unzip(zip_bytes: bytes) -> list[tuple[str, bytes]]:
                     while chunk:
                         data.extend(chunk)
                         total_unzipped += len(chunk)
-                        if total_unzipped > MAX_UNZIPPED_SIZE:
-                            raise ZipBombError("ZIP uncompressed content exceeds size limit")
+                        if total_unzipped > settings.ARCHIVE_MAX_UNPACKED_BYTES:
+                            raise ZipBombError(
+                                f"Der Inhalt des ZIP-Archivs überschreitet {settings.ARCHIVE_MAX_UNPACKED_BYTES} Bytes"
+                            )
                         chunk = f.read(65536)
                 results.append((name, bytes(data)))
             except (zipfile.BadZipFile, KeyError) as exc:
@@ -97,8 +100,8 @@ def _safe_gunzip(gz_bytes: bytes) -> bytes:
         chunk = f.read(65536)
         while chunk:
             out.extend(chunk)
-            if len(out) > MAX_UNZIPPED_SIZE:
-                raise ZipBombError("Gzip decompressed content exceeds size limit")
+            if len(out) > settings.ARCHIVE_MAX_UNPACKED_BYTES:
+                raise ZipBombError(f"Der entpackte GZ-Inhalt überschreitet {settings.ARCHIVE_MAX_UNPACKED_BYTES} Bytes")
             chunk = f.read(65536)
         return bytes(out)
 
@@ -111,7 +114,7 @@ def extract_dmarc_attachments(raw_mail: bytes) -> list[ExtractedAttachment]:
     try:
         msg: Message = message_from_bytes(raw_mail)
     except Exception as exc:
-        raise MimeParseError(f"Failed to parse MIME message: {exc}") from exc
+        raise MimeParseError(f"Die Mail ließ sich nicht lesen: {exc}") from exc
 
     attachments: list[ExtractedAttachment] = []
 
@@ -143,7 +146,7 @@ def extract_dmarc_attachments(raw_mail: bytes) -> list[ExtractedAttachment]:
         if not payload:
             continue
 
-        if len(payload) > MAX_ATTACHMENT_SIZE:
+        if len(payload) > settings.ARCHIVE_MAX_ATTACHMENT_BYTES:
             logger.warning("Attachment %s too large (%d bytes), skipping", filename, len(payload))
             continue
 
@@ -178,7 +181,7 @@ def _process_attachment(
         try:
             xml_data = _safe_gunzip(data)
         except gzip.BadGzipFile as exc:
-            raise MimeParseError(f"Bad gzip file {filename}: {exc}") from exc
+            raise MimeParseError(f"{filename} ist keine gültige GZ-Datei: {exc}") from exc
         plain_name = filename[:-3] if lower.endswith(".gz") else filename
         return [ExtractedAttachment(
             filename=plain_name,

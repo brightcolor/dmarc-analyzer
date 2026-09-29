@@ -29,10 +29,8 @@ async def lifespan(app: FastAPI):
     settings.upload_dir_path  # noqa: B018
     settings.raw_mail_dir_path  # noqa: B018
 
-    # Create DB tables and run migrations
-    from app.database import engine
-    from app.models import Base  # noqa: F401 — registers all models
-    Base.metadata.create_all(bind=engine)
+    from app.migrate import run_migrations
+    run_migrations()
 
     # Create initial admin if configured
     _create_initial_admin()
