@@ -1,17 +1,21 @@
 import re
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_client_ip, get_current_org, get_current_user
-from app.models import Domain, InboundMailAddress, Organization, User
+from app.models import DmarcReport, Domain, InboundMailAddress, Organization, User
 from app.services.audit import log_action
+from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
 from app.services.dmarc_record import suggest_dmarc_record
 from app.services.inbound_address import create_domain_address
 from app.services.recommendation import get_recommendations_for_domain
+from app.services.report_formats import reporter_formats
 from app.templates_config import templates
 
 router = APIRouter(prefix="/domains", tags=["domains"])
@@ -19,7 +23,7 @@ router = APIRouter(prefix="/domains", tags=["domains"])
 DOMAIN_RE = re.compile(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
-def _paginate(q, page: int, per_page: int = 25):
+def _paginate(q, page: int, per_page: int):
     total = q.count()
     items = q.offset((page - 1) * per_page).limit(per_page).all()
     return items, total, (total + per_page - 1) // per_page
@@ -38,10 +42,10 @@ def domain_list(
     if search:
         q = q.filter(Domain.name.ilike(f"%{search}%"))
     q = q.order_by(Domain.name)
-    domains, total, pages = _paginate(q, page)
+    domains, total, pages = _paginate(q, page, settings.UI_PAGE_SIZE)
 
-    return templates.TemplateResponse("domains/index.html", {
-        "request": request, "user": user, "org": org,
+    return templates.TemplateResponse(request, "domains/index.html", {
+        "user": user, "org": org,
         "domains": domains, "total": total, "page": page, "pages": pages,
         "search": search or "", "page_title": "Domains",
     })
@@ -53,10 +57,13 @@ def domain_new_form(
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
 ):
-    return templates.TemplateResponse("domains/form.html", {
-        "request": request, "user": user, "org": org,
-        "domain": None, "page_title": "Add Domain",
-    })
+    return _form(request, user, org)
+
+
+def _form(request: Request, user: User, org: Organization, name: str = "", error: str | None = None):
+    return templates.TemplateResponse(request, "domains/form.html", {
+        "user": user, "org": org, "name": name, "error": error, "page_title": "Domain anlegen",
+    }, status_code=400 if error else 200)
 
 
 @router.post("/new")
@@ -69,26 +76,15 @@ def domain_create(
 ):
     name = name.strip().lower().rstrip(".")
     if not DOMAIN_RE.match(name):
-        return templates.TemplateResponse("domains/form.html", {
-            "request": request, "user": user, "org": org,
-            "error": "Invalid domain name.", "domain": None, "page_title": "Add Domain",
-        })
+        return _form(request, user, org, name, "Das ist kein gültiger Domainname. Erlaubt sind Buchstaben, Ziffern, "
+                     "Punkte und Bindestriche, etwa example.com.")
 
-    existing = db.query(Domain).filter_by(organization_id=org.id, name=name).first()
-    if existing:
-        return templates.TemplateResponse("domains/form.html", {
-            "request": request, "user": user, "org": org,
-            "error": "Domain already exists.", "domain": None, "page_title": "Add Domain",
-        })
+    if db.query(Domain).filter_by(organization_id=org.id, name=name).first():
+        return _form(request, user, org, name, f"Die Domain {name} ist bereits angelegt. Du findest sie in der Liste.")
 
-    # Check limit
-    count = db.query(Domain).filter_by(organization_id=org.id).count()
-    if count >= org.max_domains:
-        return templates.TemplateResponse("domains/form.html", {
-            "request": request, "user": user, "org": org,
-            "error": f"Domain limit reached ({org.max_domains}).", "domain": None,
-            "page_title": "Add Domain",
-        })
+    if db.query(Domain).filter_by(organization_id=org.id).count() >= org.max_domains:
+        return _form(request, user, org, name, f"Diese Organisation darf höchstens {org.max_domains} Domains "
+                     "anlegen. Bitte den Administrator, die Grenze zu erhöhen.")
 
     domain = Domain(organization_id=org.id, name=name, is_active=True)
     db.add(domain)
@@ -124,21 +120,20 @@ def domain_detail(
         organization_id=org.id, domain_id=domain_id
     ).all()
 
-    # Recommendations
     recs = get_recommendations_for_domain(db, org.id, domain_id)
 
-    # Chart data (30 days)
-    chart_data = get_pass_fail_over_time(db, org.id, domain_id=domain_id, days=30)
+    days = settings.UI_CHART_DAYS
+    chart = day_chart(get_pass_fail_over_time(db, org.id, domain_id=domain_id, days=days), days,
+                      datetime.now(UTC).date())
 
-    # Recent reports
-    from app.models import DmarcReport
     recent_reports = (
         db.query(DmarcReport)
         .filter_by(organization_id=org.id, domain_id=domain_id)
-        .order_by(DmarcReport.created_at.desc())
-        .limit(10)
+        .order_by(DmarcReport.period_end.desc(), DmarcReport.created_at.desc())
+        .limit(settings.UI_RECENT_LIMIT)
         .all()
     )
+    report_count = db.query(DmarcReport).filter_by(organization_id=org.id, domain_id=domain_id).count()
 
     # DMARC record suggestion
     rua_addr = next(
@@ -162,14 +157,16 @@ def domain_detail(
         if rua_domain != domain.name:
             ext_verify_record = f"{domain.name}._report._dmarc.{rua_domain}"
 
-    return templates.TemplateResponse("domains/detail.html", {
-        "request": request, "user": user, "org": org, "domain": domain,
+    return templates.TemplateResponse(request, "domains/detail.html", {
+        "user": user, "org": org, "domain": domain,
         "addresses": addresses, "recommendations": recs,
-        "chart_data": chart_data, "recent_reports": recent_reports,
+        "chart": chart, "chart_days": days, "recent_reports": recent_reports, "report_count": report_count,
+        "reporters": reporter_formats(db, org.id, domain_id=domain_id),
         "suggested_record": suggested_record,
         "ext_verify_record": ext_verify_record,
         "rua_addr": rua_addr,
-        "page_title": f"Domain: {domain.name}",
+        "rua_domain": rua_addr.split("@")[1] if rua_addr and "@" in rua_addr else None,
+        "page_title": domain.name,
     })
 
 

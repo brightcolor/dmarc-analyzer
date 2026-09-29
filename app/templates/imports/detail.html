@@ -1,77 +1,81 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>{{ job.source | source_text }} am {{ job.created_at | datetime }}.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/imports">Alle Importe</a>{% endblock %}
+
 {% block content %}
-<div class="row g-3">
-  <div class="col-12 col-md-5">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Import Job</h6></div>
-      <div class="card-body">
-        <dl class="row small mb-0">
-          <dt class="col-5 text-muted">Status</dt>
-          <dd class="col-7">
-            <span class="badge
-              {% if job.status=='completed' %}bg-success{% elif job.status=='failed' %}bg-danger
-              {% elif job.status=='processing' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-              {{ job.status }}
-            </span>
-          </dd>
-          <dt class="col-5 text-muted">Source</dt>
-          <dd class="col-7"><span class="badge bg-secondary">{{ job.source }}</span></dd>
-          <dt class="col-5 text-muted">File</dt>
-          <dd class="col-7 text-break">{{ job.file_name | default('—') }}</dd>
-          <dt class="col-5 text-muted">Size</dt>
-          <dd class="col-7">{{ job.file_size | filesizeformat }}</dd>
-          <dt class="col-5 text-muted">Imported</dt>
-          <dd class="col-7 text-success fw-bold">{{ job.records_imported }}</dd>
-          <dt class="col-5 text-muted">Skipped</dt>
-          <dd class="col-7 text-muted">{{ job.records_skipped }}</dd>
-          <dt class="col-5 text-muted">Failed</dt>
-          <dd class="col-7 {% if job.records_failed > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ job.records_failed }}</dd>
-          <dt class="col-5 text-muted">Created</dt>
-          <dd class="col-7">{{ job.created_at | datetime }}</dd>
-          {% if job.completed_at %}
-          <dt class="col-5 text-muted">Completed</dt>
-          <dd class="col-7">{{ job.completed_at | datetime }}</dd>
-          {% endif %}
-          {% if job.file_hash %}
-          <dt class="col-5 text-muted">SHA256</dt>
-          <dd class="col-7 font-monospace small text-break">{{ job.file_hash[:16] }}…</dd>
-          {% endif %}
-        </dl>
-        {% if job.error_message %}
-        <div class="alert alert-danger mt-3 mb-0 small">
-          <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ job.error_message }}
-        </div>
-        {% endif %}
-      </div>
+{% if job.status == 'failed' %}
+<div class="bc-alert bc-alert--bad" role="alert">
+  <p class="bc-alert__title">Der Import ist fehlgeschlagen</p>
+  <p>{{ job.error_message or 'Keiner der Berichte in dieser Datei ließ sich lesen. Die Einzelheiten stehen unten.' }}</p>
+</div>
+{% elif job.records_failed %}
+<div class="bc-alert bc-alert--warn">
+  <p class="bc-alert__title">{{ job.records_failed }} {{ 'Bericht ließ' if job.records_failed == 1 else 'Berichte ließen' }} sich nicht lesen</p>
+  <p>Die übrigen Berichte sind importiert. Die Gründe stehen unten.</p>
+</div>
+{% endif %}
+
+<div class="bc-kpis">
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ job.records_imported | num }}</p><p class="bc-kpi__label">Berichte importiert</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ job.records_skipped | num }}</p><p class="bc-kpi__label">schon vorhanden, übersprungen</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ job.records_failed | num }}</p><p class="bc-kpi__label">nicht lesbar</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ job.file_size | filesizeformat }}</p><p class="bc-kpi__label">Dateigröße</p></div>
+</div>
+
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="angaben-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="angaben-titel">Angaben</h2>{{ ui.state(job.status | status_text, job.status | status_state) }}</div>
+    <div class="bc-panel__body">
+      <dl class="app-dl">
+        <dt>Datei</dt><dd class="app-break">{{ job.file_name or '—' }}</dd>
+        <dt>Herkunft</dt><dd>{{ job.source | source_text }}</dd>
+        <dt>Angelegt</dt><dd>{{ job.created_at | datetime }}</dd>
+        <dt>Fertig</dt><dd>{{ job.completed_at | datetime }}</dd>
+        {% if job.file_hash %}<dt>Prüfsumme</dt><dd class="app-mono">{{ job.file_hash[:16] }}…</dd>{% endif %}
+      </dl>
     </div>
-  </div>
-  <div class="col-12 col-md-7">
+  </section>
+
+  <section class="bc-panel" aria-labelledby="fehler-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="fehler-titel">Fehler</h2></div>
     {% if errors %}
-    <div class="card shadow-sm border-danger">
-      <div class="card-header bg-danger text-white"><h6 class="mb-0"><i class="bi bi-x-circle me-2"></i>Import Errors ({{ errors | length }})</h6></div>
-      <div class="card-body p-0">
-        <ul class="list-group list-group-flush">
-        {% for err in errors %}
-        <li class="list-group-item">
-          <div class="d-flex justify-content-between">
-            <span class="badge bg-secondary">{{ err.error_type }}</span>
-            <small class="text-muted">{{ err.created_at | datetime }}</small>
-          </div>
-          <p class="mb-0 small mt-1">{{ err.error_message }}</p>
-          {% if err.context %}<small class="text-muted">Context: {{ err.context }}</small>{% endif %}
-        </li>
-        {% endfor %}
-        </ul>
+    <div class="bc-panel__body app-stack">
+      {% for err in errors %}
+      <div>
+        <p style="margin:0"><strong>{{ err.context or 'Datei' }}</strong></p>
+        <p class="app-small" style="margin:0">{{ err.error_message }}</p>
       </div>
+      {% endfor %}
     </div>
     {% else %}
-    <div class="card shadow-sm">
-      <div class="card-body text-center py-4">
-        <i class="bi bi-check-circle text-success fs-1"></i>
-        <p class="mt-2 text-muted">No errors recorded for this import.</p>
-      </div>
-    </div>
+      {{ ui.empty("Keine Fehler", "Alle Berichte dieser Datei ließen sich lesen.") }}
     {% endif %}
-  </div>
+  </section>
 </div>
+
+<section class="bc-panel" aria-labelledby="berichte-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="berichte-titel">Importierte Berichte</h2></div>
+  {% if reports %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Domain</th><th>Zeitraum bis</th><th>Absender</th><th>Format</th><th class="bc-num">Nachrichten</th></tr></thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td class="app-break"><a href="/reports/{{ r.id }}">{{ r.policy_domain or 'ohne Domain' }}</a></td>
+          <td class="app-nowrap">{{ r.period_end | date }}</td>
+          <td class="app-break">{{ r.reporting_org or '—' }}</td>
+          <td>{{ ui.format_badge(r.report_format) }}</td>
+          <td class="bc-num">{{ r.total_messages | num }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty("Kein Bericht importiert", "Aus dieser Datei kam kein neuer Bericht hinzu.") }}
+  {% endif %}
+</section>
 {% endblock %}

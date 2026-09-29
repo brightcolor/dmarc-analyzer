@@ -111,6 +111,12 @@ def list_reports(
                 "fail_count": r.fail_count,
                 "pass_rate": r.pass_rate,
                 "reporting_org": r.reporting_org,
+                "report_format": r.report_format,
+                "format_evidence": r.format_evidence.split(",") if r.format_evidence else [],
+                "policy": {
+                    "p": r.policy_p, "sp": r.policy_sp, "np": r.policy_np, "pct": r.policy_pct,
+                    "testing": r.policy_testing, "discovery_method": r.policy_discovery_method,
+                },
                 "created_at": r.created_at.isoformat(),
             }
             for r in reports

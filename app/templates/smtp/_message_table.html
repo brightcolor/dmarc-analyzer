@@ -1,0 +1,23 @@
+{% import "partials/macros.html" as ui with context %}
+{% set rows = messages if messages is defined else recent_messages %}
+{% if rows %}
+<div class="bc-table-wrap">
+  <table class="bc-table">
+    <thead><tr><th>Eingang</th><th>An</th><th>Absender</th><th>Status</th><th class="bc-num">Anhänge</th><th class="bc-num">Größe</th></tr></thead>
+    <tbody>
+      {% for msg in rows %}
+      <tr>
+        <td class="app-nowrap">{{ msg.received_at | datetime }}</td>
+        <td class="app-mono app-break app-small">{{ msg.envelope_recipient }}</td>
+        <td class="app-break app-small">{{ msg.header_from or msg.envelope_sender or '—' }}{% if msg.remote_ip %}<br><span class="app-quiet app-mono">{{ msg.remote_ip }}</span>{% endif %}</td>
+        <td>{{ ui.state(msg.import_status | status_text, msg.import_status | status_state) }}{% if msg.error_message %}<br><span class="app-small app-quiet">{{ msg.error_message }}</span>{% endif %}</td>
+        <td class="bc-num">{{ msg.attachment_count | num }}</td>
+        <td class="bc-num">{{ msg.size_bytes | filesizeformat }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+  {{ ui.empty("Noch keine Mails eingegangen", "Sobald ein Empfänger einen Bericht an eine Empfangsadresse schickt, steht die Mail hier.") }}
+{% endif %}

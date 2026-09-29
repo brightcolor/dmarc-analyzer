@@ -1,12 +1,55 @@
 # Changelog
 
-All notable changes to DMARC Analyzer are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Versioning follows [SemVer](https://semver.org/).
+Alle wichtigen Änderungen an DMARC Analyzer. Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
+Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ---
 
 ## [Unreleased]
+
+## [0.2.0] – 2026-09-29
+
+### Neu
+
+- Berichte nach DMARCbis (RFC 9989 und RFC 9990) werden gelesen, mit und ohne Namespace
+  `urn:ietf:params:xml:ns:dmarc-2.0`. Berichte nach RFC 7489 laufen weiter wie bisher.
+- Jeder Bericht zeigt sein Format (RFC 7489 oder RFC 9990) und woran es erkannt wurde; Berichtsliste,
+  Domainseite und Übersicht zeigen, welcher Empfänger in welchem Format berichtet. Die Berichtsliste
+  lässt sich nach Format filtern.
+- Neue Seite „Hilfe → DMARC-Formate“ mit den Unterschieden beider Fassungen.
+- Die Auswertung kennt den Testmodus `t`, die Policy `np`, `discovery_method`, `generator` und die
+  Behandlung `pass`; Override-Gründe der Empfänger werden gespeichert und angezeigt.
+- Empfehlungen zu `pct=0` ohne `t=y`, zu `pct` unter 100 und zum aktiven Testmodus.
+- Der DNS-Vorschlag übernimmt `sp`, `np`, `t` und `pct`, sodass derselbe Eintrag für Empfänger beider
+  Standards passt; Name und Wert lassen sich kopieren.
+- Oberfläche neu in der Werkbank von bright color, auf Deutsch, hell und dunkel. Schriften, Skripte und
+  Diagramme liefert die Anwendung selbst aus.
+- Ersteinrichtung mit Einrichtungscode: Solange es keinen Administrator gibt, führt jede Seite zur
+  Einrichtung. Den Code zeigt `python -m app.setup_code` oder das Log beim Start.
+- Die REST-API liefert zu jedem Bericht Format, Nachweis und Policy-Felder.
+- Schwellen, Zeiträume und Grenzen für Empfehlungen, Oberfläche und Archive sind Einstellungen mit
+  geprüften Grenzen; ungültige Werte stoppen den Start mit einer verständlichen Meldung.
+- Datenbankschema über Alembic-Migrationen; Datenbanken aus 0.1.0 werden beim Start übernommen.
+- `scripts/demo_data.py` legt erfundene Beispieldaten für die lokale Entwicklung an.
+
+### Geändert
+
+- Subdomains ohne `sp` werden nach `p` bewertet. Bisher galt dort fälschlich `none`.
+- Das Verlaufsdiagramm ordnet Nachrichten dem Tag zu, an dem sie verschickt wurden (Berichtszeitraum).
+- Fehlermeldungen von Import, Upload, Formularen und Fehlerseiten sind deutsch und nennen den nächsten
+  Schritt; interne Pfade erscheinen nicht mehr.
+- Benutzer und API-Tokens verwalten nur noch Administratoren der Organisation; neue Organisationen
+  legt nur der Betreiber an; abgelehnte Empfänger sieht nur der Betreiber.
+- `INITIAL_ADMIN_EMAIL` und `INITIAL_ADMIN_PASSWORD` entfallen; das erste Konto entsteht in der
+  Ersteinrichtung.
+- `.env.example` nennt nur noch Einstellungen, die die Anwendung auch liest.
+
+### Sicherheit
+
+- Hochgeladene Dateinamen können den Upload-Ordner nicht mehr verlassen.
+- Die Weiterleitung nach der Anmeldung führt nur noch auf Seiten der Anwendung.
+- Ein leerer, zu kurzer oder aus der Vorlage übernommener `SECRET_KEY` wird durch einen zufälligen
+  ersetzt und im Log gemeldet.
 
 ## [0.1.0] – 2026-05-28
 
@@ -88,5 +131,6 @@ Versioning follows [SemVer](https://semver.org/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/yourorg/dmarc-analyzer/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourorg/dmarc-analyzer/releases/tag/v0.1.0
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.0
+[0.1.0]: https://github.com/brightcolor/dmarc-analyzer/commit/0ec5162

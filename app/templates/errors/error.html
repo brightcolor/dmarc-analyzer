@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} – {{ app_name }}{% endblock %}
+{% block standalone %}
+<main class="app-error" id="inhalt">
+  <section class="bc-panel app-error__card">
+    <div class="bc-panel__body">
+      <p class="bc-eyebrow">Fehler {{ status_code }}</p>
+      <h1>{{ title }}</h1>
+      <p class="app-error__message">{{ message }}</p>
+      {% if reference %}<p class="app-small app-quiet">Kennung für das Serverlog: <span class="app-mono">{{ reference }}</span></p>{% endif %}
+      <div class="app-inline">
+        <a class="bc-button" href="/dashboard">Zur Übersicht</a>
+        <a class="bc-button bc-button--secondary" href="javascript:history.back()">Zurück</a>
+      </div>
+    </div>
+  </section>
+</main>
+{% endblock %}

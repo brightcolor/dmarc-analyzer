@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_user
+from app.dependencies import get_client_ip, get_current_org, get_current_superadmin, get_current_user
 from app.models import Organization, OrganizationMembership, User
 from app.services.audit import log_action
 from app.services.inbound_address import create_org_address
@@ -28,39 +28,42 @@ def org_list(
         from app.services.auth import get_user_orgs
         orgs = get_user_orgs(db, user.id)
 
-    return templates.TemplateResponse("organizations/index.html", {
-        "request": request, "user": user, "orgs": orgs, "page_title": "Organizations",
+    current_id = request.session.get("org_id")
+    current = db.query(Organization).filter_by(id=current_id).first() if current_id else None
+    return templates.TemplateResponse(request, "organizations/index.html", {
+        "user": user, "org": current, "orgs": orgs, "page_title": "Organisationen",
     })
+
+
+def _org_form(request: Request, user: User, values: dict | None = None, error: str | None = None,
+              status_code: int = 200):
+    return templates.TemplateResponse(request, "organizations/form.html", {
+        "user": user, "values": values or {}, "error": error, "page_title": "Organisation anlegen",
+    }, status_code=status_code)
 
 
 @router.get("/new", response_class=HTMLResponse)
-def org_new_form(request: Request, user: User = Depends(get_current_user)):
-    return templates.TemplateResponse("organizations/form.html", {
-        "request": request, "user": user, "org_obj": None, "page_title": "New Organization",
-    })
+def org_new_form(request: Request, user: User = Depends(get_current_superadmin)):
+    return _org_form(request, user)
 
 
 @router.post("/new")
 def org_create(
     request: Request,
-    name: str = Form(...),
-    slug: str = Form(...),
+    name: str = Form(""),
+    slug: str = Form(""),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_superadmin),
 ):
+    values = {"name": name, "slug": slug}
     slug = slug.strip().lower()
+    if not name.strip():
+        return _org_form(request, user, values, "Gib der Organisation einen Namen.", 400)
     if not SLUG_RE.match(slug):
-        return templates.TemplateResponse("organizations/form.html", {
-            "request": request, "user": user, "org_obj": None,
-            "error": "Slug must be lowercase alphanumeric with hyphens (2-80 chars).",
-            "page_title": "New Organization",
-        })
-
+        return _org_form(request, user, values, "Die Kennung darf nur Kleinbuchstaben, Ziffern und Bindestriche "
+                         "enthalten und muss 2 bis 80 Zeichen lang sein, etwa muster-farben.", 400)
     if db.query(Organization).filter_by(slug=slug).first():
-        return templates.TemplateResponse("organizations/form.html", {
-            "request": request, "user": user, "org_obj": None,
-            "error": "Slug already in use.", "page_title": "New Organization",
-        })
+        return _org_form(request, user, values, f"Die Kennung {slug} ist schon vergeben. Wähle eine andere.", 400)
 
     org = Organization(name=name.strip(), slug=slug, owner_id=user.id, is_active=True)
     db.add(org)
@@ -98,8 +101,10 @@ def select_org_page(
     from app.services.auth import get_user_orgs
     orgs = get_user_orgs(db, user.id) if not user.is_superadmin else \
         db.query(Organization).filter_by(is_active=True).all()
-    return templates.TemplateResponse("auth/select_org.html", {
-        "request": request, "user": user, "orgs": orgs, "page_title": "Select Organization",
+    current_id = request.session.get("org_id")
+    current = db.query(Organization).filter_by(id=current_id).first() if current_id else None
+    return templates.TemplateResponse(request, "auth/select_org.html", {
+        "user": user, "org": current, "orgs": orgs, "page_title": "Organisation wählen",
     })
 
 
@@ -134,8 +139,8 @@ def org_detail(
 
     memberships = db.query(OrganizationMembership).filter_by(organization_id=org_id).all()
 
-    return templates.TemplateResponse("organizations/detail.html", {
-        "request": request, "user": user, "org": current_org,
+    return templates.TemplateResponse(request, "organizations/detail.html", {
+        "user": user, "org": current_org,
         "org_detail": org, "memberships": memberships,
-        "page_title": f"Organization: {org.name}",
+        "page_title": org.name,
     })

@@ -1,261 +1,138 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — DMARC Analyzer{% endblock %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block eyebrow %}{{ org.name }}{% endblock %}
+{% block lede %}<p>DMARC-Auswertung von {{ org.name }} für die letzten {{ chart_days }} Tage.</p>{% endblock %}
+{% block actions %}<a class="bc-button" href="/upload"><svg class="bc-icon" aria-hidden="true" style="width:16px;height:16px"><use href="#i-upload"/></svg>Bericht hochladen</a>{% endblock %}
 
 {% block content %}
-<!-- Stats row -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3">
-    <div class="info-box bg-primary shadow-sm">
-      <span class="info-box-icon"><i class="bi bi-file-earmark-text"></i></span>
-      <div class="info-box-content">
-        <span class="info-box-text">Reports (total)</span>
-        <span class="info-box-number">{{ stats.report_count | default(0) }}</span>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="info-box bg-success shadow-sm">
-      <span class="info-box-icon"><i class="bi bi-globe"></i></span>
-      <div class="info-box-content">
-        <span class="info-box-text">Domains</span>
-        <span class="info-box-number">{{ stats.domain_count | default(0) }}</span>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="info-box bg-info shadow-sm">
-      <span class="info-box-icon"><i class="bi bi-envelope"></i></span>
-      <div class="info-box-content">
-        <span class="info-box-text">Messages (30d)</span>
-        <span class="info-box-number">{{ stats.total_messages_30d | default(0) | int }}</span>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    {% set pr = stats.pass_rate_30d %}
-    <div class="info-box {{ pr | pct_color if pr is not none else 'bg-secondary' }} shadow-sm" style="background-color: var(--bs-{{ pr | pct_color if pr is not none else 'secondary' }}) !important">
-      <span class="info-box-icon"><i class="bi bi-shield-check"></i></span>
-      <div class="info-box-content">
-        <span class="info-box-text">DMARC Pass Rate (30d)</span>
-        <span class="info-box-number">{% if pr is not none %}{{ pr }}%{% else %}—{% endif %}</span>
-      </div>
-    </div>
-  </div>
+{% if stats.active_alerts %}
+<div class="bc-alert bc-alert--warn">
+  <p class="bc-alert__title">{{ stats.active_alerts }} {{ 'Alarm ist' if stats.active_alerts == 1 else 'Alarme sind' }} offen</p>
+  <p>Sieh sie dir unter <a href="/alerts/events?status=open">Alarme</a> an und bestätige, was du geprüft hast.</p>
+</div>
+{% endif %}
+
+{% set rate = stats.pass_rate_30d %}
+<div class="bc-kpis">
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ stats.total_messages_30d | num }}</p><p class="bc-kpi__label">Nachrichten in {{ chart_days }} Tagen</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ rate | percent }}</p><p class="bc-kpi__label">bestehen DMARC {% if rate is not none %}{{ ui.state('gut' if 'on' in (rate | rate_state) else ('mittel' if 'warn' in (rate | rate_state) else 'niedrig'), rate | rate_state) }}{% endif %}</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ stats.fail_messages_30d | num }}</p><p class="bc-kpi__label">scheitern an DMARC</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ stats.unknown_ips | num }}</p><p class="bc-kpi__label">unbekannte Versandquellen</p></div>
 </div>
 
-<!-- Second stats row -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
-      <div class="fs-3 fw-bold text-success">{{ stats.pass_messages_30d | default(0) }}</div>
-      <div class="text-muted small">DMARC Pass</div>
-    </div>
+<section class="bc-panel" aria-labelledby="verlauf-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="verlauf-titel">Verlauf</h2><span class="app-quiet app-small">Tage in UTC, nach Berichtszeitraum</span></div>
+  <div class="bc-panel__body">
+    {% if chart %}
+      {{ ui.day_chart(chart, "verlauf", "DMARC-Ergebnis je Tag der letzten " ~ chart_days ~ " Tage") }}
+    {% else %}
+      {{ ui.empty("Noch keine Daten", "Sobald Berichte ankommen, zeigt dieser Verlauf je Tag, wie viele Nachrichten DMARC bestehen.", "/upload", "Bericht hochladen") }}
+    {% endif %}
   </div>
-  <div class="col-6 col-md-3">
-    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
-      <div class="fs-3 fw-bold text-danger">{{ stats.fail_messages_30d | default(0) }}</div>
-      <div class="text-muted small">DMARC Fail</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
-      <div class="fs-3 fw-bold text-warning">{{ stats.unknown_ips | default(0) }}</div>
-      <div class="text-muted small">Unknown Sources</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="small-box bg-body-secondary text-center py-3 rounded shadow-sm">
-      <div class="fs-3 fw-bold {% if stats.active_alerts > 0 %}text-danger{% else %}text-success{% endif %}">
-        {{ stats.active_alerts | default(0) }}
-      </div>
-      <div class="text-muted small">Active Alerts</div>
-    </div>
-  </div>
-</div>
+</section>
 
-<div class="row g-3">
-  <!-- DMARC pass/fail chart -->
-  <div class="col-12 col-lg-8">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>DMARC Pass / Fail (last 30 days)</h6>
-      </div>
-      <div class="card-body">
-        {% if chart_data %}
-        <canvas id="passFailChart" height="80"></canvas>
-        {% else %}
-        <div class="text-center text-muted py-5">
-          <i class="bi bi-bar-chart fs-1"></i>
-          <p class="mt-2">No data yet. Import your first DMARC reports.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
+<section class="bc-panel" aria-labelledby="quellen-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="quellen-titel">Größte Quellen</h2><a class="bc-button bc-button--secondary" href="/source-ips">Alle Quellen</a></div>
+  {% if top_ips %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>IP-Adresse</th><th>Einstufung</th><th class="bc-num">Nachrichten</th><th class="bc-num">Bestanden</th></tr></thead>
+      <tbody>
+        {% for ip in top_ips %}
+        <tr>
+          <td class="app-mono">{{ ip.ip }}</td>
+          <td>{{ ui.state(ip.classification | classification_text, ip.classification | classification_state) }}</td>
+          <td class="bc-num">{{ ip.total | num }}</td>
+          <td class="bc-num">{{ ip.pass_rate | percent }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-
-  <!-- Top Source IPs -->
-  <div class="col-12 col-lg-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h6 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>Top Source IPs</h6>
-        <a href="/source-ips" class="btn btn-sm btn-outline-secondary">All</a>
-      </div>
-      <div class="card-body p-0">
-        {% if top_ips %}
-        <ul class="list-group list-group-flush">
-          {% for ip in top_ips %}
-          <li class="list-group-item d-flex justify-content-between align-items-center px-3">
-            <div>
-              <span class="font-monospace small">{{ ip.ip }}</span>
-              <span class="badge ms-1
-                {% if ip.classification == 'trusted' %}bg-success
-                {% elif ip.classification == 'suspicious' %}bg-danger
-                {% elif ip.classification == 'ignored' %}bg-secondary
-                {% else %}bg-warning text-dark{% endif %}">
-                {{ ip.classification }}
-              </span>
-            </div>
-            <div class="text-end">
-              <div class="small fw-bold">{{ ip.total }}</div>
-              <div class="small text-muted">
-                {% if ip.pass_rate is not none %}{{ ip.pass_rate }}%{% else %}—{% endif %}
-              </div>
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <div class="text-center text-muted py-4">No source IPs yet.</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Recent Imports -->
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h6 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>Recent Imports</h6>
-        <a href="/imports" class="btn btn-sm btn-outline-secondary">All</a>
-      </div>
-      <div class="card-body p-0">
-        {% if stats.recent_imports %}
-        <table class="table table-sm table-hover mb-0">
-          <thead class="table-light"><tr><th>File</th><th>Status</th><th>Source</th><th>Time</th></tr></thead>
-          <tbody>
-          {% for job in stats.recent_imports %}
-          <tr>
-            <td class="small">
-              <a href="/imports/{{ job.id }}">{{ job.file_name | default('—') | truncate(30) }}</a>
-            </td>
-            <td>
-              <span class="badge
-                {% if job.status == 'completed' %}bg-success
-                {% elif job.status == 'failed' %}bg-danger
-                {% elif job.status == 'processing' %}bg-warning text-dark
-                {% else %}bg-secondary{% endif %}">
-                {{ job.status }}
-              </span>
-            </td>
-            <td class="small text-muted">{{ job.source }}</td>
-            <td class="small text-muted">{{ job.created_at | datetime }}</td>
-          </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="text-center text-muted py-4">
-          <i class="bi bi-inbox fs-2"></i>
-          <p class="mt-2 small">No imports yet. <a href="/upload">Upload a report</a> to get started.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Domains without recent reports -->
-  <div class="col-12 col-lg-6">
-    <div class="card shadow-sm">
-      <div class="card-header">
-        <h6 class="mb-0"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Domains without reports (7d)</h6>
-      </div>
-      <div class="card-body p-0">
-        {% if stats.domains_no_reports %}
-        <ul class="list-group list-group-flush">
-          {% for d in stats.domains_no_reports %}
-          <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span>{{ d.name }}</span>
-            <a href="/domains/{{ d.id }}" class="btn btn-xs btn-outline-secondary btn-sm">View</a>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <div class="text-center text-muted py-4">
-          <i class="bi bi-check-circle text-success fs-2"></i>
-          <p class="mt-2 small">All domains have received recent reports.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Alerts summary -->
-  {% if stats.active_alerts > 0 %}
-  <div class="col-12">
-    <div class="alert alert-warning d-flex align-items-center">
-      <i class="bi bi-bell-fill me-3 fs-4"></i>
-      <div>
-        <strong>{{ stats.active_alerts }} open alert(s)</strong> require your attention.
-        <a href="/alerts/events?status=open" class="btn btn-sm btn-warning ms-3">View Alerts</a>
-      </div>
-    </div>
-  </div>
+  {% else %}
+    {{ ui.empty("Noch keine Quellen", "Jede IP-Adresse, die in einem Bericht auftaucht, erscheint hier.") }}
   {% endif %}
+</section>
 
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="formate-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="formate-titel">Berichtsformate</h2><a class="bc-button bc-button--secondary" href="/hilfe/dmarc-formate">Was ist das?</a></div>
+    {% set format_total = formats.values() | sum %}
+    {% if format_total %}
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Format</th><th class="bc-num">Berichte</th><th><span class="bc-sr">Anteil als Balken</span></th><th class="bc-num">Anteil</th></tr></thead>
+        <tbody>
+          {% for code in ["rfc9990", "rfc7489", None] if formats.get(code) %}
+            {{ ui.share_row(ui.format_badge(code), formats.get(code), format_total) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="bc-panel__body"><p class="app-quiet app-small" style="margin:0">Seit Mai 2026 gilt DMARCbis (RFC 9990). Empfänger stellen nach und nach auf das neue Format um; die Anwendung liest beide.</p></div>
+    {% else %}
+      {{ ui.empty("Noch keine Berichte", "Hier steht, wie viele Berichte im bisherigen und im neuen Format ankommen.") }}
+    {% endif %}
+  </section>
+  <section class="bc-panel" aria-labelledby="behandlung-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="behandlung-titel">Behandlung beim Empfänger</h2></div>
+    {% set disposition_total = dispositions.values() | sum %}
+    {% if disposition_total %}
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Behandlung</th><th class="bc-num">Nachrichten</th><th><span class="bc-sr">Anteil als Balken</span></th><th class="bc-num">Anteil</th></tr></thead>
+        <tbody>
+          {% for key in ["pass", "none", "quarantine", "reject"] if dispositions.get(key) %}
+            {{ ui.share_row(ui.state(key | disposition_text, key | disposition_state), dispositions.get(key), disposition_total) }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ ui.empty("Noch keine Nachrichten", "Hier steht, ob Empfänger Nachrichten zugestellt, in den Spam-Ordner gelegt oder abgewiesen haben.") }}
+    {% endif %}
+  </section>
 </div>
-{% endblock %}
 
-{% block extra_js %}
-{% if chart_data %}
-<script>
-(function() {
-  const data = {{ chart_data | tojson }};
-  const labels = data.map(d => d.date);
-  const passData = data.map(d => d.pass);
-  const failData = data.map(d => d.fail);
+<section class="bc-panel" aria-labelledby="importe-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="importe-titel">Letzte Importe</h2><a class="bc-button bc-button--secondary" href="/imports">Alle Importe</a></div>
+  {% if stats.recent_imports %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Datei</th><th>Status</th><th>Herkunft</th><th>Zeit</th></tr></thead>
+      <tbody>
+        {% for job in stats.recent_imports %}
+        <tr>
+          <td class="app-break"><a href="/imports/{{ job.id }}">{{ job.file_name or 'ohne Namen' }}</a></td>
+          <td>{{ ui.state(job.status | status_text, job.status | status_state) }}</td>
+          <td>{{ job.source | source_text }}</td>
+          <td class="app-nowrap">{{ job.created_at | datetime }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty("Noch keine Importe", "Lade einen Bericht hoch oder richte eine Empfangsadresse ein.", "/upload", "Bericht hochladen") }}
+  {% endif %}
+</section>
 
-  const ctx = document.getElementById('passFailChart');
-  if (!ctx) return;
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Pass',
-          data: passData,
-          backgroundColor: 'rgba(25,135,84,0.7)',
-          stack: 'stack',
-        },
-        {
-          label: 'Fail',
-          data: failData,
-          backgroundColor: 'rgba(220,53,69,0.7)',
-          stack: 'stack',
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { position: 'top' } },
-      scales: {
-        x: { stacked: true },
-        y: { stacked: true, beginAtZero: true }
-      }
-    }
-  });
-})();
-</script>
+{% if stats.domains_no_reports %}
+<section class="bc-panel" aria-labelledby="stille-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="stille-titel">Domains ohne neue Berichte</h2></div>
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Domain</th><th>Letzter Bericht</th><th><span class="bc-sr">Aktion</span></th></tr></thead>
+      <tbody>
+        {% for d in stats.domains_no_reports %}
+        <tr><td>{{ d.name }}</td><td>{{ d.last_report_at | date }}</td><td><div class="bc-row-actions"><a class="bc-button bc-button--secondary" href="/domains/{{ d.id }}">Öffnen</a></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<div class="bc-alert bc-alert--ok"><p class="bc-alert__title">Alle Domains melden sich</p><p>Für jede aktive Domain kam in den letzten Tagen mindestens ein Bericht.</p></div>
 {% endif %}
 {% endblock %}

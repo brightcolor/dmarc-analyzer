@@ -1,3 +1,6 @@
+import re
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -6,115 +9,140 @@ from app.database import get_db
 from app.dependencies import get_client_ip, get_current_user_optional
 from app.services.audit import log_action
 from app.services.auth import authenticate_user, create_user, get_user_orgs
+from app.services.passwords import password_problem
+from app.services.setup import admin_exists, consume_setup_code
 from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SETUP_CODE_HINT = ("Du findest ihn im Serverlog beim Start der Anwendung oder mit dem Befehl "
+                   "docker compose exec web python -m app.setup_code.")
 
-def _any_users_exist(db: Session) -> bool:
-    from app.models import User
-    return db.query(User.id).first() is not None
+
+def _safe_next(target: str | None) -> str:
+    """Only relative paths inside this application; everything else goes to the dashboard."""
+    if not target:
+        return "/dashboard"
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc or not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return "/dashboard"
+    return target
+
+
+def _setup_form(request: Request, values: dict | None = None, error: str | None = None,
+                error_field: str | None = None, status_code: int = 200):
+    return templates.TemplateResponse(request, "auth/setup.html", {
+        "values": values or {}, "error": error, "error_field": error_field, "page_title": "Ersteinrichtung",
+    }, status_code=status_code)
 
 
 @router.get("/setup", response_class=HTMLResponse)
 def setup_page(request: Request, db: Session = Depends(get_db)):
-    if _any_users_exist(db):
-        return RedirectResponse(url="/auth/login", status_code=302)
-    error = request.session.pop("setup_error", None)
-    return templates.TemplateResponse("auth/setup.html", {"request": request, "error": error})
+    if admin_exists(db):
+        raise HTTPException(status_code=404)
+    return _setup_form(request)
 
 
 @router.post("/setup")
 def setup_submit(
     request: Request,
-    email: str = Form(...),
-    full_name: str = Form(...),
-    password: str = Form(...),
-    password_confirm: str = Form(...),
-    org_name: str = Form(...),
+    setup_code: str = Form(""),
+    email: str = Form(""),
+    full_name: str = Form(""),
+    password: str = Form(""),
+    password_confirm: str = Form(""),
+    org_name: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    if _any_users_exist(db):
-        return RedirectResponse(url="/auth/login", status_code=303)
+    if admin_exists(db):
+        raise HTTPException(status_code=404)
 
-    if password != password_confirm:
-        request.session["setup_error"] = "Passwords do not match."
-        return RedirectResponse(url="/auth/setup", status_code=303)
+    values = {"email": email, "full_name": full_name, "org_name": org_name, "setup_code": setup_code}
+    email = email.strip().lower()
+    if not EMAIL_RE.match(email):
+        return _setup_form(request, values, "Die E-Mail-Adresse ist unvollständig. Sie braucht die Form "
+                           "name@example.com.", "email", 400)
+    if not org_name.strip():
+        return _setup_form(request, values, "Gib einen Namen für die erste Organisation an, etwa deinen "
+                           "Firmennamen.", "org_name", 400)
+    problem = password_problem(password, password_confirm)
+    if problem:
+        return _setup_form(request, values, problem, "password", 400)
 
-    if len(password) < 10:
-        request.session["setup_error"] = "Password must be at least 10 characters."
-        return RedirectResponse(url="/auth/setup", status_code=303)
+    from app.models import Organization, OrganizationMembership, User
+    from app.services.inbound_address import create_org_address
 
-    import re
+    if db.query(User.id).filter_by(email=email).first():
+        return _setup_form(request, values, "Zu dieser E-Mail-Adresse gibt es schon ein Konto ohne "
+                           "Administratorrechte. Nimm eine andere Adresse.", "email", 400)
+    if not consume_setup_code(db, setup_code):
+        return _setup_form(request, values, "Der Einrichtungscode stimmt nicht. " + SETUP_CODE_HINT,
+                           "setup_code", 400)
 
-    from app.models import Organization, OrganizationMembership
+    folded = org_name.lower().strip().translate(str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}))
+    base_slug = re.sub(r"[^a-z0-9]+", "-", folded).strip("-")[:70] or "organisation"
+    slug, suffix = base_slug, 1
+    while db.query(Organization.id).filter_by(slug=slug).first():
+        suffix += 1
+        slug = f"{base_slug}-{suffix}"
+    org = Organization(name=org_name.strip(), slug=slug, is_active=True)
+    db.add(org)
+    db.flush()
+    user = create_user(db, email=email, password=password, full_name=full_name.strip() or None, is_superadmin=True)
+    org.owner_id = user.id
+    db.add(OrganizationMembership(user_id=user.id, organization_id=org.id, role="org_admin"))
+    create_org_address(db, org)
+    log_action(db, "setup.initial_admin_created", org_id=org.id, user_id=user.id,
+               resource_type="user", resource_id=user.id, new_value={"email": email},
+               ip_address=get_client_ip(request))
+    db.commit()
 
-    slug = re.sub(r"[^a-z0-9]+", "-", org_name.lower().strip()).strip("-")[:80] or "default-org"
-
-    try:
-        org = Organization(name=org_name.strip(), slug=slug, is_active=True)
-        db.add(org)
-        db.flush()
-
-        user = create_user(db, email=email, password=password, full_name=full_name, is_superadmin=True)
-        db.add(OrganizationMembership(user_id=user.id, organization_id=org.id, role="org_admin"))
-
-        log_action(db, "setup.initial_admin_created", user_id=user.id,
-                   ip_address=get_client_ip(request))
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        request.session["setup_error"] = f"Setup failed: {exc}"
-        return RedirectResponse(url="/auth/setup", status_code=303)
-
+    request.app.state.setup_done = True
+    request.session.clear()
     request.session["user_id"] = user.id
     request.session["org_id"] = org.id
     return RedirectResponse(url="/dashboard", status_code=303)
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login_page(request: Request, user=Depends(get_current_user_optional), db: Session = Depends(get_db)):
+def login_page(request: Request, user=Depends(get_current_user_optional)):
     if user:
         return RedirectResponse(url="/dashboard", status_code=302)
-    if not _any_users_exist(db):
-        return RedirectResponse(url="/auth/setup", status_code=302)
     error = request.session.pop("login_error", None)
-    return templates.TemplateResponse("auth/login.html", {
-        "request": request,
-        "error": error,
+    return templates.TemplateResponse(request, "auth/login.html", {
+        "error": error, "email": request.session.pop("login_email", ""),
+        "next": _safe_next(request.query_params.get("next")), "page_title": "Anmelden",
     })
 
 
 @router.post("/login")
 def login(
     request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
+    email: str = Form(""),
+    password: str = Form(""),
+    next: str = Form("/dashboard"),
     db: Session = Depends(get_db),
 ):
     user = authenticate_user(db, email, password)
     if not user:
-        request.session["login_error"] = "Invalid email or password."
+        request.session["login_error"] = ("E-Mail-Adresse oder Passwort stimmen nicht. Prüfe die Schreibweise; "
+                                          "beim Passwort zählt Groß- und Kleinschreibung.")
+        request.session["login_email"] = email
         return RedirectResponse(url="/auth/login", status_code=303)
 
+    request.session.clear()
     request.session["user_id"] = user.id
 
-    # Auto-select org if user has exactly one
+    # Pick the organisation automatically when there is exactly one
     orgs = get_user_orgs(db, user.id) if not user.is_superadmin else []
-    if orgs and len(orgs) == 1:
+    if len(orgs) == 1:
         request.session["org_id"] = orgs[0].id
 
-    log_action(
-        db,
-        "user.login",
-        user_id=user.id,
-        ip_address=get_client_ip(request),
-        user_agent=request.headers.get("User-Agent"),
-    )
+    log_action(db, "user.login", user_id=user.id, ip_address=get_client_ip(request),
+               user_agent=request.headers.get("User-Agent"))
     db.commit()
-
-    next_url = request.query_params.get("next", "/dashboard")
-    return RedirectResponse(url=next_url, status_code=303)
+    return RedirectResponse(url=_safe_next(next), status_code=303)
 
 
 @router.get("/logout")
@@ -123,34 +151,6 @@ def logout(request: Request):
     return RedirectResponse(url="/auth/login", status_code=303)
 
 
-@router.get("/select-org", response_class=HTMLResponse)
-def select_org_page(request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return RedirectResponse(url="/auth/login", status_code=302)
-    from app.services.auth import get_user_by_id
-    user = get_user_by_id(db, user_id)
-    orgs = get_user_orgs(db, user_id) if user and not user.is_superadmin else []
-    if user and user.is_superadmin:
-        from app.models import Organization
-        orgs = db.query(Organization).filter_by(is_active=True).all()
-    return templates.TemplateResponse("auth/select_org.html", {
-        "request": request,
-        "orgs": orgs,
-        "user": user,
-    })
-
-
-@router.post("/select-org")
-def select_org(request: Request, org_id: str = Form(...), db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return RedirectResponse(url="/auth/login", status_code=303)
-
-    from app.services.auth import can_access_org, get_user_by_id
-    user = get_user_by_id(db, user_id)
-    if not user or not can_access_org(db, user, org_id):
-        raise HTTPException(status_code=403)
-
-    request.session["org_id"] = org_id
-    return RedirectResponse(url="/dashboard", status_code=303)
+@router.get("/select-org")
+def select_org_page():
+    return RedirectResponse(url="/organizations/select", status_code=302)

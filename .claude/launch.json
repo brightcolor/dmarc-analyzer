@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "dmarc-web",
-      "runtimeExecutable": "uvicorn",
-      "runtimeArgs": ["app.main:app", "--port", "8765", "--host", "0.0.0.0"],
-      "port": 8765
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["scripts/dev_server.py"],
+      "port": 8766,
+      "autoPort": true
     }
   ]
 }

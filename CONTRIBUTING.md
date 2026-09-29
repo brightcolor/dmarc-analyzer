@@ -5,7 +5,7 @@ Thank you for considering contributing to DMARC Analyzer!
 ## Development setup
 
 ```bash
-git clone https://github.com/yourorg/dmarc-analyzer.git
+git clone https://github.com/brightcolor/dmarc-analyzer.git
 cd dmarc-analyzer
 python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 make dev

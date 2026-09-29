@@ -1,67 +1,64 @@
 {% extends "base.html" %}
-{% block content %}
+{% import "partials/macros.html" as ui with context %}
 
+{% block lede %}<p>Mit einem API-Token fragen andere Programme die Auswertung ab, etwa für ein Monitoring. Jeder Token gilt nur für {{ org.name }}.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/api/docs" target="_blank" rel="noopener">API-Dokumentation</a>{% endblock %}
+
+{% block content %}
 {% if new_token %}
-<div class="alert alert-success alert-dismissible fade show">
-  <i class="bi bi-key-fill me-2"></i>
-  <strong>Token created!</strong> Copy it now — it will never be shown again.<br>
-  <code class="user-select-all fs-6">{{ new_token }}</code>
-  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+<div class="bc-alert bc-alert--ok" role="status">
+  <p class="bc-alert__title">Neuer Token angelegt</p>
+  <p>Kopiere ihn jetzt. Die Anwendung zeigt ihn kein zweites Mal an.</p>
+  {{ ui.copy_code("new-token", new_token) }}
 </div>
 {% endif %}
 
-<div class="row g-3">
-  <div class="col-12 col-lg-8">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-key me-2"></i>API Tokens</h6></div>
-      <div class="card-body p-0">
-        {% if tokens %}
-        <table class="table table-hover mb-0">
-          <thead class="table-light"><tr><th>Name</th><th>Prefix</th><th>Status</th><th>Last Used</th><th>Created</th><th></th></tr></thead>
-          <tbody>
-          {% for t in tokens %}
-          <tr>
-            <td>{{ t.name }}</td>
-            <td class="font-monospace small">{{ t.token_prefix }}…</td>
-            <td><span class="badge {% if t.is_valid %}bg-success{% else %}bg-secondary{% endif %}">{% if t.is_valid %}Active{% else %}Revoked{% endif %}</span></td>
-            <td class="small text-muted">{{ t.last_used_at | datetime }}</td>
-            <td class="small text-muted">{{ t.created_at | date }}</td>
-            <td>
-              {% if t.is_active and not t.revoked_at %}
-              <form method="post" action="/api-tokens/{{ t.id }}/revoke">
-                <button class="btn btn-sm btn-outline-danger">Revoke</button>
+<section class="bc-panel" aria-labelledby="tokens-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="tokens-titel">Tokens</h2></div>
+  {% if tokens %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Name</th><th>Beginnt mit</th><th>Status</th><th>Angelegt</th><th>Zuletzt genutzt</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <tbody>
+        {% for t in tokens %}
+        <tr>
+          <td>{{ t.name }}</td>
+          <td class="app-mono">{{ t.token_prefix }}…</td>
+          <td>{{ ui.state('aktiv' if t.is_active else 'widerrufen', 'bc-state--on' if t.is_active else '') }}</td>
+          <td class="app-nowrap">{{ t.created_at | date }}</td>
+          <td class="app-nowrap">{{ t.last_used_at | datetime }}</td>
+          <td>
+            {% if can_manage and t.is_active %}
+            <div class="bc-row-actions">
+              <form method="post" action="/api-tokens/{{ t.id }}/revoke" data-confirm="Token „{{ t.name }}“ widerrufen? Programme, die ihn nutzen, verlieren sofort den Zugriff.">
+                <button class="bc-button bc-button--secondary" type="submit">Widerrufen</button>
               </form>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="text-center py-4 text-muted">No API tokens yet.</div>
-        {% endif %}
-      </div>
-    </div>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
+  {% else %}
+    {{ ui.empty("Noch keine Tokens", "Lege einen Token an, wenn ein Programm auf die API zugreifen soll.") }}
+  {% endif %}
+</section>
 
-  <div class="col-12 col-lg-4">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-plus-circle me-2"></i>New Token</h6></div>
-      <div class="card-body">
-        <form method="post" action="/api-tokens/new">
-          <div class="mb-3">
-            <label class="form-label small">Token Name</label>
-            <input type="text" name="name" class="form-control form-control-sm" required placeholder="CI Pipeline">
-          </div>
-          <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-plus-circle me-1"></i>Generate Token
-          </button>
-        </form>
-        <hr>
-        <p class="small text-muted mb-1">Usage:</p>
-        <pre class="small bg-body-secondary p-2 rounded mb-0"><code>Authorization: Bearer dmarc_...</code></pre>
+{% if can_manage %}
+<section class="bc-panel" aria-labelledby="neu-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="neu-titel">Neuer Token</h2></div>
+  <form method="post" action="/api-tokens/new">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="t-name">Name</label>
+        <input class="bc-input" id="t-name" name="name" required placeholder="z. B. Monitoring">
+        <p class="bc-formgrid__hint">Der Name hilft später beim Widerrufen. Programme senden den Token im Kopf <code>Authorization: Bearer …</code>.</p>
       </div>
     </div>
-  </div>
-</div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Token anlegen</button></div>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

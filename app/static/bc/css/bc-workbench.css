@@ -1,0 +1,753 @@
+/* ==========================================================================
+   bright color, workbench variant (Werkbank)
+   Admin and technical panels: onyx rail with accordion menu, top bar, cards
+   on paper, yellow main action, light and dark mode.
+   Load after bc-fonts.css and bc-tokens.css. Put data-bc-variant="workbench"
+   on <html> and class "bc" on <body>. Modelled on ispconfig-brightcolor 0.1.1.
+   ========================================================================== */
+
+/* Base ------------------------------------------------------------------- */
+
+[data-bc-variant="workbench"] .bc {
+	margin: 0;
+	background: var(--bc-ground);
+	color: var(--bc-text);
+	font-family: var(--bc-font-text);
+	font-size: var(--bc-size-body);
+	line-height: var(--bc-leading);
+	-webkit-font-smoothing: antialiased;
+}
+
+[data-bc-variant="workbench"] .bc *,
+[data-bc-variant="workbench"] .bc *::before,
+[data-bc-variant="workbench"] .bc *::after { box-sizing: border-box; }
+
+/* Anton in capitals for page titles and section titles, as on the website. */
+:where([data-bc-variant="workbench"] .bc) h1,
+:where([data-bc-variant="workbench"] .bc) h2 {
+	margin: 0;
+	font-family: var(--bc-font-display);
+	font-weight: 400;
+	line-height: 1.06;
+	letter-spacing: .02em;
+	text-transform: uppercase;
+	color: var(--bc-text-loud);
+}
+
+:where([data-bc-variant="workbench"] .bc) h1 { font-size: var(--bc-size-h1); letter-spacing: .015em; }
+:where([data-bc-variant="workbench"] .bc) h2 { font-size: var(--bc-size-h2); letter-spacing: .03em; }
+
+:where([data-bc-variant="workbench"] .bc) h3,
+:where([data-bc-variant="workbench"] .bc) h4 {
+	margin: 0 0 .4em;
+	font-family: var(--bc-font-text);
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.3;
+	color: var(--bc-text-loud);
+}
+
+:where([data-bc-variant="workbench"] .bc) p { margin: 0 0 .8em; }
+:where([data-bc-variant="workbench"] .bc) a { color: var(--bc-link); text-underline-offset: 3px; }
+:where([data-bc-variant="workbench"] .bc) a:where(:hover) { color: var(--bc-link-hover); }
+
+[data-bc-variant="workbench"] .bc :focus-visible { outline: 3px solid var(--bc-focus); outline-offset: 2px; }
+[data-bc-variant="workbench"] .bc ::selection { background: var(--bc-yellow); color: var(--bc-ink); }
+
+:where([data-bc-variant="workbench"] .bc) code {
+	padding: .05em .35em;
+	font-family: var(--bc-font-mono);
+	font-size: .875em;
+	background: var(--bc-head);
+	border: 1px solid var(--bc-rule);
+	border-radius: 4px;
+}
+
+.bc-sr {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Four colour edge along the top: the signature from the logo. */
+.bc-brandbar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 1040;
+	height: 4px;
+	background: linear-gradient(90deg,
+		var(--bc-magenta) 0 25%, var(--bc-cyan) 25% 50%,
+		var(--bc-lime) 50% 75%, var(--bc-yellow) 75% 100%);
+}
+
+/* Label with a magenta square above every page title. */
+.bc-eyebrow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 6px;
+	font-size: 11.5px;
+	font-weight: 700;
+	letter-spacing: .16em;
+	line-height: 1.4;
+	text-transform: uppercase;
+	color: var(--bc-text-quiet);
+}
+
+.bc-eyebrow::before { content: ""; flex: none; width: 9px; height: 9px; background: var(--bc-magenta); }
+
+/* Rail ------------------------------------------------------------------- */
+
+.bc-rail {
+	position: fixed;
+	top: 4px;
+	bottom: 0;
+	left: 0;
+	z-index: 1030;
+	display: flex;
+	flex-direction: column;
+	width: var(--bc-rail-w);
+	overflow-y: auto;
+	background: var(--bc-rail);
+	border-right: 1px solid var(--bc-rail-line);
+	color: var(--bc-rail-text);
+	scrollbar-color: var(--bc-rail-line) var(--bc-rail);
+	--bc-focus: var(--bc-yellow);
+}
+
+.bc-rail__brand { padding: 22px 22px 14px; }
+.bc-rail__brand img { display: block; width: 170px; height: auto; }
+
+.bc-rail__area {
+	display: block;
+	margin-top: 8px;
+	font-size: 11px;
+	letter-spacing: .14em;
+	text-transform: uppercase;
+	color: var(--bc-rail-muted);
+}
+
+.bc-rail__nav { display: flex; flex-direction: column; margin: 0; padding: 6px 12px 24px; list-style: none; }
+
+.bc-rail__item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	margin: 1px 0;
+	padding: 10px 12px;
+	background: none;
+	border: 0;
+	border-radius: var(--bc-radius-sm);
+	color: var(--bc-rail-text);
+	font: inherit;
+	font-size: 14px;
+	font-weight: 500;
+	line-height: 1.3;
+	text-align: left;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background var(--bc-move) ease, color var(--bc-move) ease;
+}
+
+.bc-rail__item:hover { background: var(--bc-rail-2); color: #ffffff; }
+
+/* The open module: yellow edge, yellow icon, chevron turned down. */
+.bc-rail__item[aria-expanded="true"] { background: var(--bc-rail-2); color: #ffffff; }
+
+.bc-rail__item[aria-expanded="true"]::before {
+	content: "";
+	position: absolute;
+	top: 8px;
+	bottom: 8px;
+	left: -12px;
+	width: 4px;
+	border-radius: 0 3px 3px 0;
+	background: var(--bc-yellow);
+}
+
+.bc-rail__icon { flex: none; width: 18px; height: 18px; opacity: .85; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.bc-rail__item[aria-expanded="true"] .bc-rail__icon { color: var(--bc-yellow); opacity: 1; }
+
+.bc-rail__chev {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	margin-left: auto;
+	opacity: .45;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	transition: transform var(--bc-move) ease;
+}
+
+.bc-rail__item[aria-expanded="true"] .bc-rail__chev { transform: rotate(90deg); opacity: .9; }
+
+/* The open module's menu sits right after its item: tab order follows the eye. */
+.bc-rail__sub { margin: 0; padding: 2px 0 12px 42px; list-style: none; }
+.bc-rail__sub[hidden] { display: none; }
+
+.bc-rail__group {
+	margin: 12px 0 4px;
+	font-size: 10.5px;
+	font-weight: 700;
+	letter-spacing: .14em;
+	line-height: 1.4;
+	text-transform: uppercase;
+	color: var(--bc-rail-muted);
+}
+
+.bc-rail__link {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 5px 8px 5px 0;
+	border-radius: 6px;
+	color: var(--bc-rail-text);
+	font-size: 13.5px;
+	text-decoration: none;
+}
+
+.bc-rail__link::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--bc-rail-line); }
+.bc-rail__link:hover { color: #ffffff; }
+.bc-rail__link[aria-current="page"] { color: #ffffff; font-weight: 700; }
+.bc-rail__link[aria-current="page"]::before { background: var(--bc-cyan); box-shadow: 0 0 0 3px rgba(29, 195, 243, .2); }
+
+.bc-rail__foot { margin-top: auto; padding: 16px 22px; border-top: 1px solid var(--bc-rail-line); color: var(--bc-rail-muted); font-size: 11.5px; }
+
+/* Main column and top bar --------------------------------------------------------- */
+
+.bc-main { min-height: 100vh; margin-left: var(--bc-rail-w); padding-top: 4px; }
+
+.bc-topbar {
+	position: sticky;
+	top: 4px;
+	z-index: 1020;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	min-height: 60px;
+	padding: 10px 32px;
+	background: var(--bc-surface);
+	border-bottom: 1px solid var(--bc-rule);
+}
+
+.bc-topbar__spacer { flex: 1; }
+
+.bc-burger {
+	display: none;
+	place-items: center;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	background: none;
+	border: 1px solid var(--bc-rule);
+	border-radius: var(--bc-radius-sm);
+	color: var(--bc-text-loud);
+	cursor: pointer;
+}
+
+.bc-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; color: var(--bc-text-quiet); font-size: 13px; white-space: nowrap; }
+.bc-crumbs a { color: inherit; text-decoration: none; }
+.bc-crumbs a:hover { color: var(--bc-text-loud); text-decoration: underline; }
+.bc-crumbs [aria-current="page"] { overflow: hidden; color: var(--bc-text-loud); font-weight: 700; text-overflow: ellipsis; }
+
+.bc-search { display: flex; width: 250px; }
+
+.bc-search input {
+	flex: 1;
+	min-width: 0;
+	height: 36px;
+	padding: 0 12px;
+	background: var(--bc-head);
+	border: 1px solid var(--bc-rule);
+	border-right: 0;
+	border-radius: var(--bc-radius-sm) 0 0 var(--bc-radius-sm);
+	color: var(--bc-text);
+	font: inherit;
+	font-size: 13px;
+}
+
+.bc-search button {
+	display: grid;
+	place-items: center;
+	width: 38px;
+	height: 36px;
+	padding: 0;
+	background: var(--bc-head);
+	border: 1px solid var(--bc-rule);
+	border-radius: 0 var(--bc-radius-sm) var(--bc-radius-sm) 0;
+	color: var(--bc-text-quiet);
+	cursor: pointer;
+}
+
+.bc-iconbtn {
+	position: relative;
+	display: grid;
+	place-items: center;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	background: none;
+	border: 0;
+	border-radius: var(--bc-radius-sm);
+	color: var(--bc-text-quiet);
+	cursor: pointer;
+}
+
+.bc-iconbtn:hover { background: var(--bc-hover); color: var(--bc-text-loud); }
+
+.bc-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.bc-count {
+	position: absolute;
+	top: 1px;
+	right: -1px;
+	display: grid;
+	place-items: center;
+	min-width: 17px;
+	height: 17px;
+	padding: 0 4px;
+	background: var(--bc-pink);
+	border-radius: 9px;
+	color: #ffffff;
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+/* Light and dark: two buttons, the pressed one onyx with a yellow icon. */
+.bc-mode { display: inline-flex; flex: none; gap: 2px; padding: 3px; background: var(--bc-head); border: 1px solid var(--bc-rule); border-radius: 999px; }
+
+.bc-mode button {
+	display: grid;
+	place-items: center;
+	width: 30px;
+	height: 26px;
+	padding: 0;
+	background: none;
+	border: 0;
+	border-radius: 999px;
+	color: var(--bc-text-quiet);
+	cursor: pointer;
+}
+
+.bc-mode button:hover { color: var(--bc-text-loud); }
+.bc-mode button[aria-pressed="true"] { background: var(--bc-ink); color: var(--bc-yellow); }
+[data-theme="dark"] .bc-mode button[aria-pressed="true"] { background: var(--bc-yellow); color: var(--bc-ink); }
+.bc-mode svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.bc-user { display: flex; flex: none; align-items: center; gap: 10px; font-size: 13px; line-height: 1.3; }
+
+.bc-avatar {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	background: var(--bc-ink);
+	border-radius: 50%;
+	color: var(--bc-yellow);
+	font-size: 13px;
+	font-weight: 700;
+}
+
+[data-theme="dark"] .bc-avatar { background: var(--bc-raised); box-shadow: inset 0 0 0 1px var(--bc-rule); }
+.bc-user__name { display: block; color: var(--bc-text-loud); font-weight: 700; }
+
+.bc-logout {
+	padding: 0;
+	background: none;
+	border: 0;
+	color: var(--bc-text-quiet);
+	font: inherit;
+	font-size: 12.5px;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	cursor: pointer;
+}
+
+.bc-logout:hover { color: var(--bc-bad-text); }
+
+.bc-content { max-width: 1240px; padding: 28px 32px 48px; }
+
+/* Page head ----------------------------------------------------------------- */
+
+.bc-page-head { margin: 0 0 18px; }
+.bc .bc-page-head h1 { margin: 0; }
+.bc .bc-page-head p { margin: 8px 0 0; max-width: 60ch; color: var(--bc-text-quiet); }
+
+.bc .bc-section-title { margin: 28px 0 14px; }
+
+/* Panels (cards) ------------------------------------------------------------ */
+
+.bc-panel {
+	margin: 0 0 18px;
+	background: var(--bc-surface);
+	border: 1px solid var(--bc-rule);
+	border-radius: var(--bc-radius);
+	box-shadow: var(--bc-shadow);
+}
+
+.bc-panel__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 10px; }
+.bc .bc-panel__title { margin: 0; font-family: var(--bc-font-display); font-size: 19px; font-weight: 400; letter-spacing: .03em; line-height: 1.1; text-transform: uppercase; color: var(--bc-text-loud); }
+.bc-panel__body { padding: 20px 24px; }
+.bc-panel__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--bc-rule); }
+
+/* Module tiles: cards with a colour edge, cycling through the logo colours. */
+.bc-modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; margin: 0 0 18px; padding: 0; list-style: none; }
+
+.bc-module {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	overflow: hidden;
+	padding: 18px 16px 14px;
+	background: var(--bc-surface);
+	border: 1px solid var(--bc-rule);
+	border-radius: var(--bc-radius);
+	box-shadow: var(--bc-shadow);
+}
+
+.bc-module::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--bc-magenta); }
+.bc-modules > .bc-module:nth-child(4n+2)::before { background: var(--bc-cyan); }
+.bc-modules > .bc-module:nth-child(4n+3)::before { background: var(--bc-lime); }
+.bc-modules > .bc-module:nth-child(4n+4)::before { background: var(--bc-yellow); }
+
+.bc-module__head { display: flex; align-items: center; gap: 12px; font-weight: 700; color: var(--bc-text-loud); }
+.bc-module__head .bc-icon { width: 30px; height: 30px; stroke-width: 1.5; }
+
+/* Figures on the dashboard: two or four per row, measured on the content
+   column. auto-fit made 3 + 1 at 1024 px. */
+.bc-content { container-type: inline-size; }
+.bc-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 18px; }
+@container (min-width: 40rem) { .bc-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.bc-kpi { padding: 16px 18px; background: var(--bc-surface); border: 1px solid var(--bc-rule); border-radius: var(--bc-radius); box-shadow: var(--bc-shadow); }
+.bc .bc-kpi__value { margin: 0; font-family: var(--bc-font-display); font-size: 34px; line-height: 1; text-transform: uppercase; color: var(--bc-text-loud); font-variant-numeric: tabular-nums; }
+.bc .bc-kpi__label { margin: 6px 0 0; color: var(--bc-text-quiet); font-size: 13px; }
+
+/* Tabs ------------------------------------------------------------------- */
+
+.bc-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 0; padding: 0 14px; border-bottom: 1px solid var(--bc-rule); list-style: none; }
+
+.bc-tabs a,
+.bc-tabs button {
+	display: block;
+	margin-bottom: -1px;
+	padding: 14px 14px 11px;
+	background: none;
+	border: 0;
+	border-bottom: 3px solid transparent;
+	color: var(--bc-text-quiet);
+	font: inherit;
+	font-weight: 500;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.bc-tabs a:hover,
+.bc-tabs button:hover { color: var(--bc-text-loud); }
+
+.bc-tabs [aria-selected="true"],
+.bc-tabs [aria-current="page"] { border-bottom-color: var(--bc-magenta); color: var(--bc-text-loud); font-weight: 700; }
+
+/* Forms ------------------------------------------------------------------ */
+
+/* Label left, field right, one row per setting. */
+.bc-formgrid { display: grid; grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr); gap: 14px 24px; align-items: center; }
+.bc-formgrid > label,
+.bc-formgrid > .bc-formgrid__label { font-weight: 700; color: var(--bc-text-loud); }
+.bc-formgrid__hint { grid-column: 2; margin: -8px 0 0; color: var(--bc-text-quiet); font-size: 13px; }
+
+.bc-input,
+.bc-select,
+.bc-textarea {
+	width: 100%;
+	height: 38px;
+	padding: 0 12px;
+	background: var(--bc-control);
+	border: 1px solid var(--bc-field-edge);
+	border-radius: var(--bc-radius-sm);
+	color: var(--bc-text);
+	font: inherit;
+}
+
+.bc-textarea { height: auto; min-height: 7rem; padding: 10px 12px; resize: vertical; }
+.bc-input:hover,
+.bc-select:hover { border-color: var(--bc-text-quiet); }
+
+.bc-input:focus,
+.bc-select:focus,
+.bc-textarea:focus {
+	border-color: var(--bc-focus);
+	outline: 0;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--bc-focus) 22%, transparent);
+}
+
+.bc-input[aria-invalid="true"] { border-color: var(--bc-pink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bc-pink) 18%, transparent); }
+.bc .bc-field-error { grid-column: 2; margin: -8px 0 0; color: var(--bc-bad-text); font-size: 13px; font-weight: 700; }
+
+.bc-addon { display: flex; }
+.bc-addon .bc-input { border-radius: var(--bc-radius-sm) 0 0 var(--bc-radius-sm); }
+
+.bc-addon span {
+	display: grid;
+	place-items: center;
+	padding: 0 12px;
+	background: var(--bc-head);
+	border: 1px solid var(--bc-field-edge);
+	border-left: 0;
+	border-radius: 0 var(--bc-radius-sm) var(--bc-radius-sm) 0;
+	color: var(--bc-text-quiet);
+	font-size: 13px;
+	font-weight: 700;
+}
+
+/* Switch: a real checkbox, drawn as a track with a knob. Off, the track carries
+   the field edge (3.4:1) and a quiet knob; a pale track alone gave 1.45:1.
+   justify-self keeps the label as wide as the switch, so a click into the
+   empty grid cell beside it toggles nothing. */
+.bc-switch { position: relative; display: inline-flex; align-items: center; gap: 10px; justify-self: start; cursor: pointer; }
+.bc-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+.bc-switch__track {
+	position: relative;
+	width: 40px;
+	height: 22px;
+	background: var(--bc-track);
+	border-radius: 999px;
+	box-shadow: inset 0 0 0 1.5px var(--bc-field-edge);
+	transition: background var(--bc-move) ease, box-shadow var(--bc-move) ease;
+}
+
+.bc-switch__track::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 16px;
+	height: 16px;
+	background: var(--bc-text-quiet);
+	border-radius: 50%;
+	transition: transform var(--bc-move) ease, background var(--bc-move) ease;
+}
+
+.bc-switch input:checked + .bc-switch__track { background: var(--bc-track-on); box-shadow: none; }
+.bc-switch input:checked + .bc-switch__track::after { transform: translateX(18px); background: var(--bc-knob-on); }
+.bc-switch input:focus-visible + .bc-switch__track { outline: 3px solid var(--bc-focus); outline-offset: 2px; }
+
+/* Buttons ---------------------------------------------------------------- */
+
+.bc-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 38px;
+	padding: 0 18px;
+	background: var(--bc-primary);
+	border: 1.5px solid var(--bc-primary);
+	border-radius: var(--bc-radius-sm);
+	color: var(--bc-on-primary);
+	font: inherit;
+	font-weight: 700;
+	line-height: 1.2;
+	text-decoration: none;
+	cursor: pointer;
+	transition: background var(--bc-move) ease, border-color var(--bc-move) ease, color var(--bc-move) ease;
+}
+
+.bc .bc-button:hover { background: var(--bc-primary-deep); border-color: var(--bc-primary-deep); color: var(--bc-on-primary); }
+
+.bc-button--secondary { background: transparent; border-color: var(--bc-text-loud); color: var(--bc-text-loud); }
+.bc .bc-button--secondary:hover { background: var(--bc-text-loud); border-color: var(--bc-text-loud); color: var(--bc-surface); }
+
+.bc-button--danger { background: var(--bc-pink); border-color: var(--bc-pink); color: #ffffff; }
+.bc .bc-button--danger:hover { background: var(--bc-bad-deep); border-color: var(--bc-bad-deep); color: #ffffff; }
+
+/* Quiet icon squares in table rows. */
+.bc-button--icon {
+	min-width: 30px;
+	min-height: 30px;
+	padding: 0 7px;
+	background: var(--bc-surface);
+	border: 1px solid var(--bc-rule);
+	border-radius: 7px;
+	color: var(--bc-text-quiet);
+}
+
+.bc .bc-button--icon:hover { background: var(--bc-surface); border-color: var(--bc-text-quiet); color: var(--bc-text-loud); }
+.bc .bc-button--icon.bc-button--danger:hover { border-color: var(--bc-pink); color: var(--bc-bad-text); }
+
+/* Alerts, states, progress ----------------------------------------------------- */
+
+.bc-alert {
+	margin: 0 0 18px;
+	padding: 14px 18px;
+	background: var(--bc-surface);
+	border: 1px solid var(--bc-rule);
+	border-left: 4px solid var(--bc-cyan);
+	border-radius: var(--bc-radius-sm);
+	color: var(--bc-text);
+}
+
+.bc .bc-alert__title { margin: 0 0 4px; font-weight: 700; color: var(--bc-text-loud); }
+.bc-alert > :last-child { margin-bottom: 0; }
+.bc-alert--ok { border-left-color: var(--bc-lime); }
+.bc-alert--warn { border-left-color: var(--bc-yellow); }
+.bc-alert--bad { background: var(--bc-bad-tint); border-color: var(--bc-pink); border-left-color: var(--bc-pink); }
+
+/* The "active" column as a chip. */
+.bc-state {
+	display: inline-flex;
+	padding: 2px 10px;
+	background: var(--bc-head);
+	border-radius: 99px;
+	box-shadow: inset 0 0 0 1px var(--bc-rule);
+	color: var(--bc-text-quiet);
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.5;
+}
+
+.bc-state--on { background: var(--bc-lime); box-shadow: none; color: var(--bc-ink); }
+.bc-state--warn { background: var(--bc-yellow); box-shadow: none; color: var(--bc-ink); }
+.bc-state--bad { background: var(--bc-pink); box-shadow: none; color: #ffffff; }
+
+.bc-progress { height: 20px; overflow: hidden; background: var(--bc-head); border-radius: 99px; box-shadow: inset 0 0 0 1px var(--bc-rule); }
+
+.bc-progress > span {
+	display: block;
+	height: 100%;
+	min-width: 2.6em;
+	padding: 0 8px;
+	background: var(--bc-lime);
+	border-radius: 99px;
+	color: var(--bc-ink);
+	font-size: 11.5px;
+	font-weight: 700;
+	line-height: 20px;
+	text-align: right;
+}
+
+.bc-progress--warn > span { background: var(--bc-yellow); }
+.bc-progress--full > span { background: var(--bc-magenta); }
+
+/* Tables ----------------------------------------------------------------- */
+
+/* position: relative keeps absolutely placed screen-reader texts inside the
+   scrolling box; without it the sample page was 611 px wide on a phone. */
+.bc-table-wrap { position: relative; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--bc-rule-loud) var(--bc-head); }
+.bc-table { width: 100%; border-collapse: collapse; color: var(--bc-text); }
+
+.bc-table thead th {
+	padding: 10px 16px;
+	background: var(--bc-head);
+	border-bottom: 1px solid var(--bc-rule);
+	color: var(--bc-text-quiet);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: .12em;
+	text-align: left;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.bc-table td { padding: 10px 16px; border-bottom: 1px solid var(--bc-rule-soft); vertical-align: middle; }
+.bc-table tbody tr:last-child td { border-bottom: 0; }
+.bc-table tbody tr:hover { background: var(--bc-hover); }
+.bc-table .bc-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bc-table .bc-row-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.bc-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 16px; border-top: 1px solid var(--bc-rule); color: var(--bc-text-quiet); font-size: 13px; }
+
+.bc-pagination a,
+.bc-pagination [aria-current="page"] {
+	display: grid;
+	place-items: center;
+	min-width: 30px;
+	height: 30px;
+	padding: 0 8px;
+	border: 1px solid var(--bc-rule);
+	border-radius: 7px;
+	color: var(--bc-text);
+	text-decoration: none;
+}
+
+.bc-pagination [aria-current="page"] { background: var(--bc-text-loud); border-color: var(--bc-text-loud); color: var(--bc-surface); font-weight: 700; }
+
+/* Charts read these: magenta line, light fill, quiet grid. */
+.bc-chart { width: 100%; height: auto; display: block; }
+.bc-chart__grid { stroke: var(--bc-chart-grid); stroke-width: 1; }
+.bc-chart__line { fill: none; stroke: var(--bc-magenta); stroke-width: 2; }
+.bc-chart__area { fill: var(--bc-chart-fill); stroke: none; }
+.bc-chart__dot { fill: var(--bc-surface); stroke: var(--bc-magenta); stroke-width: 1.5; }
+.bc-chart__label { fill: var(--bc-text-quiet); font-family: var(--bc-font-text); font-size: 11px; }
+
+/* Login: onyx half with logo and greeting, form half on paper --------------------- */
+
+.bc-login { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 100vh; }
+
+.bc-login__brand {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	gap: var(--bc-space-4);
+	padding: 48px;
+	background: var(--bc-ink);
+	color: var(--bc-on-ink);
+	--bc-focus: var(--bc-yellow);
+}
+
+.bc .bc-login__brand h1 { color: var(--bc-on-ink); font-size: clamp(3rem, 2rem + 4vw, 5.5rem); }
+.bc-login__form { display: grid; place-items: center; padding: 48px 24px; }
+.bc-login__card { width: min(100%, 26rem); }
+
+/* Narrow screens: the rail slides in over a menu button ------------------------- */
+
+/* The shade behind the open rail: a tap on it closes the rail. */
+.bc-shade {
+	position: fixed;
+	inset: 0;
+	z-index: 1025;
+	background: rgba(17, 17, 17, .5);
+}
+
+.bc-shade[hidden] { display: none; }
+
+/* Fine detail: a dialog of its own brings the same veil, the placeholder keeps
+   its measured tone (Firefox dims it), the caret carries the link colour. */
+dialog::backdrop { background: rgba(17, 17, 17, .5); }
+.bc ::placeholder { color: var(--bc-text-quiet); opacity: 1; }
+.bc :is(.bc-input, input, textarea) { caret-color: var(--bc-link); }
+
+@media (max-width: 900px) {
+	.bc-rail { transform: translateX(-100%); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s; }
+	.bc-app[data-rail="open"] .bc-rail { transform: none; visibility: visible; transition: transform .2s ease; }
+	.bc-main { margin-left: 0; }
+	.bc-burger { display: grid; }
+	.bc-topbar { padding: 10px 16px; gap: 10px; }
+	.bc-search,
+	.bc-user__text { display: none; }
+	.bc-content { padding: 20px 16px 40px; }
+	.bc-formgrid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+	.bc-formgrid > label { margin-top: 10px; }
+	.bc-formgrid__hint,
+	.bc .bc-field-error { grid-column: 1; margin-top: 0; }
+	.bc-login { grid-template-columns: minmax(0, 1fr); }
+	.bc-login__brand { padding: 32px 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	[data-bc-variant="workbench"] .bc *,
+	[data-bc-variant="workbench"] .bc *::before,
+	[data-bc-variant="workbench"] .bc *::after { transition: none !important; animation: none !important; }
+}

@@ -1,0 +1,92 @@
+{# Shared building blocks for the workbench pages. #}
+
+{% macro state(text, cls="") -%}
+<span class="bc-state {{ cls }}">{{ text }}</span>
+{%- endmacro %}
+
+{% macro format_badge(code) -%}
+{% set info = format_info(code) -%}
+<span class="app-format app-format--{{ code or 'unknown' }}" title="{{ info.name }}">{{ info.label }}</span>
+{%- endmacro %}
+
+{% macro empty(title, text="", href=None, label=None) -%}
+<div class="app-empty">
+  <p class="app-empty__title">{{ title }}</p>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  {% if href %}<a class="bc-button bc-button--secondary" href="{{ href }}">{{ label }}</a>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro copy_code(id, value, label=None) -%}
+{% if label %}<p class="app-code__label" id="{{ id }}-label">{{ label }}</p>{% endif %}
+<div class="app-code">
+  <code id="{{ id }}"{% if label %} aria-labelledby="{{ id }}-label"{% endif %}>{{ value }}</code>
+  <button class="bc-button bc-button--secondary" type="button" data-copy="{{ id }}"><svg class="bc-icon" aria-hidden="true" style="width:15px;height:15px"><use href="#i-copy"/></svg><span class="app-copy-label">Kopieren</span></button>
+</div>
+{%- endmacro %}
+
+{% macro pagination(page, pages, total=None, noun="Einträge") -%}
+{% if pages > 1 %}
+<nav class="bc-pagination" aria-label="Seiten">
+  {% if total is not none %}<span>{{ total | num }} {{ noun }}</span>{% endif %}
+  <span style="flex:1"></span>
+  {% if page > 1 %}<a href="{{ page_url(request, page - 1) }}">Zurück</a>{% endif %}
+  {% for p in range([1, page - 2] | max, [pages + 1, page + 3] | min) %}
+    {% if p == page %}<span aria-current="page">{{ p }}</span>{% else %}<a href="{{ page_url(request, p) }}">{{ p }}</a>{% endif %}
+  {% endfor %}
+  {% if page < pages %}<a href="{{ page_url(request, page + 1) }}">Weiter</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro day_chart(chart, id, title) -%}
+{% if chart %}
+<ul class="app-legend" aria-hidden="true">
+  <li><span class="app-swatch app-swatch--pass"></span>DMARC bestanden ({{ chart.total_pass | num }})</li>
+  <li><span class="app-swatch app-swatch--fail"></span>DMARC fehlgeschlagen ({{ chart.total_fail | num }})</li>
+</ul>
+<svg class="bc-chart app-bars" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-labelledby="{{ id }}-t {{ id }}-d">
+  <title id="{{ id }}-t">{{ title }}</title>
+  <desc id="{{ id }}-d">{{ chart.total_pass | num }} Nachrichten bestanden DMARC, {{ chart.total_fail | num }} scheiterten. Die Tabelle unter dem Diagramm nennt jeden Tag.</desc>
+  {% for t in chart.ticks %}
+  <line class="bc-chart__grid" x1="{{ chart.left }}" y1="{{ '%.1f' % t.y }}" x2="{{ chart.right_edge }}" y2="{{ '%.1f' % t.y }}"/>
+  <text class="bc-chart__label" x="{{ chart.left - 8 }}" y="{{ '%.1f' % (t.y + 4) }}" text-anchor="end">{{ t.label }}</text>
+  {% endfor %}
+  {% for b in chart.bars %}
+  <g class="app-bars__day">
+    <title>{{ b.day.strftime('%d.%m.%Y') }}: {{ (b.passed.value if b.passed else 0) | num }} bestanden, {{ (b.failed.value if b.failed else 0) | num }} fehlgeschlagen</title>
+    <rect class="app-bars__hit" x="{{ '%.1f' % b.x }}" y="4" width="{{ '%.1f' % b.width }}" height="{{ '%.1f' % (chart.baseline - 4) }}"/>
+    {% if b.passed %}<path class="app-bars__pass" d="{{ b.passed.path }}"/>{% endif %}
+    {% if b.failed %}<path class="app-bars__fail" d="{{ b.failed.path }}"/>{% endif %}
+  </g>
+  {% endfor %}
+  <line class="app-bars__axis" x1="{{ chart.left }}" y1="{{ '%.1f' % chart.baseline }}" x2="{{ chart.right_edge }}" y2="{{ '%.1f' % chart.baseline }}"/>
+  {% for l in chart.x_labels %}
+  <text class="bc-chart__label" x="{{ '%.1f' % l.x }}" y="{{ chart.height - 8 }}" text-anchor="middle">{{ l.label }}</text>
+  {% endfor %}
+</svg>
+<details class="app-details">
+  <summary>Werte als Tabelle</summary>
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Tag</th><th class="bc-num">Bestanden</th><th class="bc-num">Fehlgeschlagen</th><th class="bc-num">Gesamt</th></tr></thead>
+      <tbody>
+        {% for b in chart.bars | reverse if b.total %}
+        <tr><td>{{ b.day.strftime('%d.%m.%Y') }}</td><td class="bc-num">{{ (b.passed.value if b.passed else 0) | num }}</td><td class="bc-num">{{ (b.failed.value if b.failed else 0) | num }}</td><td class="bc-num">{{ b.total | num }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{%- endmacro %}
+
+{% macro share_row(label, count, total, extra="") -%}
+{% set share = (count / total * 100) if total else 0 %}
+<tr>
+  <td>{{ label }}</td>
+  <td class="bc-num">{{ count | num }}</td>
+  <td style="width:40%"><span class="app-share-track" aria-hidden="true"><span class="app-share" style="width: {{ '%.1f' % share }}%"></span></span></td>
+  <td class="bc-num">{{ share | percent }}</td>
+</tr>
+{%- endmacro %}

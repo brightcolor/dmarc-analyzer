@@ -1,27 +1,28 @@
 {% extends "base.html" %}
+
+{% block lede %}<p>Die Anwendung erzeugt zur neuen Domain eine eigene Empfangsadresse und zeigt dir danach den passenden DMARC-Eintrag.</p>{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-12 col-md-7 col-lg-5">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-globe me-2"></i>{{ page_title }}</h6></div>
-      <div class="card-body">
-        {% if error %}
-        <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}</div>
-        {% endif %}
-        <form method="post" action="/domains/new">
-          <div class="mb-3">
-            <label class="form-label">Domain Name</label>
-            <input type="text" name="name" class="form-control" placeholder="example.com"
-                   value="{{ domain.name if domain else '' }}" required autofocus>
-            <div class="form-text">Enter the root domain (e.g. <code>example.com</code>). Do not include <code>_dmarc.</code> prefix.</div>
-          </div>
-          <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>Add Domain</button>
-            <a href="/domains" class="btn btn-outline-secondary">Cancel</a>
-          </div>
-        </form>
+{% if error %}
+<div class="bc-alert bc-alert--bad" role="alert">
+  <p class="bc-alert__title">Die Domain wurde nicht angelegt</p>
+  <p>{{ error }}</p>
+</div>
+{% endif %}
+<section class="bc-panel">
+  <form method="post" action="/domains/new">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="d-name">Domain</label>
+        <input class="bc-input" id="d-name" name="name" value="{{ name }}" required autocomplete="off" spellcheck="false" placeholder="example.com"{% if error %} aria-invalid="true" aria-describedby="d-name-error"{% endif %} autofocus>
+        {% if error %}<p class="bc-field-error" id="d-name-error">{{ error }}</p>{% endif %}
+        <p class="bc-formgrid__hint">Ohne www und ohne Punkt am Ende, etwa example.com oder mail.example.com.</p>
       </div>
     </div>
-  </div>
-</div>
+    <div class="bc-panel__foot">
+      <a class="bc-button bc-button--secondary" href="/domains">Abbrechen</a>
+      <button class="bc-button" type="submit">Domain anlegen</button>
+    </div>
+  </form>
+</section>
 {% endblock %}

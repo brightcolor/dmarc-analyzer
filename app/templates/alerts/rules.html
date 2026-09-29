@@ -1,113 +1,79 @@
 {% extends "base.html" %}
-{% block content %}
-<div class="row g-3">
-  <!-- Rules list -->
-  <div class="col-12 col-lg-7">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-sliders me-2"></i>Alert Rules ({{ rules | length }})</h6></div>
-      <div class="card-body p-0">
-        {% if rules %}
-        <ul class="list-group list-group-flush">
-        {% for rule in rules %}
-        <li class="list-group-item">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <span class="fw-semibold">{{ rule.name }}</span>
-              <span class="badge bg-{{ rule.severity | severity_badge }} ms-2">{{ rule.severity }}</span>
-              {% if not rule.is_active %}<span class="badge bg-secondary ms-1">Inactive</span>{% endif %}
-              <div class="small text-muted mt-1">
-                Type: <code>{{ rule.alert_type }}</code>
-                · Window: {{ rule.time_window_minutes }}min
-                · Cooldown: {{ rule.cooldown_minutes }}min
-              </div>
-              {% if rule.last_triggered_at %}
-              <div class="small text-muted">Last triggered: {{ rule.last_triggered_at | datetime }}</div>
-              {% endif %}
-            </div>
-            <form method="post" action="/alerts/rules/{{ rule.id }}/toggle">
-              <button class="btn btn-sm {% if rule.is_active %}btn-outline-secondary{% else %}btn-outline-success{% endif %}">
-                {% if rule.is_active %}Disable{% else %}Enable{% endif %}
-              </button>
-            </form>
-          </div>
-        </li>
-        {% endfor %}
-        </ul>
-        {% else %}
-        <div class="text-center py-4 text-muted">No alert rules yet.</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
+{% import "partials/macros.html" as ui with context %}
 
-  <!-- New rule form -->
-  <div class="col-12 col-lg-5">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-plus-circle me-2"></i>New Alert Rule</h6></div>
-      <div class="card-body">
-        <form method="post" action="/alerts/rules/new">
-          <div class="mb-2">
-            <label class="form-label small">Name</label>
-            <input type="text" name="name" class="form-control form-control-sm" required placeholder="My alert rule">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small">Alert Type</label>
-            <select name="alert_type" class="form-select form-select-sm" required>
-              {% for k, v in alert_types.items() %}
-              <option value="{{ k }}">{{ v }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small">Domain (optional)</label>
-            <select name="domain_id" class="form-select form-select-sm">
-              <option value="">All domains</option>
-              {% for d in domains %}
-              <option value="{{ d.id }}">{{ d.name }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="row g-2 mb-2">
-            <div class="col-6">
-              <label class="form-label small">Threshold</label>
-              <input type="number" name="threshold" step="0.1" class="form-control form-control-sm" placeholder="10">
-            </div>
-            <div class="col-6">
-              <label class="form-label small">Severity</label>
-              <select name="severity" class="form-select form-select-sm">
-                <option value="info">Info</option>
-                <option value="warning" selected>Warning</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-          </div>
-          <div class="row g-2 mb-2">
-            <div class="col-6">
-              <label class="form-label small">Time Window (min)</label>
-              <input type="number" name="time_window_minutes" class="form-control form-control-sm" value="60" min="1">
-            </div>
-            <div class="col-6">
-              <label class="form-label small">Cooldown (min)</label>
-              <input type="number" name="cooldown_minutes" class="form-control form-control-sm" value="60" min="1">
-            </div>
-          </div>
-          {% if channels %}
-          <div class="mb-2">
-            <label class="form-label small">Notification Channels</label>
-            {% for ch in channels %}
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" name="channel_ids" value="{{ ch.id }}" id="ch_{{ ch.id }}">
-              <label class="form-check-label small" for="ch_{{ ch.id }}">{{ ch.name }} ({{ ch.channel_type }})</label>
-            </div>
-            {% endfor %}
-          </div>
-          {% endif %}
-          <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-plus-circle me-1"></i>Create Rule
-          </button>
-        </form>
+{% block lede %}<p>Regeln legen fest, wann die Anwendung Alarm schlägt und über welche Kanäle sie Bescheid gibt.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/alerts/channels">Kanäle</a>{% endblock %}
+
+{% block content %}
+{% include "alerts/_pending_notice.html" %}
+{% if error %}
+<div class="bc-alert bc-alert--bad" role="alert"><p class="bc-alert__title">Die Regel wurde nicht angelegt</p><p>{{ error }}</p></div>
+{% endif %}
+
+<section class="bc-panel" aria-labelledby="regeln-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="regeln-titel">Regeln</h2><span class="app-quiet app-small">{{ rules | length }} Regeln</span></div>
+  {% if rules %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Name</th><th>Art</th><th>Schwere</th><th>Zeitraum</th><th>Pause danach</th><th>Zuletzt ausgelöst</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <tbody>
+        {% for rule in rules %}
+        <tr>
+          <td><strong>{{ rule.name }}</strong>{% if not rule.is_active %} {{ ui.state('aus') }}{% endif %}</td>
+          <td class="app-small">{{ alert_types.get(rule.alert_type, rule.alert_type) }}</td>
+          <td>{{ ui.state(rule.severity | severity_text, rule.severity | severity_state) }}</td>
+          <td class="app-nowrap">{{ rule.time_window_minutes | num }} min</td>
+          <td class="app-nowrap">{{ rule.cooldown_minutes | num }} min</td>
+          <td class="app-nowrap">{{ rule.last_triggered_at | datetime }}</td>
+          <td><div class="bc-row-actions"><form method="post" action="/alerts/rules/{{ rule.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if rule.is_active else 'Einschalten' }}</button></form></div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty("Noch keine Regeln", "Lege unten die erste Regel an, etwa für neue unbekannte Versandquellen.") }}
+  {% endif %}
+</section>
+
+<section class="bc-panel" aria-labelledby="neu-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="neu-titel">Neue Regel</h2></div>
+  <form method="post" action="/alerts/rules/new">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="r-name">Name</label>
+        <input class="bc-input" id="r-name" name="name" placeholder="z. B. Unbekannte Absender bei example.com">
+        <label for="r-type">Art</label>
+        <select class="bc-select" id="r-type" name="alert_type">
+          {% for key, label in alert_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+        <label for="r-domain">Domain</label>
+        <select class="bc-select" id="r-domain" name="domain_id">
+          <option value="">alle Domains</option>
+          {% for d in domains %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+        </select>
+        <label for="r-threshold">Schwelle</label>
+        <input class="bc-input" id="r-threshold" name="threshold" type="number" step="any" min="0" placeholder="z. B. 10 für 10 %">
+        <p class="bc-formgrid__hint">Nur für Arten mit Quote oder Menge; leer lassen für die Vorgabe.</p>
+        <label for="r-window">Zeitraum</label>
+        <div class="bc-addon"><input class="bc-input" id="r-window" name="time_window_minutes" type="number" min="5" value="60"><span>min</span></div>
+        <label for="r-cooldown">Pause nach einem Alarm</label>
+        <div class="bc-addon"><input class="bc-input" id="r-cooldown" name="cooldown_minutes" type="number" min="0" value="60"><span>min</span></div>
+        <label for="r-severity">Schwere</label>
+        <select class="bc-select" id="r-severity" name="severity">
+          {% for s in severities %}<option value="{{ s }}"{% if s == 'warning' %} selected{% endif %}>{{ s | severity_text }}</option>{% endfor %}
+        </select>
+        <span class="bc-formgrid__label">Kanäle</span>
+        <div class="app-stack">
+          {% for ch in channels %}
+          <label class="app-inline"><input type="checkbox" name="channel_ids" value="{{ ch.id }}"> {{ ch.name }} <span class="app-quiet app-small">({{ ch.channel_type }})</span></label>
+          {% else %}
+          <p class="app-small app-quiet" style="margin:0">Noch kein Kanal angelegt. <a href="/alerts/channels">Kanal anlegen</a></p>
+          {% endfor %}
+        </div>
       </div>
     </div>
-  </div>
-</div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Regel anlegen</button></div>
+  </form>
+</section>
 {% endblock %}

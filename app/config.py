@@ -1,9 +1,14 @@
+import logging
 import secrets
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_SAMPLE_SECRET_KEYS = {"change_me_to_a_64_char_random_hex_string", "bitte-einen-eigenen-wert-setzen"}
+_warnings: list[str] = []
 
 
 class Settings(BaseSettings):
@@ -11,13 +16,15 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        # Compose passes variables of its own (ports, image tag) through the same .env
+        extra="ignore",
     )
 
     # App
     APP_NAME: str = "DMARC Analyzer"
     APP_URL: str = "http://localhost:8000"
     DEBUG: bool = False
-    SECRET_KEY: str = secrets.token_hex(32)
+    SECRET_KEY: str = Field("", validate_default=True)
     TRUSTED_PROXIES: str = ""
 
     # Database
@@ -60,9 +67,15 @@ class Settings(BaseSettings):
     ALERT_EVAL_INTERVAL_SECONDS: int = 300  # 5 minutes
     NOTIFICATION_RETRY_MAX: int = 3
 
-    # Initial super admin (created on first run if not exists)
-    INITIAL_ADMIN_EMAIL: str | None = None
-    INITIAL_ADMIN_PASSWORD: str | None = None
+    # First-run setup and accounts
+    SETUP_CODE_LENGTH: int = Field(
+        12, ge=8, le=32, description="Anzahl Zeichen des Einrichtungscodes für das erste Administratorkonto.",
+    )
+    SETUP_OPEN_PATHS: str = Field(
+        "/static,/api,/health,/ready,/metrics,/webhook,/favicon.ico",
+        description="Pfade, die während der Ersteinrichtung erreichbar bleiben, durch Komma getrennt.",
+    )
+    PASSWORD_MIN_LENGTH: int = Field(10, ge=8, le=64, description="Mindestlänge für Passwörter.")
 
     # API
     API_RATE_LIMIT: str = "100/minute"
@@ -77,6 +90,28 @@ class Settings(BaseSettings):
     FEATURE_DOMAIN_VERIFICATION: bool = True
     FEATURE_SOURCE_ENRICHMENT: bool = False
     FEATURE_SAAS_MODE: bool = False
+
+    # Display
+    DISPLAY_TIMEZONE: str = Field(
+        "Europe/Berlin", description="Zeitzone für alle Zeitangaben in der Oberfläche, z. B. Europe/Berlin oder UTC.",
+    )
+    UI_PASS_RATE_GOOD: float = Field(
+        95.0, ge=0.0, le=100.0, description="Bestehensquote in Prozent, ab der die Oberfläche sie grün zeigt.",
+    )
+    UI_PASS_RATE_WARN: float = Field(
+        75.0, ge=0.0, le=100.0,
+        description="Bestehensquote in Prozent, ab der die Oberfläche sie gelb zeigt; darunter rot.",
+    )
+    UI_CHART_DAYS: int = Field(
+        30, ge=7, le=365, description="Anzahl Tage im Verlaufsdiagramm auf Übersicht und Domainseite.",
+    )
+    UI_PAGE_SIZE: int = Field(25, ge=5, le=500, description="Einträge je Seite in Listen.")
+    UI_RECENT_LIMIT: int = Field(
+        10, ge=3, le=100, description="Einträge in Kurzlisten wie „Letzte Berichte“ und „Letzte Importe“.",
+    )
+    UI_RECORDS_PAGE_SIZE: int = Field(
+        50, ge=5, le=1000, description="Datensätze je Seite in der Detailansicht eines Berichts.",
+    )
 
     # Archive limits for report attachments and uploads
     ARCHIVE_MAX_ATTACHMENT_BYTES: int = Field(
@@ -129,6 +164,34 @@ class Settings(BaseSettings):
         description="Anteil in Prozent der Nachrichten, die nur per SPF bestehen, ab dem DKIM empfohlen wird.",
     )
 
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def _usable_secret(cls, value: str) -> str:
+        # An empty or published sample key would let anyone sign session cookies
+        if len(value) < 32 or value in _SAMPLE_SECRET_KEYS:
+            _warnings.append(
+                "SECRET_KEY fehlt, ist zu kurz oder stammt aus der Vorlage. Die Anwendung nutzt einen zufälligen "
+                "Schlüssel; Anmeldungen gelten deshalb nur bis zum nächsten Neustart. Setze in der .env einen "
+                "eigenen Wert, etwa mit: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+            return secrets.token_hex(32)
+        return value
+
+    @field_validator("DISPLAY_TIMEZONE")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except Exception as exc:
+            raise ValueError(f"unbekannte Zeitzone {value!r}, erwartet wird etwa Europe/Berlin oder UTC") from exc
+        return value
+
+    @model_validator(mode="after")
+    def _rate_order(self):
+        if self.UI_PASS_RATE_WARN > self.UI_PASS_RATE_GOOD:
+            raise ValueError("UI_PASS_RATE_WARN darf nicht über UI_PASS_RATE_GOOD liegen")
+        return self
+
     @property
     def upload_dir_path(self) -> Path:
         p = Path(self.UPLOAD_DIR)
@@ -142,6 +205,10 @@ class Settings(BaseSettings):
         return p
 
     @property
+    def setup_open_paths(self) -> list[str]:
+        return [p.strip() for p in self.SETUP_OPEN_PATHS.split(",") if p.strip().startswith("/")]
+
+    @property
     def allowed_upload_extensions(self) -> set[str]:
         return {ext.strip() for ext in self.UPLOAD_ALLOWED_EXTENSIONS.split(",") if ext.strip()}
 
@@ -153,18 +220,24 @@ _VALIDATION_MESSAGES = {
     "float_parsing": "muss eine Zahl sein",
     "bool_parsing": "muss true oder false sein",
 }
+_VALIDATION_PREFIX = "Value error, "
 
 
 def _describe_error(error: dict) -> str:
     name = ".".join(str(part) for part in error.get("loc", ())) or "?"
     template = _VALIDATION_MESSAGES.get(error.get("type", ""))
-    reason = template.format(**error.get("ctx", {})) if template else error.get("msg", "ist ungültig")
+    if template:
+        reason = template.format(**error.get("ctx", {}))
+    else:
+        reason = error.get("msg", "ist ungültig").removeprefix(_VALIDATION_PREFIX)
+    if error.get("type") == "value_error" and not error.get("loc"):
+        return f"- {reason}"
     return f"- {name}: {reason} (gesetzt: {error.get('input')!r})"
 
 
 def load_settings() -> Settings:
     try:
-        return Settings()
+        loaded = Settings()
     except ValidationError as exc:
         details = "\n".join(_describe_error(err) for err in exc.errors())
         sys.exit(
@@ -172,6 +245,10 @@ def load_settings() -> Settings:
             f"{details}\n"
             "Bitte die Werte in der .env-Datei oder den Umgebungsvariablen korrigieren und neu starten."
         )
+    for message in _warnings:
+        logging.getLogger("app.config").warning(message)
+    _warnings.clear()
+    return loaded
 
 
 settings = load_settings()

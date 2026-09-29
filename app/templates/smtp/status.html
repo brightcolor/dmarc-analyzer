@@ -1,126 +1,65 @@
 {% extends "base.html" %}
-{% block content %}
-<!-- SMTP config -->
-<div class="row g-3 mb-3">
-  <div class="col-12 col-md-6">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h6 class="mb-0"><i class="bi bi-envelope-arrow-down me-2"></i>SMTP Inbound</h6>
-        <span class="badge {% if smtp_config.enabled %}bg-success{% else %}bg-secondary{% endif %}">
-          {% if smtp_config.enabled %}Running{% else %}Disabled{% endif %}
-        </span>
-      </div>
-      <div class="card-body">
-        <dl class="row small mb-0">
-          <dt class="col-5 text-muted">Bind / Port</dt>
-          <dd class="col-7 font-monospace">{{ smtp_config.bind }}:{{ smtp_config.port }}</dd>
-          <dt class="col-5 text-muted">Domain</dt>
-          <dd class="col-7 font-monospace">{{ smtp_config.domain }}</dd>
-          <dt class="col-5 text-muted">Max Message Size</dt>
-          <dd class="col-7">{{ smtp_config.max_size | filesizeformat }}</dd>
-          <dt class="col-5 text-muted">TLS</dt>
-          <dd class="col-7">
-            <span class="badge {% if smtp_config.tls %}bg-success{% else %}bg-secondary{% endif %}">
-              {% if smtp_config.tls %}Enabled{% else %}Disabled{% endif %}
-            </span>
-          </dd>
-          <dt class="col-5 text-muted">Store Raw</dt>
-          <dd class="col-7">
-            <span class="badge {% if smtp_config.store_raw %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-              {% if smtp_config.store_raw %}Yes{% else %}No{% endif %}
-            </span>
-          </dd>
-        </dl>
-      </div>
-    </div>
-  </div>
+{% import "partials/macros.html" as ui with context %}
 
-  <div class="col-12 col-md-6">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-terminal me-2"></i>MX / DNS Setup</h6></div>
-      <div class="card-body small">
-        <p class="text-muted">To receive DMARC reports, configure a DNS MX record for your inbound domain:</p>
-        <pre class="bg-body-secondary p-2 rounded"><code>{{ smtp_config.domain }}. IN MX 10 {{ smtp_config.domain }}.</code></pre>
-        <p class="text-muted mb-0">And an A/AAAA record pointing to this server's IP. Port {{ smtp_config.port }} must be reachable.</p>
-      </div>
+{% block lede %}<p>Die Anwendung nimmt Berichte über einen eigenen Mailempfang an. Er akzeptiert nur Mails an die Empfangsadressen dieser Organisation und leitet nichts weiter.</p>{% endblock %}
+
+{% block content %}
+{% if not smtp_config.enabled %}
+<div class="bc-alert bc-alert--warn">
+  <p class="bc-alert__title">Der Mailempfang ist ausgeschaltet</p>
+  <p>Berichte kommen dann nur über das Hochladen an. Der Betreiber schaltet den Empfang mit <code>SMTP_INBOUND_ENABLED=true</code> ein.</p>
+</div>
+{% endif %}
+
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="konfig-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="konfig-titel">Einstellungen</h2>{{ ui.state('läuft' if smtp_config.enabled else 'aus', 'bc-state--on' if smtp_config.enabled else '') }}</div>
+    <div class="bc-panel__body">
+      <dl class="app-dl">
+        <dt>Empfangsdomain</dt><dd class="app-mono">{{ smtp_config.domain }}</dd>
+        <dt>Port</dt><dd class="app-mono">{{ smtp_config.port }}</dd>
+        <dt>Größte Mail</dt><dd>{{ smtp_config.max_size | filesizeformat }}</dd>
+        <dt>Verschlüsselung</dt><dd>{{ 'STARTTLS aktiv' if smtp_config.tls else 'ohne STARTTLS' }}</dd>
+        <dt>Rohmails</dt><dd>{% if smtp_config.store_raw %}werden {{ smtp_config.raw_retention_days }} Tage aufbewahrt{% else %}werden nach dem Import verworfen{% endif %}</dd>
+      </dl>
     </div>
-  </div>
+  </section>
+
+  <section class="bc-panel" aria-labelledby="mx-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="mx-titel">DNS für den Empfang</h2></div>
+    <div class="bc-panel__body">
+      <p style="margin-top:0">Damit Empfänger ihre Berichte zustellen können, braucht die Empfangsdomain einen MX-Eintrag, der auf diesen Server zeigt:</p>
+      {{ ui.copy_code("mx-record", smtp_config.domain ~ ". MX 10 <Name dieses Servers>.", "MX-Eintrag") }}
+      <p class="app-small app-quiet" style="margin:0">Zeigt Port 25 nicht direkt auf die Anwendung, leitet ein Mailserver oder Portweiterleitung auf Port {{ smtp_config.port }} weiter.</p>
+    </div>
+  </section>
 </div>
 
-<!-- Inbound Addresses -->
-<div class="card shadow-sm mb-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="mb-0"><i class="bi bi-at me-2"></i>Inbound Addresses ({{ addresses | length }})</h6>
-    <div class="d-flex gap-2">
-      <a href="/smtp/messages" class="btn btn-sm btn-outline-secondary">Messages</a>
-      <a href="/smtp/rejections" class="btn btn-sm btn-outline-secondary">Rejections</a>
-    </div>
-  </div>
-  <div class="card-body p-0">
-    {% if addresses %}
-    <div class="table-responsive">
-      <table class="table table-sm table-hover mb-0">
-        <thead class="table-light">
-          <tr><th>Address</th><th>Purpose</th><th>Status</th><th>Last Used</th></tr>
-        </thead>
-        <tbody>
+<section class="bc-panel" aria-labelledby="adressen-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="adressen-titel">Empfangsadressen</h2><span class="app-quiet app-small">{{ addresses | length }} Adressen</span></div>
+  {% if addresses %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Adresse</th><th>Zweck</th><th>Status</th><th>Zuletzt genutzt</th></tr></thead>
+      <tbody>
         {% for addr in addresses %}
         <tr>
-          <td class="font-monospace small">{{ addr.address }}</td>
-          <td><span class="badge bg-secondary">{{ addr.purpose }}</span></td>
-          <td>
-            <span class="badge
-              {% if addr.status == 'active' %}bg-success
-              {% elif addr.status == 'disabled' %}bg-warning text-dark
-              {% else %}bg-danger{% endif %}">
-              {{ addr.status }}
-            </span>
-          </td>
-          <td class="small text-muted">{{ addr.last_used_at | datetime }}</td>
+          <td class="app-mono app-break">{{ addr.address }}</td>
+          <td>{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %}</td>
+          <td>{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
+          <td class="app-nowrap">{{ addr.last_used_at | datetime }}</td>
         </tr>
         {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="text-center py-4 text-muted">No inbound addresses yet. Add a domain to auto-create one.</div>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Recent messages -->
-{% if recent_messages %}
-<div class="card shadow-sm">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="mb-0"><i class="bi bi-inbox me-2"></i>Recent Messages</h6>
-    <a href="/smtp/messages" class="btn btn-sm btn-outline-secondary">All</a>
-  </div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-hover mb-0">
-      <thead class="table-light">
-        <tr><th>From IP</th><th>Recipient</th><th>Status</th><th>Size</th><th>Received</th></tr>
-      </thead>
-      <tbody>
-      {% for msg in recent_messages %}
-      <tr>
-        <td class="font-monospace small">{{ msg.remote_ip or '—' }}</td>
-        <td class="small">{{ msg.envelope_recipient | truncate(40) }}</td>
-        <td>
-          <span class="badge
-            {% if msg.import_status=='completed' %}bg-success
-            {% elif msg.import_status=='failed' %}bg-danger
-            {% elif msg.import_status=='quarantine' %}bg-warning text-dark
-            {% else %}bg-secondary{% endif %}">
-            {{ msg.import_status }}
-          </span>
-        </td>
-        <td class="small">{{ msg.size_bytes | filesizeformat }}</td>
-        <td class="small text-muted">{{ msg.received_at | datetime }}</td>
-      </tr>
-      {% endfor %}
       </tbody>
     </table>
   </div>
-</div>
-{% endif %}
+  {% else %}
+    {{ ui.empty("Noch keine Empfangsadresse", "Beim Anlegen einer Domain erzeugt die Anwendung eine Adresse.", "/domains/new", "Domain anlegen") }}
+  {% endif %}
+</section>
+
+<section class="bc-panel" aria-labelledby="mails-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="mails-titel">Letzte Mails</h2><a class="bc-button bc-button--secondary" href="/smtp/messages">Alle Mails</a></div>
+  {% include "smtp/_message_table.html" %}
+</section>
 {% endblock %}

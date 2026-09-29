@@ -23,19 +23,19 @@ from app.security import utcnow
 logger = logging.getLogger(__name__)
 
 ALERT_TYPES = {
-    "new_unknown_source": "New unknown sending source detected",
-    "high_volume_source": "New high-volume sending source",
-    "new_source_dmarc_fail": "New source with DMARC failures",
-    "dmarc_fail_rate": "DMARC fail rate above threshold",
-    "spf_fail_rate": "SPF fail rate spike",
-    "dkim_fail_rate": "DKIM fail rate spike",
-    "volume_spike": "Sudden volume increase",
-    "volume_drop": "Sudden volume decrease",
-    "reports_missing": "No reports received",
-    "import_failed": "Import failure",
-    "policy_tighten_ready": "Domain ready for stricter policy",
-    "smtp_invalid_recipient": "Many invalid recipient attempts",
-    "smtp_rate_limit": "SMTP rate limit triggered",
+    "new_unknown_source": "Neue unbekannte Versandquelle",
+    "high_volume_source": "Neue Quelle mit vielen Nachrichten",
+    "new_source_dmarc_fail": "Neue Quelle mit DMARC-Fehlern",
+    "dmarc_fail_rate": "DMARC-Fehlerquote über der Schwelle",
+    "spf_fail_rate": "SPF-Fehlerquote steigt",
+    "dkim_fail_rate": "DKIM-Fehlerquote steigt",
+    "volume_spike": "Versandmenge steigt plötzlich",
+    "volume_drop": "Versandmenge fällt plötzlich",
+    "reports_missing": "Berichte bleiben aus",
+    "import_failed": "Import fehlgeschlagen",
+    "policy_tighten_ready": "Domain bereit für eine strengere Policy",
+    "smtp_invalid_recipient": "Viele Versuche an unbekannte Adressen",
+    "smtp_rate_limit": "Grenze für eingehende Mails erreicht",
 }
 
 

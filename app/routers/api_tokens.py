@@ -1,14 +1,13 @@
-
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_user
+from app.dependencies import get_client_ip, get_current_org, get_current_org_admin, get_current_user
 from app.models import ApiToken, Organization, User
 from app.security import utcnow
 from app.services.audit import log_action
-from app.services.auth import create_api_token
+from app.services.auth import create_api_token, get_user_role_in_org
 from app.templates_config import templates
 
 router = APIRouter(prefix="/api-tokens", tags=["api_tokens"])
@@ -28,25 +27,28 @@ def token_list(
         .all()
     )
     new_token = request.session.pop("new_api_token", None)
-    return templates.TemplateResponse("api_tokens/index.html", {
-        "request": request, "user": user, "org": org,
-        "tokens": tokens, "new_token": new_token, "page_title": "API Tokens",
+    can_manage = user.is_superadmin or get_user_role_in_org(db, user.id, org.id) == "org_admin"
+    return templates.TemplateResponse(request, "api_tokens/index.html", {
+        "user": user, "org": org, "can_manage": can_manage,
+        "tokens": tokens, "new_token": new_token, "page_title": "API-Tokens",
     })
 
 
 @router.post("/new")
 def create_token(
     request: Request,
-    name: str = Form(...),
+    name: str = Form(""),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_org_admin),
     org: Organization = Depends(get_current_org),
 ):
     count = db.query(ApiToken).filter_by(organization_id=org.id, is_active=True).count()
     if count >= org.max_api_tokens:
-        raise HTTPException(status_code=400, detail="API token limit reached")
+        raise HTTPException(status_code=400, detail=f"Diese Organisation darf höchstens {org.max_api_tokens} aktive "
+                            "API-Tokens haben. Widerrufe einen Token, den du nicht mehr brauchst.")
+    name = name.strip() or "API-Token"
 
-    raw, token = create_api_token(db, org.id, user.id, name.strip())
+    raw, token = create_api_token(db, org.id, user.id, name[:255])
 
     log_action(
         db, "api_token.create", org_id=org.id, user_id=user.id,
@@ -66,7 +68,7 @@ def revoke_token(
     token_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_org_admin),
     org: Organization = Depends(get_current_org),
 ):
     token = db.query(ApiToken).filter_by(id=token_id, organization_id=org.id).first()

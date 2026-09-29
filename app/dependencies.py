@@ -53,6 +53,22 @@ def get_current_org(request: Request, db: Session = Depends(get_db)) -> Organiza
     return org
 
 
+def get_current_org_admin(
+    user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_org),
+    db: Session = Depends(get_db),
+) -> User:
+    """Operator or administrator of the current organisation; everyone else gets 403."""
+    from app.services.auth import get_user_role_in_org
+    if user.is_superadmin or get_user_role_in_org(db, user.id, org.id) == "org_admin":
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Das dürfen nur Administratoren dieser Organisation. Bitte einen Administrator, es für dich zu "
+               "erledigen oder dir die Rolle zu geben.",
+    )
+
+
 def get_current_user_and_org(
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),

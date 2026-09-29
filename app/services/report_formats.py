@@ -69,8 +69,8 @@ REASON_TEXT = {
 }
 
 DISPOSITION_TEXT = {
-    "none": "zugestellt",
-    "pass": "zugestellt, DMARC bestanden",
+    "none": "keine Maßnahme",
+    "pass": "bestanden",
     "quarantine": "Spam-Ordner",
     "reject": "abgewiesen",
 }

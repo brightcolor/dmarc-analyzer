@@ -1,63 +1,55 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Kanäle, über die Alarme dich erreichen. Die Regeln wählen aus, welcher Kanal Bescheid bekommt.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/alerts/rules">Regeln</a>{% endblock %}
+
 {% block content %}
-<div class="row g-3">
-  <div class="col-12 col-lg-7">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-send me-2"></i>Notification Channels</h6></div>
-      <div class="card-body p-0">
-        {% if channels %}
-        <ul class="list-group list-group-flush">
+{% include "alerts/_pending_notice.html" %}
+{% if error %}
+<div class="bc-alert bc-alert--bad" role="alert"><p class="bc-alert__title">Der Kanal wurde nicht angelegt</p><p>{{ error }}</p></div>
+{% endif %}
+
+<section class="bc-panel" aria-labelledby="kanaele-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="kanaele-titel">Kanäle</h2></div>
+  {% if channels %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Name</th><th>Art</th><th>Status</th><th>Angelegt</th></tr></thead>
+      <tbody>
         {% for ch in channels %}
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-          <div>
-            <span class="fw-semibold">{{ ch.name }}</span>
-            <span class="badge bg-secondary ms-2">{{ ch.channel_type }}</span>
-            {% if not ch.is_active %}<span class="badge bg-warning text-dark ms-1">Inactive</span>{% endif %}
-            <div class="small text-muted">Created: {{ ch.created_at | datetime }}</div>
-          </div>
-        </li>
+        <tr>
+          <td>{{ ch.name }}</td>
+          <td>{{ channel_types.get(ch.channel_type, ch.channel_type) }}</td>
+          <td>{{ ui.state('aktiv' if ch.is_active else 'aus', 'bc-state--on' if ch.is_active else '') }}</td>
+          <td class="app-nowrap">{{ ch.created_at | datetime }}</td>
+        </tr>
         {% endfor %}
-        </ul>
-        {% else %}
-        <div class="text-center py-4 text-muted">No notification channels configured yet.</div>
-        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty("Noch keine Kanäle", "Lege unten einen Webhook oder einen ntfy-Kanal an.") }}
+  {% endif %}
+</section>
+
+<section class="bc-panel" aria-labelledby="neu-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="neu-titel">Neuer Kanal</h2></div>
+  <form method="post" action="/alerts/channels/new">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="k-name">Name</label>
+        <input class="bc-input" id="k-name" name="name" required placeholder="z. B. ntfy Technik">
+        <label for="k-type">Art</label>
+        <select class="bc-select" id="k-type" name="channel_type">
+          {% for key, label in channel_types.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+        <label for="k-config">Einstellungen</label>
+        <textarea class="bc-textarea app-mono" id="k-config" name="config_json" rows="4" spellcheck="false" placeholder='{"url": "https://ntfy.example/alarme"}'></textarea>
+        <p class="bc-formgrid__hint">JSON mit mindestens <code>url</code>. ntfy: <code>{"url": "https://ntfy.example", "topic": "alarme", "token": "…"}</code>. Webhook und Slack: <code>{"url": "https://…"}</code>.</p>
       </div>
     </div>
-  </div>
-  <div class="col-12 col-lg-5">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Add Channel</h6></div>
-      <div class="card-body">
-        <form method="post" action="/alerts/channels/new">
-          <div class="mb-2">
-            <label class="form-label small">Name</label>
-            <input type="text" name="name" class="form-control form-control-sm" required placeholder="My webhook">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small">Type</label>
-            <select name="channel_type" class="form-select form-select-sm">
-              <option value="webhook">Webhook</option>
-              <option value="ntfy">ntfy</option>
-              <option value="slack">Slack-compatible Webhook</option>
-              <option value="email">Email (coming soon)</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label small">Config (JSON)</label>
-            <textarea name="config_json" class="form-control form-control-sm font-monospace" rows="4"
-              placeholder='{"url": "https://ntfy.sh/my-topic"}'></textarea>
-            <div class="form-text">
-              Webhook: <code>{"url":"..."}</code><br>
-              ntfy: <code>{"url":"https://ntfy.sh","topic":"mytopic","token":"..."}</code><br>
-              Slack: <code>{"url":"https://hooks.slack.com/..."}</code>
-            </div>
-          </div>
-          <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-plus-circle me-1"></i>Add Channel
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Kanal anlegen</button></div>
+  </form>
+</section>
 {% endblock %}

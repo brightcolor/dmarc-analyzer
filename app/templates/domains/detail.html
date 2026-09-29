@@ -1,216 +1,149 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>DMARC-Stand, Empfangsadressen und Empfehlungen für diese Domain.</p>{% endblock %}
+{% block actions %}
+<a class="bc-button bc-button--secondary" href="/reports?domain_id={{ domain.id }}">Berichte ansehen</a>
+<form method="post" action="/domains/{{ domain.id }}/toggle"{% if domain.is_active %} data-confirm="Domain {{ domain.name }} deaktivieren? Die Anwendung nimmt dann keine Berichte mehr für sie an."{% endif %}>
+  <button class="bc-button bc-button--secondary" type="submit">{{ 'Deaktivieren' if domain.is_active else 'Aktivieren' }}</button>
+</form>
+{% endblock %}
+
 {% block content %}
+{% for rec in recommendations %}
+<div class="bc-alert{% if rec.severity == 'critical' %} bc-alert--bad{% elif rec.severity == 'warning' %} bc-alert--warn{% endif %}"{% if rec.severity == 'critical' %} role="alert"{% endif %}>
+  <p class="bc-alert__title">{{ rec.title }}</p>
+  <p>{{ rec.description }}</p>
+  <p class="app-small app-quiet">Grundlage: {{ rec.data_basis }}</p>
+</div>
+{% endfor %}
 
-<div class="row g-3 mb-3">
-  <!-- Policy Card -->
-  <div class="col-12 col-md-4">
-    <div class="card shadow-sm h-100">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-shield me-2"></i>DMARC Policy</h6></div>
-      <div class="card-body">
-        <dl class="row mb-0">
-          <dt class="col-5 text-muted small">Policy (p=)</dt>
-          <dd class="col-7">
-            <span class="badge
-              {% if domain.dmarc_policy == 'reject' %}bg-success
-              {% elif domain.dmarc_policy == 'quarantine' %}bg-warning text-dark
-              {% else %}bg-secondary{% endif %}">
-              {{ domain.dmarc_policy or '—' }}
-            </span>
-          </dd>
-          <dt class="col-5 text-muted small">Subdomain (sp=)</dt>
-          <dd class="col-7"><span class="badge bg-secondary">{{ domain.dmarc_policy_sp or '—' }}</span></dd>
-          <dt class="col-5 text-muted small">Coverage (pct=)</dt>
-          <dd class="col-7">
-            {% if domain.dmarc_policy_pct is not none %}
-              <span class="badge {% if domain.dmarc_policy_pct < 100 %}bg-warning text-dark{% else %}bg-success{% endif %}">
-                {{ domain.dmarc_policy_pct }}%
-              </span>
-            {% else %}—{% endif %}
-          </dd>
-          <dt class="col-5 text-muted small">Status</dt>
-          <dd class="col-7">
-            <span class="badge {% if domain.is_active %}bg-success{% else %}bg-secondary{% endif %}">
-              {% if domain.is_active %}Active{% else %}Inactive{% endif %}
-            </span>
-          </dd>
-        </dl>
-        <form method="post" action="/domains/{{ domain.id }}/toggle" class="mt-3">
-          <button class="btn btn-sm {% if domain.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %} w-100">
-            {% if domain.is_active %}Deactivate Domain{% else %}Activate Domain{% endif %}
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Inbound Address Card -->
-  <div class="col-12 col-md-8">
-    <div class="card shadow-sm h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h6 class="mb-0"><i class="bi bi-envelope-arrow-down me-2"></i>Report Addresses</h6>
-        <form method="post" action="/domains/{{ domain.id }}/add-address">
-          <button class="btn btn-sm btn-outline-primary"><i class="bi bi-plus me-1"></i>Add Address</button>
-        </form>
-      </div>
-      <div class="card-body">
-        {% if addresses %}
-        {% for addr in addresses %}
-        <div class="border rounded p-3 mb-2 {% if addr.status != 'active' %}opacity-50{% endif %}">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <code class="user-select-all">{{ addr.address }}</code>
-              <span class="badge ms-2
-                {% if addr.status == 'active' %}bg-success
-                {% elif addr.status == 'disabled' %}bg-warning text-dark
-                {% else %}bg-danger{% endif %}">{{ addr.status }}</span>
-              <span class="badge bg-secondary ms-1">{{ addr.purpose }}</span>
-            </div>
-          </div>
-          {% if addr.last_used_at %}
-          <small class="text-muted">Last used: {{ addr.last_used_at | datetime }}</small>
-          {% endif %}
-        </div>
-        {% endfor %}
-        {% else %}
-        <p class="text-muted small">No addresses yet.</p>
-        {% endif %}
-      </div>
-    </div>
-  </div>
+<div class="bc-kpis">
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ ((chart.total_pass + chart.total_fail) if chart else 0) | num }}</p><p class="bc-kpi__label">Nachrichten in {{ chart_days }} Tagen</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{% if chart %}{{ (chart.total_pass / (chart.total_pass + chart.total_fail) * 100) | percent }}{% else %}—{% endif %}</p><p class="bc-kpi__label">bestehen DMARC</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ report_count | num }}</p><p class="bc-kpi__label">Berichte insgesamt</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ reporters | map(attribute='reporting_org') | unique | list | length }}</p><p class="bc-kpi__label">berichtende Empfänger</p></div>
 </div>
 
-<!-- DMARC Record Suggestion -->
-{% if suggested_record %}
-<div class="card border-info shadow-sm mb-3">
-  <div class="card-header bg-info text-white">
-    <h6 class="mb-0"><i class="bi bi-code-slash me-2"></i>Suggested DMARC DNS Record</h6>
-  </div>
-  <div class="card-body">
-    <p class="text-muted small mb-2">Add this TXT record to your DNS:</p>
-    <div class="input-group">
-      <span class="input-group-text font-monospace text-muted small">_dmarc.{{ domain.name }}</span>
-      <input type="text" class="form-control font-monospace small" value="{{ suggested_record }}" readonly id="dmarcRecord">
-      <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ suggested_record }}')">
-        <i class="bi bi-clipboard"></i>
-      </button>
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="stand-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="stand-titel">DMARC-Stand</h2>{{ ui.state('aktiv' if domain.is_active else 'inaktiv', 'bc-state--on' if domain.is_active else '') }}</div>
+    <div class="bc-panel__body">
+      {% if domain.dmarc_policy %}
+      <dl class="app-dl">
+        <dt>Policy (p)</dt><dd><code>{{ domain.dmarc_policy }}</code></dd>
+        <dt>Subdomains (sp)</dt><dd>{% if domain.dmarc_policy_sp %}<code>{{ domain.dmarc_policy_sp }}</code>{% else %}<span class="app-quiet">nicht gesetzt, es gilt p</span>{% endif %}</dd>
+        <dt>Nicht existierende Subdomains (np)</dt><dd>{% if domain.dmarc_policy_np %}<code>{{ domain.dmarc_policy_np }}</code>{% elif domain.dmarc_policy_testing is not none %}<span class="app-quiet">nicht gesetzt</span>{% else %}<span class="app-quiet">erst aus Berichten nach RFC 9990 bekannt</span>{% endif %}</dd>
+        <dt>Testmodus (t)</dt><dd>{% if domain.dmarc_policy_testing == 'y' %}<code>t=y</code> Empfänger nach RFC 9989 wenden die Policy nicht an{% elif domain.dmarc_policy_testing == 'n' %}aus{% else %}<span class="app-quiet">erst aus Berichten nach RFC 9990 bekannt</span>{% endif %}</dd>
+        <dt>Anteil (pct)</dt><dd>{% if domain.dmarc_policy_pct is not none %}<code>{{ domain.dmarc_policy_pct }}</code> %{% else %}<span class="app-quiet">erst aus Berichten nach RFC 7489 bekannt</span>{% endif %}</dd>
+        <dt>Letzter Bericht</dt><dd>{{ domain.last_report_at | datetime }}{% if domain.last_report_format %} · {{ ui.format_badge(domain.last_report_format) }}{% endif %}</dd>
+      </dl>
+      <p class="app-small app-quiet" style="margin:12px 0 0">Die Werte stammen aus den Berichten der Empfänger. Jedes Format meldet nur seine eigenen Angaben. <a href="/hilfe/dmarc-formate">Mehr zu den Formaten</a></p>
+      {% else %}
+        {{ ui.empty("Noch kein Bericht", "Sobald der erste Bericht ankommt, steht hier die veröffentlichte Policy.") }}
+      {% endif %}
     </div>
+  </section>
 
-    {% if ext_verify_record %}
-    <div class="alert alert-warning mt-3 mb-0">
-      <i class="bi bi-exclamation-triangle-fill me-2"></i>
-      <strong>External Report Destination Verification required.</strong><br>
-      Since the rua address is on a different domain, add this TXT record to verify permission:
-      <div class="mt-2">
-        <code>{{ ext_verify_record }}</code> → <code>v=DMARC1;</code>
-      </div>
-      <small class="text-muted d-block mt-1">
-        Without this record, many senders will not send reports to an external address.
-      </small>
+  <section class="bc-panel" aria-labelledby="adressen-titel">
+    <div class="bc-panel__head">
+      <h2 class="bc-panel__title" id="adressen-titel">Empfangsadressen</h2>
+      <form method="post" action="/domains/{{ domain.id }}/add-address"><button class="bc-button bc-button--secondary" type="submit">Neue Adresse</button></form>
     </div>
-    {% endif %}
-  </div>
-</div>
-{% endif %}
-
-<!-- Pass/Fail Chart -->
-<div class="card shadow-sm mb-3">
-  <div class="card-header"><h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>DMARC Pass / Fail (30 days)</h6></div>
-  <div class="card-body">
-    {% if chart_data %}
-    <canvas id="domainChart" height="60"></canvas>
-    {% else %}
-    <div class="text-center text-muted py-4">No report data yet for this domain.</div>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Recommendations -->
-{% if recommendations %}
-<div class="card shadow-sm mb-3">
-  <div class="card-header"><h6 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Recommendations</h6></div>
-  <div class="card-body p-0">
-    <ul class="list-group list-group-flush">
-    {% for rec in recommendations %}
-    <li class="list-group-item">
-      <div class="d-flex align-items-start gap-3">
-        <span class="badge bg-{{ rec.severity | severity_badge }} mt-1">{{ rec.severity }}</span>
-        <div>
-          <strong class="d-block">{{ rec.title }}</strong>
-          <p class="text-muted small mb-1">{{ rec.description }}</p>
-          <small class="text-muted"><i class="bi bi-info-circle me-1"></i>{{ rec.data_basis }}</small>
-        </div>
-      </div>
-    </li>
-    {% endfor %}
-    </ul>
-  </div>
-</div>
-{% endif %}
-
-<!-- Recent Reports -->
-<div class="card shadow-sm">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>Recent Reports</h6>
-    <a href="/reports?domain_id={{ domain.id }}" class="btn btn-sm btn-outline-secondary">All</a>
-  </div>
-  <div class="card-body p-0">
-    {% if recent_reports %}
-    <div class="table-responsive">
-      <table class="table table-sm table-hover mb-0">
-        <thead class="table-light">
-          <tr><th>Report ID</th><th>Period</th><th>Messages</th><th>Pass Rate</th><th>Org</th><th></th></tr>
-        </thead>
+    {% if addresses %}
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Adresse</th><th>Status</th><th>Zuletzt genutzt</th></tr></thead>
         <tbody>
-        {% for rpt in recent_reports %}
-        <tr>
-          <td class="font-monospace small">{{ rpt.report_id | truncate(25) }}</td>
-          <td class="small text-muted">
-            {% if rpt.period_begin %}{{ rpt.period_begin | date }}{% else %}—{% endif %}
-          </td>
-          <td>{{ rpt.total_messages }}</td>
-          <td>
-            {% if rpt.pass_rate is not none %}
-            <span class="badge bg-{{ rpt.pass_rate | pct_color }}">{{ rpt.pass_rate }}%</span>
-            {% else %}—{% endif %}
-          </td>
-          <td class="small text-muted">{{ rpt.reporting_org | default('—') | truncate(25) }}</td>
-          <td><a href="/reports/{{ rpt.id }}" class="btn btn-xs btn-sm btn-outline-secondary">View</a></td>
-        </tr>
-        {% endfor %}
+          {% for addr in addresses %}
+          <tr>
+            <td class="app-mono app-break">{{ addr.address }}</td>
+            <td>{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
+            <td class="app-nowrap">{{ addr.last_used_at | datetime }}</td>
+          </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
     {% else %}
-    <div class="text-center text-muted py-4">No reports imported yet for this domain.</div>
+      {{ ui.empty("Noch keine Adresse", "Lege eine Adresse an und trage sie als rua im DMARC-Eintrag ein.") }}
     {% endif %}
-  </div>
+  </section>
 </div>
 
-{% endblock %}
-
-{% block extra_js %}
-{% if chart_data %}
-<script>
-(function() {
-  const data = {{ chart_data | tojson }};
-  const ctx = document.getElementById('domainChart');
-  if (!ctx) return;
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: data.map(d => d.date),
-      datasets: [
-        { label: 'Pass', data: data.map(d => d.pass), backgroundColor: 'rgba(25,135,84,0.7)', stack: 's' },
-        { label: 'Fail', data: data.map(d => d.fail), backgroundColor: 'rgba(220,53,69,0.7)', stack: 's' }
-      ]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { position: 'top' } },
-      scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
-    }
-  });
-})();
-</script>
+{% if suggested_record %}
+<section class="bc-panel" aria-labelledby="dns-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="dns-titel">DNS-Eintrag</h2></div>
+  <div class="bc-panel__body">
+    <p style="margin-top:0">Trage diesen TXT-Eintrag in die DNS-Zone von {{ domain.name }} ein. {% if domain.dmarc_policy %}Er übernimmt die Policy aus den letzten Berichten{% else %}Er startet mit <code>p=none</code>, damit du erst beobachtest{% endif %} und leitet die Berichte an diese Anwendung.</p>
+    {{ ui.copy_code("dns-name", "_dmarc." ~ domain.name, "Name") }}
+    {{ ui.copy_code("dns-value", suggested_record, "Wert") }}
+    <p class="app-small app-quiet" style="margin:0">Empfänger nach RFC 7489 übergehen <code>t</code> und <code>np</code>, Empfänger nach RFC 9989 übergehen <code>pct</code>. So passt derselbe Eintrag für beide.</p>
+  </div>
+</section>
 {% endif %}
+
+{% if ext_verify_record %}
+<section class="bc-panel" aria-labelledby="zustimmung-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="zustimmung-titel">Zustimmung der Empfangsdomain</h2></div>
+  <div class="bc-panel__body">
+    <p style="margin-top:0">Die Berichtsadresse liegt unter {{ rua_domain }}, also auf einer anderen Domain als {{ domain.name }}. Empfänger schicken Berichte dorthin erst, wenn {{ rua_domain }} zustimmt. Diesen Eintrag setzt, wer die DNS-Zone von {{ rua_domain }} verwaltet:</p>
+    {{ ui.copy_code("verify-name", ext_verify_record, "Name") }}
+    {{ ui.copy_code("verify-value", "v=DMARC1", "Wert") }}
+    <p class="app-small app-quiet" style="margin:0">Ein Platzhaltereintrag <code>*._report._dmarc.{{ rua_domain }}</code> mit demselben Wert stimmt für alle Domains auf einmal zu.</p>
+  </div>
+</section>
+{% endif %}
+
+<section class="bc-panel" aria-labelledby="verlauf-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="verlauf-titel">Verlauf</h2><span class="app-quiet app-small">Tage in UTC, nach Berichtszeitraum</span></div>
+  <div class="bc-panel__body">
+    {% if chart %}
+      {{ ui.day_chart(chart, "verlauf", "DMARC-Ergebnis für " ~ domain.name ~ " je Tag der letzten " ~ chart_days ~ " Tage") }}
+    {% else %}
+      {{ ui.empty("Noch keine Daten", "Sobald Berichte für diese Domain ankommen, zeigt dieser Verlauf das Ergebnis je Tag.") }}
+    {% endif %}
+  </div>
+</section>
+
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="absender-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="absender-titel">Berichtende Empfänger</h2><a class="bc-button bc-button--secondary" href="/hilfe/dmarc-formate">Formate erklärt</a></div>
+    {% if reporters %}
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Absender</th><th>Format</th><th class="bc-num">Berichte</th></tr></thead>
+        <tbody>
+          {% for r in reporters %}<tr><td class="app-break">{{ r.reporting_org }}</td><td>{{ ui.format_badge(r.report_format) }}</td><td class="bc-num">{{ r.reports | num }}</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ ui.empty("Noch keine Berichte") }}
+    {% endif %}
+  </section>
+
+  <section class="bc-panel" aria-labelledby="letzte-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="letzte-titel">Letzte Berichte</h2></div>
+    {% if recent_reports %}
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Zeitraum bis</th><th>Absender</th><th>Format</th><th>Bestanden</th></tr></thead>
+        <tbody>
+          {% for r in recent_reports %}
+          <tr>
+            <td class="app-nowrap"><a href="/reports/{{ r.id }}">{{ r.period_end | date }}</a></td>
+            <td class="app-break">{{ r.reporting_org or '—' }}</td>
+            <td>{{ ui.format_badge(r.report_format) }}</td>
+            <td>{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ ui.empty("Noch keine Berichte") }}
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

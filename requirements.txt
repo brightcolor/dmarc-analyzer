@@ -41,6 +41,9 @@ apscheduler==3.10.4
 # HTTP client (notifications, webhooks)
 httpx==0.27.2
 
+# Time zone data for the display time zone (Windows and slim images lack it)
+tzdata==2025.2
+
 # DNS lookups (optional enrichment)
 dnspython==2.7.0
 

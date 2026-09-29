@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import (
     AlertEvent,
     DmarcRecord,
@@ -19,8 +20,8 @@ from app.models import (
 
 def get_dashboard_stats(db: Session, org_id: str) -> dict:
     now = datetime.now(UTC)
-    thirty_days_ago = now - timedelta(days=30)
-    seven_days_ago = now - timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=settings.UI_CHART_DAYS)
+    seven_days_ago = now - timedelta(days=settings.RECOMMENDATION_STALE_REPORT_DAYS)
 
     # Core counts
     domain_count = db.query(func.count(Domain.id)).filter_by(organization_id=org_id, is_active=True).scalar() or 0
@@ -92,7 +93,7 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
         db.query(ImportJob)
         .filter_by(organization_id=org_id)
         .order_by(ImportJob.created_at.desc())
-        .limit(10)
+        .limit(settings.UI_RECENT_LIMIT)
         .all()
     )
 
@@ -101,7 +102,7 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
         db.query(SmtpInboundMessage)
         .filter_by(organization_id=org_id)
         .order_by(SmtpInboundMessage.received_at.desc())
-        .limit(5)
+        .limit(settings.UI_RECENT_LIMIT)
         .all()
     )
 
@@ -154,43 +155,39 @@ def get_dashboard_stats(db: Session, org_id: str) -> dict:
 
 
 def get_pass_fail_over_time(db: Session, org_id: str, domain_id: str | None = None, days: int = 30) -> list[dict]:
-    """Daily DMARC pass/fail counts for charting."""
-    now = datetime.now(UTC)
-    since = now - timedelta(days=days)
+    """Daily DMARC pass/fail message counts by the day the reported traffic happened (UTC)."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    day_of = func.coalesce(DmarcReport.period_begin, DmarcReport.created_at)
 
-    q = (
-        db.query(DmarcRecord)
-        .join(DmarcReport)
-        .filter(
-            DmarcReport.organization_id == org_id,
-            DmarcReport.created_at >= since,
-        )
-    )
+    reports_q = db.query(DmarcReport).filter(DmarcReport.organization_id == org_id, day_of >= since)
     if domain_id:
-        q = q.filter(DmarcReport.domain_id == domain_id)
-
-    # Aggregate on report level
-    reports_q = (
-        db.query(DmarcReport)
-        .filter(
-            DmarcReport.organization_id == org_id,
-            DmarcReport.created_at >= since,
-        )
-    )
-    if domain_id:
-        reports_q = reports_q.filter_by(domain_id=domain_id)
+        reports_q = reports_q.filter(DmarcReport.domain_id == domain_id)
 
     by_day: dict[str, dict] = defaultdict(lambda: {"pass": 0, "fail": 0})
     for rpt in reports_q.all():
-        day = rpt.created_at.strftime("%Y-%m-%d") if rpt.created_at else "unknown"
+        moment = rpt.period_begin or rpt.created_at
+        if moment is None:
+            continue
+        if moment.tzinfo is not None:
+            moment = moment.astimezone(UTC)
+        day = moment.strftime("%Y-%m-%d")
         by_day[day]["pass"] += rpt.pass_count or 0
         by_day[day]["fail"] += rpt.fail_count or 0
 
-    result = [
-        {"date": d, "pass": v["pass"], "fail": v["fail"]}
-        for d, v in sorted(by_day.items())
-    ]
-    return result
+    return [{"date": d, "pass": v["pass"], "fail": v["fail"]} for d, v in sorted(by_day.items())]
+
+
+def get_disposition_counts(db: Session, org_id: str, days: int = 30) -> dict[str, int]:
+    """Messages per receiver disposition (none, pass, quarantine, reject) in the last `days` days."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = (
+        db.query(DmarcRecord.disposition, func.sum(DmarcRecord.count))
+        .join(DmarcReport)
+        .filter(DmarcReport.organization_id == org_id, DmarcReport.created_at >= since)
+        .group_by(DmarcRecord.disposition)
+        .all()
+    )
+    return {disposition or "none": int(total or 0) for disposition, total in rows}
 
 
 def get_top_source_ips(db: Session, org_id: str, limit: int = 10) -> list[dict]:

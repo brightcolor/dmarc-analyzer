@@ -1,14 +1,16 @@
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_org, get_current_user
-from app.models import ImportError, ImportJob, Organization, User
+from app.models import DmarcReport, ImportError, ImportJob, Organization, User
 from app.templates_config import templates
 
 router = APIRouter(prefix="/imports", tags=["imports"])
+
+STATUS_FILTERS = ("completed", "failed", "processing", "pending")
 
 
 @router.get("", response_class=HTMLResponse)
@@ -21,18 +23,19 @@ def import_list(
     org: Organization = Depends(get_current_org),
 ):
     q = db.query(ImportJob).filter_by(organization_id=org.id).order_by(ImportJob.created_at.desc())
-    if status:
+    if status in STATUS_FILTERS:
         q = q.filter_by(status=status)
 
-    per_page = 25
+    per_page = settings.UI_PAGE_SIZE
     total = q.count()
     jobs = q.offset((page - 1) * per_page).limit(per_page).all()
     pages = (total + per_page - 1) // per_page
 
-    return templates.TemplateResponse("imports/index.html", {
-        "request": request, "user": user, "org": org,
+    return templates.TemplateResponse(request, "imports/index.html", {
+        "user": user, "org": org,
         "jobs": jobs, "total": total, "page": page, "pages": pages,
-        "status_filter": status, "page_title": "Import Jobs",
+        "status_filter": status if status in STATUS_FILTERS else "", "status_filters": STATUS_FILTERS,
+        "page_title": "Importe",
     })
 
 
@@ -49,8 +52,15 @@ def import_detail(
         raise HTTPException(status_code=404)
 
     errors = db.query(ImportError).filter_by(job_id=job_id).all()
-
-    return templates.TemplateResponse("imports/detail.html", {
-        "request": request, "user": user, "org": org,
-        "job": job, "errors": errors, "page_title": "Import Job",
+    reports = (
+        db.query(DmarcReport)
+        .filter_by(import_job_id=job_id, organization_id=org.id)
+        .order_by(DmarcReport.period_end.desc())
+        .limit(settings.UI_PAGE_SIZE)
+        .all()
+    )
+    return templates.TemplateResponse(request, "imports/detail.html", {
+        "user": user, "org": org,
+        "job": job, "errors": errors, "reports": reports,
+        "page_title": job.file_name or "Import",
     })

@@ -1,87 +1,42 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Domains, für die diese Organisation DMARC-Berichte auswertet. Neue Domains legt die Anwendung auch selbst an, sobald ein Bericht für sie ankommt.</p>{% endblock %}
+{% block actions %}<a class="bc-button" href="/domains/new"><svg class="bc-icon" aria-hidden="true" style="width:16px;height:16px"><use href="#i-plus"/></svg>Domain anlegen</a>{% endblock %}
+
 {% block content %}
-<div class="card shadow-sm">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="mb-0"><i class="bi bi-globe me-2"></i>Domains ({{ total }})</h6>
-    <a href="/domains/new" class="btn btn-sm btn-primary">
-      <i class="bi bi-plus-circle me-1"></i>Add Domain
-    </a>
-  </div>
-  <div class="card-body border-bottom py-2">
-    <form method="get" class="d-flex gap-2">
-      <input type="search" name="search" value="{{ search }}" placeholder="Search domains…" class="form-control form-control-sm" style="max-width:260px">
-      <button class="btn btn-sm btn-outline-secondary">Search</button>
-      {% if search %}<a href="/domains" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
-    </form>
-  </div>
-  <div class="card-body p-0">
-    {% if domains %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>Domain</th>
-            <th>Policy</th>
-            <th>Last Report</th>
-            <th>Verification</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
+<section class="bc-panel">
+  <form class="app-filter" method="get" role="search" aria-label="Domains durchsuchen">
+    <div>
+      <label for="f-search">Domain enthält</label>
+      <input class="bc-input" id="f-search" type="search" name="search" value="{{ search }}" placeholder="z. B. example">
+    </div>
+    <button class="bc-button" type="submit">Suchen</button>
+    {% if search %}<a class="bc-button bc-button--secondary" href="/domains">Suche zurücksetzen</a>{% endif %}
+  </form>
+
+  {% if domains %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Domain</th><th>Status</th><th>Policy</th><th>Letzter Bericht</th><th>Format</th></tr></thead>
+      <tbody>
         {% for d in domains %}
         <tr>
-          <td><a href="/domains/{{ d.id }}" class="fw-semibold">{{ d.name }}</a></td>
-          <td>
-            {% if d.dmarc_policy %}
-            <span class="badge
-              {% if d.dmarc_policy == 'reject' %}bg-success
-              {% elif d.dmarc_policy == 'quarantine' %}bg-warning text-dark
-              {% else %}bg-secondary{% endif %}">
-              {{ d.dmarc_policy }}
-            </span>
-            {% if d.dmarc_policy_pct is not none and d.dmarc_policy_pct < 100 %}
-            <span class="badge bg-info ms-1">pct={{ d.dmarc_policy_pct }}%</span>
-            {% endif %}
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          </td>
-          <td class="text-muted small">{{ d.last_report_at | datetime }}</td>
-          <td>
-            <span class="badge
-              {% if d.verification_status == 'verified' %}bg-success
-              {% elif d.verification_status == 'pending' %}bg-warning text-dark
-              {% elif d.verification_status == 'failed' %}bg-danger
-              {% else %}bg-secondary{% endif %}">
-              {{ d.verification_status }}
-            </span>
-          </td>
-          <td>
-            <span class="badge {% if d.is_active %}bg-success{% else %}bg-secondary{% endif %}">
-              {% if d.is_active %}Active{% else %}Inactive{% endif %}
-            </span>
-          </td>
-          <td class="text-end">
-            <a href="/domains/{{ d.id }}" class="btn btn-sm btn-outline-secondary">
-              <i class="bi bi-eye"></i>
-            </a>
-          </td>
+          <td class="app-break"><a href="/domains/{{ d.id }}">{{ d.name }}</a></td>
+          <td>{{ ui.state('aktiv' if d.is_active else 'inaktiv', 'bc-state--on' if d.is_active else '') }}</td>
+          <td class="app-nowrap">{% if d.dmarc_policy %}<code>p={{ d.dmarc_policy }}</code>{% if d.dmarc_policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if d.dmarc_policy_pct is not none and d.dmarc_policy_pct < 100 %} <code>pct={{ d.dmarc_policy_pct }}</code>{% endif %}{% else %}<span class="app-quiet">noch unbekannt</span>{% endif %}</td>
+          <td class="app-nowrap">{{ d.last_report_at | date }}</td>
+          <td>{% if d.last_report_format %}{{ ui.format_badge(d.last_report_format) }}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="text-center py-5">
-      <i class="bi bi-globe fs-1 text-muted"></i>
-      <p class="text-muted mt-2">No domains yet.</p>
-      <a href="/domains/new" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Add your first domain</a>
-    </div>
-    {% endif %}
+      </tbody>
+    </table>
   </div>
-  {% if pages > 1 %}
-  <div class="card-footer">
-    {% include "partials/pagination.html" %}
-  </div>
+  {{ ui.pagination(page, pages, total, "Domains") }}
+  {% elif search %}
+    {{ ui.empty("Keine Domain passt zur Suche", "Prüfe die Schreibweise oder setze die Suche zurück.", "/domains", "Suche zurücksetzen") }}
+  {% else %}
+    {{ ui.empty("Noch keine Domains", "Lege deine erste Domain an. Die Anwendung erzeugt dazu eine Empfangsadresse für die Berichte.", "/domains/new", "Domain anlegen") }}
   {% endif %}
-</div>
+</section>
 {% endblock %}

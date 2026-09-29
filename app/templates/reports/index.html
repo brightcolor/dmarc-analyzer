@@ -1,77 +1,63 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Alle Sammelberichte, die Empfänger über deine Domains geschickt haben. Die Spalte „Format“ zeigt, nach welcher Fassung von DMARC ein Bericht aufgebaut ist.</p>{% endblock %}
+{% block actions %}<a class="bc-button" href="/upload">Bericht hochladen</a>{% endblock %}
+
 {% block content %}
-<div class="card shadow-sm">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="mb-0"><i class="bi bi-file-earmark-text me-2"></i>DMARC Reports ({{ total }})</h6>
-    <a href="/upload" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</a>
-  </div>
-  <div class="card-body border-bottom py-2">
-    <form method="get" class="d-flex flex-wrap gap-2">
-      <input type="search" name="search" value="{{ search }}" placeholder="Search domain…" class="form-control form-control-sm" style="max-width:200px">
-      <select name="domain_id" class="form-select form-select-sm" style="max-width:220px">
-        <option value="">All domains</option>
-        {% for d in domains %}
-        <option value="{{ d.id }}" {% if selected_domain_id == d.id %}selected{% endif %}>{{ d.name }}</option>
-        {% endfor %}
+<section class="bc-panel">
+  <form class="app-filter" method="get" role="search" aria-label="Berichte filtern">
+    <div>
+      <label for="f-search">Domain enthält</label>
+      <input class="bc-input" id="f-search" type="search" name="search" value="{{ search }}" placeholder="z. B. example.com">
+    </div>
+    <div>
+      <label for="f-domain">Domain</label>
+      <select class="bc-select" id="f-domain" name="domain_id">
+        <option value="">Alle Domains</option>
+        {% for d in domains %}<option value="{{ d.id }}"{% if selected_domain_id == d.id %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
       </select>
-      <button class="btn btn-sm btn-outline-secondary">Filter</button>
-      {% if search or selected_domain_id %}<a href="/reports" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
-    </form>
-  </div>
-  <div class="card-body p-0">
-    {% if reports %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>Domain</th>
-            <th>Period</th>
-            <th>Reporting Org</th>
-            <th>Messages</th>
-            <th>Pass Rate</th>
-            <th>Policy</th>
-            <th>Source</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
+    </div>
+    <div>
+      <label for="f-format">Format</label>
+      <select class="bc-select" id="f-format" name="format">
+        <option value="">Alle Formate</option>
+        <option value="rfc9990"{% if selected_format == 'rfc9990' %} selected{% endif %}>RFC 9990 (DMARCbis)</option>
+        <option value="rfc7489"{% if selected_format == 'rfc7489' %} selected{% endif %}>RFC 7489</option>
+        <option value="unknown"{% if selected_format == 'unknown' %} selected{% endif %}>nicht erfasst</option>
+      </select>
+    </div>
+    <button class="bc-button" type="submit">Filtern</button>
+    {% if search or selected_domain_id or selected_format %}<a class="bc-button bc-button--secondary" href="/reports">Filter zurücksetzen</a>{% endif %}
+  </form>
+
+  {% if reports %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead>
+        <tr><th>Domain</th><th>Zeitraum</th><th>Absender</th><th>Format</th><th class="bc-num">Nachrichten</th><th>Bestanden</th><th>Policy</th><th>Herkunft</th></tr>
+      </thead>
+      <tbody>
         {% for r in reports %}
         <tr>
-          <td class="fw-semibold">{{ r.policy_domain or '—' }}</td>
-          <td class="small text-muted">
-            {% if r.period_begin %}{{ r.period_begin | date }}{% else %}—{% endif %}
-          </td>
-          <td class="small text-muted">{{ r.reporting_org | default('—') | truncate(30) }}</td>
-          <td>{{ r.total_messages }}</td>
-          <td>
-            {% if r.pass_rate is not none %}
-            <span class="badge bg-{{ r.pass_rate | pct_color }}">{{ r.pass_rate }}%</span>
-            {% else %}—{% endif %}
-          </td>
-          <td>
-            <span class="badge
-              {% if r.policy_p == 'reject' %}bg-success
-              {% elif r.policy_p == 'quarantine' %}bg-warning text-dark
-              {% else %}bg-secondary{% endif %}">
-              {{ r.policy_p or '—' }}
-            </span>
-          </td>
-          <td><span class="badge bg-light text-dark">{{ r.import_source }}</span></td>
-          <td><a href="/reports/{{ r.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+          <td class="app-break"><a href="/reports/{{ r.id }}">{{ r.policy_domain or 'ohne Domain' }}</a></td>
+          <td class="app-nowrap">{{ r.period_begin | date }} – {{ r.period_end | date }}</td>
+          <td class="app-break">{{ r.reporting_org or '—' }}</td>
+          <td>{{ ui.format_badge(r.report_format) }}</td>
+          <td class="bc-num">{{ r.total_messages | num }}</td>
+          <td>{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
+          <td class="app-nowrap"><code>p={{ r.policy_p or 'none' }}</code>{% if r.policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if r.policy_pct is not none and r.policy_pct < 100 %} <code>pct={{ r.policy_pct }}</code>{% endif %}</td>
+          <td>{{ r.import_source | source_text }}</td>
         </tr>
         {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="text-center py-5">
-      <i class="bi bi-file-earmark-text fs-1 text-muted"></i>
-      <p class="text-muted mt-2">No reports yet. <a href="/upload">Upload your first DMARC report.</a></p>
-    </div>
-    {% endif %}
+      </tbody>
+    </table>
   </div>
-  {% if pages > 1 %}
-  <div class="card-footer">{% include "partials/pagination.html" %}</div>
+  {{ ui.pagination(page, pages, total, "Berichte") }}
+  {% elif search or selected_domain_id or selected_format %}
+    {{ ui.empty("Keine Berichte zu diesem Filter", "Ändere die Auswahl oder setze den Filter zurück.", "/reports", "Filter zurücksetzen") }}
+  {% else %}
+    {{ ui.empty("Noch keine Berichte", "Berichte kommen über die Empfangsadresse deiner Domains an. Du kannst auch eine Berichtsdatei hochladen.", "/upload", "Bericht hochladen") }}
   {% endif %}
-</div>
+</section>
 {% endblock %}

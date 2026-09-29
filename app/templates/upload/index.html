@@ -1,50 +1,33 @@
 {% extends "base.html" %}
-{% block content %}
-<div class="row justify-content-center">
-  <div class="col-12 col-md-8 col-lg-6">
-    <div class="card shadow-sm">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>Upload DMARC Report</h6></div>
-      <div class="card-body">
-        <form method="post" action="/upload" enctype="multipart/form-data">
-          <div class="mb-3">
-            <label class="form-label">Report File</label>
-            <input type="file" name="file" class="form-control" accept=".xml,.xml.gz,.gz,.zip" required>
-            <div class="form-text">Accepted formats: <code>.xml</code>, <code>.xml.gz</code>, <code>.gz</code>, <code>.zip</code> (multiple reports in one ZIP supported).</div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Domain (optional)</label>
-            <select name="domain_id" class="form-select">
-              <option value="">Auto-detect from report</option>
-              {% for d in domains %}
-              <option value="{{ d.id }}">{{ d.name }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="alert alert-info small">
-            <i class="bi bi-info-circle me-1"></i>
-            Reports are processed immediately. Duplicates are detected and skipped automatically.
-          </div>
-          <div class="d-grid">
-            <button type="submit" class="btn btn-primary">
-              <i class="bi bi-cloud-upload me-2"></i>Upload &amp; Import
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
 
-    <div class="card shadow-sm mt-3">
-      <div class="card-header"><h6 class="mb-0"><i class="bi bi-code-slash me-2"></i>API Upload</h6></div>
-      <div class="card-body">
-        <p class="text-muted small">You can also upload reports via the REST API:</p>
-        <pre class="bg-body-secondary p-3 rounded small"><code>curl -X POST {{ request.base_url }}api/v1/upload \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "file=@dmarc_report.xml.gz"</code></pre>
-        <a href="/api-tokens" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-key me-1"></i>Manage API Tokens
-        </a>
+{% block lede %}<p>Lade Sammelberichte hoch, die du als Datei vorliegen hast. Die Anwendung liest Berichte nach RFC 7489 und RFC 9990 und überspringt Berichte, die sie schon kennt.</p>{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="bc-alert bc-alert--bad" role="alert" id="u-error">
+  <p class="bc-alert__title">Die Datei wurde nicht importiert</p>
+  <p>{{ error }}</p>
+</div>
+{% endif %}
+<section class="bc-panel">
+  <form method="post" action="/upload" enctype="multipart/form-data">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="u-file">Berichtsdatei</label>
+        <input class="bc-input app-file" id="u-file" type="file" name="file" accept="{{ extensions | join(',') }}" required{% if error %} aria-invalid="true" aria-describedby="u-error"{% endif %}>
+        <p class="bc-formgrid__hint">Erlaubt sind {{ extensions | join(', ') }} bis {{ max_size }}. Ein ZIP-Archiv darf mehrere Berichte enthalten.</p>
+        <label for="u-domain">Domain</label>
+        <select class="bc-select" id="u-domain" name="domain_id">
+          <option value="">aus dem Bericht übernehmen</option>
+          {% for d in domains %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+        </select>
+        <p class="bc-formgrid__hint">Die Anwendung ordnet jeden Bericht der Domain zu, für die er gilt. Neue Domains legt sie dabei selbst an.</p>
       </div>
     </div>
-  </div>
-</div>
+    <div class="bc-panel__foot">
+      <a class="bc-button bc-button--secondary" href="/imports">Bisherige Importe</a>
+      <button class="bc-button" type="submit"><svg class="bc-icon" aria-hidden="true" style="width:16px;height:16px"><use href="#i-upload"/></svg>Hochladen und importieren</button>
+    </div>
+  </form>
+</section>
 {% endblock %}

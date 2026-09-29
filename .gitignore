@@ -53,3 +53,6 @@ migrations/versions/__pycache__/
 
 # Docker
 *.log
+
+# Local demo login written by scripts/demo_data.py
+demo-login.txt

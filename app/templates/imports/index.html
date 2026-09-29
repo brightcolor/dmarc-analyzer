@@ -1,59 +1,46 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Jede hochgeladene Datei und jede eingegangene Berichtsmail wird hier als Import geführt, mit Ergebnis und Fehlern.</p>{% endblock %}
+{% block actions %}<a class="bc-button" href="/upload">Bericht hochladen</a>{% endblock %}
+
 {% block content %}
-<div class="card shadow-sm">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <h6 class="mb-0"><i class="bi bi-box-arrow-in-down me-2"></i>Import Jobs ({{ total }})</h6>
-    <a href="/upload" class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</a>
-  </div>
-  <div class="card-body border-bottom py-2">
-    <form method="get" class="d-flex gap-2">
-      <select name="status" class="form-select form-select-sm" style="max-width:150px">
-        <option value="">All</option>
-        {% for s in ['pending','processing','completed','failed'] %}
-        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s | title }}</option>
-        {% endfor %}
+<section class="bc-panel">
+  <form class="app-filter" method="get" aria-label="Importe filtern">
+    <div>
+      <label for="f-status">Status</label>
+      <select class="bc-select" id="f-status" name="status">
+        <option value="">Alle</option>
+        {% for s in status_filters %}<option value="{{ s }}"{% if status_filter == s %} selected{% endif %}>{{ s | status_text }}</option>{% endfor %}
       </select>
-      <button class="btn btn-sm btn-outline-secondary">Filter</button>
-    </form>
-  </div>
-  <div class="card-body p-0">
-    {% if jobs %}
-    <div class="table-responsive">
-      <table class="table table-hover mb-0">
-        <thead class="table-light">
-          <tr><th>File</th><th>Source</th><th>Status</th><th>Imported</th><th>Skipped</th><th>Failed</th><th>Created</th><th></th></tr>
-        </thead>
-        <tbody>
+    </div>
+    <button class="bc-button" type="submit">Filtern</button>
+    {% if status_filter %}<a class="bc-button bc-button--secondary" href="/imports">Filter zurücksetzen</a>{% endif %}
+  </form>
+  {% if jobs %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Datei</th><th>Status</th><th>Herkunft</th><th class="bc-num">Importiert</th><th class="bc-num">Doppelt</th><th class="bc-num">Fehler</th><th>Zeit</th></tr></thead>
+      <tbody>
         {% for job in jobs %}
         <tr>
-          <td class="small">{{ job.file_name | default('—') | truncate(35) }}</td>
-          <td><span class="badge bg-secondary">{{ job.source }}</span></td>
-          <td>
-            <span class="badge
-              {% if job.status == 'completed' %}bg-success
-              {% elif job.status == 'failed' %}bg-danger
-              {% elif job.status == 'processing' %}bg-warning text-dark
-              {% else %}bg-secondary{% endif %}">
-              {{ job.status }}
-            </span>
-          </td>
-          <td class="small">{{ job.records_imported }}</td>
-          <td class="small text-muted">{{ job.records_skipped }}</td>
-          <td class="small {% if job.records_failed > 0 %}text-danger{% else %}text-muted{% endif %}">{{ job.records_failed }}</td>
-          <td class="small text-muted">{{ job.created_at | datetime }}</td>
-          <td><a href="/imports/{{ job.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+          <td class="app-break"><a href="/imports/{{ job.id }}">{{ job.file_name or 'ohne Namen' }}</a></td>
+          <td>{{ ui.state(job.status | status_text, job.status | status_state) }}</td>
+          <td>{{ job.source | source_text }}</td>
+          <td class="bc-num">{{ job.records_imported | num }}</td>
+          <td class="bc-num">{{ job.records_skipped | num }}</td>
+          <td class="bc-num">{{ job.records_failed | num }}</td>
+          <td class="app-nowrap">{{ job.created_at | datetime }}</td>
         </tr>
         {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="text-center py-5">
-      <i class="bi bi-inbox fs-1 text-muted"></i>
-      <p class="text-muted mt-2">No import jobs yet. <a href="/upload">Upload a report</a> to start.</p>
-    </div>
-    {% endif %}
+      </tbody>
+    </table>
   </div>
-  {% if pages > 1 %}<div class="card-footer">{% include "partials/pagination.html" %}</div>{% endif %}
-</div>
+  {{ ui.pagination(page, pages, total, "Importe") }}
+  {% elif status_filter %}
+    {{ ui.empty("Keine Importe mit diesem Status", "", "/imports", "Filter zurücksetzen") }}
+  {% else %}
+    {{ ui.empty("Noch keine Importe", "Lade einen Bericht hoch oder richte eine Empfangsadresse ein.", "/upload", "Bericht hochladen") }}
+  {% endif %}
+</section>
 {% endblock %}

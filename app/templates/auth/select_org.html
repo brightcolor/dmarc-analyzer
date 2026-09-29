@@ -1,65 +1,30 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Select Organization — DMARC Analyzer</title>
-  <script>(function(){var t=localStorage.getItem('dmarc-theme');if(t)document.documentElement.setAttribute('data-bs-theme',t);})();</script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/css/adminlte.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-  <link rel="stylesheet" href="/static/css/custom.css">
-  <style>
-    body { min-height: 100vh; display: flex; align-items: center; background: #f4f6f9; }
-  </style>
-</head>
-<body>
-<div class="container py-5">
-  <div class="row justify-content-center">
-    <div class="col-12 col-md-8 col-lg-6">
-      <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0"><i class="bi bi-buildings me-2"></i>Select Organization</h5>
-        </div>
-        <div class="card-body">
-          {% if orgs %}
-          <form method="post" action="/organizations/select">
-            <p class="text-muted mb-3">You have access to the following organizations:</p>
-            {% for o in orgs %}
-            <div class="d-grid mb-2">
-              <button type="submit" name="org_id" value="{{ o.id }}" class="btn btn-outline-primary text-start d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-building me-2"></i><strong>{{ o.name }}</strong> <small class="text-muted">/{{ o.slug }}</small></span>
-                <i class="bi bi-chevron-right"></i>
-              </button>
-            </div>
-            {% endfor %}
-          </form>
-          {% else %}
-          <div class="text-center py-4">
-            <i class="bi bi-building-x fs-1 text-muted"></i>
-            <p class="text-muted mt-2">No organizations yet.</p>
-            <a href="/organizations/new" class="btn btn-primary">
-              <i class="bi bi-plus-circle me-1"></i>Create Organization
-            </a>
-          </div>
-          {% endif %}
-        </div>
-        <div class="card-footer d-flex justify-content-between">
-          <a href="/organizations/new" class="btn btn-sm btn-success">
-            <i class="bi bi-plus-circle me-1"></i>New Organization
-          </a>
-          <a href="/auth/logout" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-box-arrow-right me-1"></i>Logout
-          </a>
-        </div>
-      </div>
-    </div>
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block eyebrow %}Organisation{% endblock %}
+{% block lede %}<p>Dein Konto gehört zu mehreren Organisationen. Wähle, mit welcher du arbeiten möchtest; wechseln kannst du jederzeit über deinen Namen oben rechts.</p>{% endblock %}
+
+{% block content %}
+<section class="bc-panel">
+  {% if orgs %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Organisation</th><th>Kennung</th><th><span class="bc-sr">Aktion</span></th></tr></thead>
+      <tbody>
+        {% for o in orgs %}
+        <tr>
+          <td>{{ o.name }}{% if org and org.id == o.id %} {{ ui.state('aktuell', 'bc-state--on') }}{% endif %}</td>
+          <td class="app-mono">{{ o.slug }}</td>
+          <td><div class="bc-row-actions">
+            <form method="post" action="/organizations/select"><input type="hidden" name="org_id" value="{{ o.id }}"><button class="bc-button" type="submit">Öffnen</button></form>
+          </div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-</div>
-<button class="theme-toggle-float" id="themeToggle" title="Toggle dark / light mode">
-  <i class="bi bi-moon" id="themeIcon"></i>
-</button>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta3/dist/js/adminlte.min.js" defer></script>
-<script src="/static/js/custom.js" defer></script>
-</body>
-</html>
+  {% else %}
+    {{ ui.empty("Keiner Organisation zugeordnet", "Dein Konto gehört noch zu keiner Organisation. Bitte einen Administrator, dich einzuladen.") }}
+  {% endif %}
+</section>
+{% endblock %}

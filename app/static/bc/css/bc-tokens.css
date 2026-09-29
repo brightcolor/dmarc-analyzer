@@ -1,0 +1,227 @@
+/* ==========================================================================
+   bright color: design tokens
+
+   One file for both variants.
+   - public (Auftritt): website, landing pages, customer areas, mail, print.
+     The default. Flat, square, 2 px ink edges, light only.
+   - workbench (Werkbank): admin and technical panels. Set
+     data-bc-variant="workbench" on <html>; data-theme="dark" adds the dark
+     mode. Rounded, soft card shadow, yellow main action.
+
+   Sources, measured 21.09.2026: bright-color.de (style.css "Signal"),
+   ispconfig-brightcolor 0.1.1, fossbilling-kundenpanel panel.css.
+   Every hex value in this file counts as "in the palette" for
+   scripts/bc_check.py.
+   ========================================================================== */
+
+:root {
+	/* Brand. Identical in every variant and mode. */
+	--bc-ink: #111111;
+	--bc-paper: #f2f0eb;
+	--bc-white: #ffffff;
+	--bc-cyan: #1dc3f3;
+	--bc-yellow: #fed329;
+	--bc-magenta: #ee318a;      /* logo magenta: marks, stripes, chart lines. White type on it: 3.9:1 */
+	--bc-pink: #d61f7a;         /* action magenta: buy buttons, errors. White type: 4.8:1 */
+	--bc-pink-deep: #b81765;    /* hover of pink */
+	--bc-lime: #bfd535;
+	--bc-violet: #aa4b88;       /* sixth tile colour, default signal. White type: 5.2:1 */
+	--bc-violet-deep: #8b3a6f;  /* text links on light ground */
+	--bc-deep: #05202a;         /* type on cyan: 8.1:1 */
+	--bc-logo-grey: #716f6f;    /* only inside the logo */
+
+	/* Neutrals */
+	--bc-ink-quiet: #4a4a4a;    /* secondary type on paper and white */
+	--bc-line: #dad6cd;         /* hairlines */
+	--bc-paper-deep: #e3e0d8;   /* tracks, input addons, table heads */
+	--bc-on-ink: #ffffff;
+	--bc-on-ink-quiet: #b3aea3; /* secondary type on ink: 8.5:1, a fixed tone */
+	--bc-on-ink-soft: #c6c2b7;  /* footer body text */
+	--bc-on-ink-line: #4a453d;  /* rules on ink */
+
+	/* Status */
+	--bc-ok: var(--bc-lime);
+	--bc-ok-text: #3d5c00;
+	--bc-warn: var(--bc-yellow);
+	--bc-warn-text: #7a5b00;
+	--bc-bad: var(--bc-pink);
+	--bc-bad-text: #8c1a4c;
+	--bc-bad-tint: #fbe3ee;
+	--bc-info: var(--bc-cyan);
+
+	/* Roles, public variant */
+	--bc-ground: var(--bc-paper);
+	--bc-surface: var(--bc-white);
+	--bc-text: var(--bc-ink);
+	--bc-text-loud: var(--bc-ink);
+	--bc-text-quiet: var(--bc-ink-quiet);
+	--bc-rule: var(--bc-line);
+	--bc-edge: var(--bc-ink);
+	--bc-edge-width: 2px;
+	--bc-link: var(--bc-violet-deep);
+	--bc-link-hover: var(--bc-pink-deep);  /* 5.5:1 on paper; plain pink gives 4.25:1 */
+	--bc-focus: var(--bc-ink);
+	--bc-primary: var(--bc-ink);
+	--bc-primary-deep: #333333;
+	--bc-on-primary: var(--bc-white);
+	--bc-buy: var(--bc-pink);
+	--bc-buy-deep: var(--bc-pink-deep);
+	--bc-on-buy: var(--bc-white);
+	--bc-signal: var(--bc-violet);
+
+	--bc-radius: 0;
+	--bc-radius-sm: 0;
+	--bc-shadow: none;
+	--bc-lift: 3px;
+
+	/* Type */
+	/* Impact before Arial Narrow: Windows resolves a missing "Arial Narrow" to
+	   plain Arial, and the stack never reaches Impact. */
+	--bc-font-display: "Anton", Impact, "Arial Narrow", system-ui, sans-serif;
+	--bc-font-text: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--bc-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--bc-size-h1: clamp(2.6rem, 1.5rem + 4.4vw, 5.2rem);
+	--bc-size-h2: clamp(1.9rem, 1.3rem + 2.4vw, 2.9rem);
+	--bc-size-h3: 1.125rem;
+	--bc-size-lede: clamp(1.125rem, 1.02rem + .4vw, 1.35rem);
+	--bc-size-body: 1.0625rem;
+	--bc-size-small: .9375rem;
+	--bc-size-label: .75rem;
+	--bc-leading: 1.6;
+	--bc-measure: 34rem;
+
+	/* Space: 8 px ladder */
+	--bc-space-1: 8px;
+	--bc-space-2: 16px;
+	--bc-space-3: 24px;
+	--bc-space-4: 32px;
+	--bc-space-6: 48px;
+	--bc-space-8: 64px;
+	--bc-space-12: 96px;
+	--bc-width: 1180px;
+	--bc-gutter: 24px;
+
+	--bc-move: 120ms;
+
+	color-scheme: light;
+}
+
+/* Area colours of bright-color.de: the signal follows the line of business. */
+.bc-area-it       { --bc-signal: var(--bc-cyan); }
+.bc-area-creative { --bc-signal: var(--bc-pink); }
+.bc-area-oss      { --bc-signal: var(--bc-lime); }
+.bc-area-products { --bc-signal: var(--bc-yellow); }
+
+/* ==========================================================================
+   Workbench (Werkbank), light
+   ========================================================================== */
+
+[data-bc-variant="workbench"] {
+	--bc-surface: #ffffff;
+	--bc-control: #ffffff;        /* inputs and quiet buttons */
+	--bc-overlay: #ffffff;        /* dialogs */
+	--bc-head: #f7f6f2;
+	--bc-hover: #f1efe9;
+	--bc-raised: #ffffff;
+	--bc-sunken: #ffffff;
+	--bc-rule: #e3e0d8;
+	--bc-rule-soft: #ece9e2;
+	--bc-rule-loud: #9e9a90;
+	--bc-field-edge: #8e8a80;     /* 3:1 against the card, counts as a boundary */
+	--bc-edge: #e3e0d8;
+	--bc-edge-width: 1px;
+
+	--bc-text: #1a1a1a;
+	--bc-text-loud: #111111;
+	--bc-text-quiet: #5e5b55;
+
+	--bc-link: #b3146a;
+	--bc-link-hover: var(--bc-text-loud);
+	--bc-focus: #0a86ad;
+	--bc-primary: var(--bc-yellow);
+	--bc-primary-deep: #e9bc0c;
+	--bc-on-primary: var(--bc-ink);
+
+	--bc-ok-text: #4e6a00;
+	--bc-ok-mid: #aac420;         /* progress fills, as in the ISPConfig theme */
+	--bc-ok-deep: #8fa80f;
+	--bc-warn-lift: #ffe066;
+	--bc-bad-deep: #b0145f;
+	--bc-bad-text: #b3146a;
+
+	--bc-rail: #111111;
+	--bc-rail-2: #1c1c1e;
+	--bc-rail-text: #d9d6ce;
+	--bc-rail-muted: #8c8981;
+	--bc-rail-line: #29292d;
+	--bc-rail-w: 256px;
+
+	--bc-track: #d9d6ce;
+	--bc-track-on: var(--bc-ink);
+	--bc-knob: #ffffff;
+	--bc-knob-on: var(--bc-lime);
+
+	--bc-radius: 12px;
+	--bc-radius-sm: 8px;
+	--bc-shadow: 0 1px 2px rgba(17, 17, 17, .05), 0 6px 20px rgba(17, 17, 17, .05);
+	--bc-shadow-pop: 0 8px 28px rgba(17, 17, 17, .16);
+
+	--bc-size-h1: 2.375rem;
+	--bc-size-h2: 1.25rem;
+	--bc-size-body: .9375rem;
+	--bc-leading: 1.5;
+
+	--bc-chart-grid: rgba(17, 17, 17, .08);
+	--bc-chart-fill: rgba(238, 49, 138, .12);
+
+	--bc-move: 150ms;
+}
+
+/* ==========================================================================
+   Workbench, dark. The brand colours stay; surfaces go to onyx.
+   ========================================================================== */
+
+[data-bc-variant="workbench"][data-theme="dark"] {
+	--bc-ground: #0b0b0c;
+	--bc-surface: #141415;
+	--bc-control: #19191b;
+	--bc-overlay: #1c1c1e;
+	--bc-head: #18181a;
+	--bc-hover: #232326;
+	--bc-raised: #1f1f22;
+	--bc-sunken: #0f0f10;
+	--bc-rule: #2a2a2d;
+	--bc-rule-soft: #333337;
+	--bc-rule-loud: #5c5c62;
+	--bc-field-edge: #6e6e74;
+	--bc-edge: #2a2a2d;
+
+	--bc-text: #e6e4de;
+	--bc-text-loud: #ffffff;
+	--bc-text-quiet: #a3a097;
+
+	--bc-link: var(--bc-cyan);
+	--bc-focus: var(--bc-cyan);
+
+	--bc-ok-text: var(--bc-lime);
+	--bc-warn-text: var(--bc-yellow);
+	--bc-bad-text: #ff5ca8;
+	--bc-bad-tint: #2a1520;
+
+	--bc-rail: #070708;
+	--bc-rail-2: #161618;
+	--bc-rail-line: #1f1f22;
+
+	--bc-track: #3a3a3f;
+	--bc-track-on: var(--bc-lime);
+	--bc-knob: #d9d6ce;
+	--bc-knob-on: var(--bc-ink);
+
+	--bc-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+	--bc-shadow-pop: 0 10px 30px rgba(0, 0, 0, .6);
+
+	--bc-chart-grid: rgba(230, 228, 222, .10);
+	--bc-chart-fill: rgba(238, 49, 138, .18);
+
+	color-scheme: dark;
+}
