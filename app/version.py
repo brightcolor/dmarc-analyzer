@@ -1,3 +1,3 @@
-VERSION = "0.5.2"
-VERSION_TUPLE = (0, 5, 2)
+VERSION = "0.6.0"
+VERSION_TUPLE = (0, 6, 0)
 APP_NAME = "DMARC Analyzer"

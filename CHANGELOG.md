@@ -7,6 +7,22 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.6.0] – 2026-09-29
+
+### Neu
+
+- `POST /api/v1/domains` legt eine Domain samt Empfangsadresse an und liefert die Adresse für `rua`.
+  Eine vorhandene Domain kommt mit derselben Adresse zurück, Domains aus Berichten ohne eigene Adresse
+  bekommen eine. Das Token braucht mindestens die Rolle Manager.
+- `python -m app.org_limits` zeigt und ändert die Grenzen einer Organisation.
+- Domains mit Umlauten nimmt die Anwendung in beiden Schreibweisen an und speichert die xn--Form, die in
+  den Berichten steht.
+
+### Behoben
+
+- Neue Organisationen, auch die aus der Ersteinrichtung, bekommen die Grenzen des Standardtarifs.
+- „Neue Adresse“ auf der Domainseite legt die Adresse wieder an.
+
 ## [0.5.2] – 2026-09-29
 
 ### Geändert
@@ -259,7 +275,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.6.0
 [0.5.2]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.2
 [0.5.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.1
 [0.5.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.0

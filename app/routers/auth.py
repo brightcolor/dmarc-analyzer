@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies import get_client_ip, get_current_user_optional
 from app.services.audit import log_action
 from app.services.auth import authenticate_user, create_user, get_user_orgs
+from app.services.domains import plan_limits
 from app.services.login_guard import locked_until, record_attempt
 from app.services.passwords import password_problem
 from app.services.setup import admin_exists, consume_setup_code
@@ -97,7 +98,7 @@ def setup_submit(
     while db.query(Organization.id).filter_by(slug=slug).first():
         suffix += 1
         slug = f"{base_slug}-{suffix}"
-    org = Organization(name=org_name.strip(), slug=slug, is_active=True)
+    org = Organization(name=org_name.strip(), slug=slug, is_active=True, **plan_limits())
     db.add(org)
     db.flush()
     user = create_user(db, email=email, password=password, full_name=full_name.strip() or None, is_superadmin=True)

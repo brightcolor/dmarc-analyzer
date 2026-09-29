@@ -59,6 +59,16 @@ Der Code steht auch im Log beim Start (`docker compose logs web`). Er gilt einma
 Administrator existiert, antwortet `/auth/setup` mit 404. Healthcheck, API und statische Dateien
 bleiben während der Einrichtung erreichbar.
 
+### Grenzen einer Organisation
+
+Neue Organisationen starten mit den Grenzen des Standardtarifs (`DEFAULT_PLAN_*`). Anzeigen und ändern
+kann sie der Betreiber:
+
+```bash
+docker compose exec web python -m app.org_limits
+docker compose exec web python -m app.org_limits <kennung> --max-domains 500
+```
+
 ---
 
 ## DNS einrichten
@@ -325,6 +335,7 @@ curl -H "Authorization: Bearer <token>" https://dmarc.example.com/api/v1/reports
 | GET | `/api/v1/version` | Version |
 | GET | `/api/v1/me` | Token und Organisation |
 | GET | `/api/v1/domains` | Domains |
+| POST | `/api/v1/domains` | Domain anlegen, liefert ihre Empfangsadresse für `rua` (ab Rolle Manager) |
 | GET | `/api/v1/domains/{id}/stats` | Kennzahlen einer Domain |
 | GET | `/api/v1/reports` | Berichte mit Format (`report_format`, `format_evidence`) und Policy |
 | GET | `/api/v1/source-ips` | Versandquellen |
@@ -334,6 +345,16 @@ curl -H "Authorization: Bearer <token>" https://dmarc.example.com/api/v1/reports
 | GET | `/api/v1/smtp/status` | Zustand des Mailempfangs |
 
 Die vollständige Beschreibung steht unter `/api/docs`.
+
+Eine Domain anlegen und die Adresse für den DMARC-Eintrag abholen:
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+     -d '{"name": "example.org"}' https://dmarc.example.com/api/v1/domains
+```
+
+Die Antwort nennt `inbound_address` und `rua`. Gibt es die Domain schon, kommt sie mit Status 200 und
+derselben Adresse zurück; Umlaute wandelt die Anwendung in die xn--Form, die auch in den Berichten steht.
 
 ---
 

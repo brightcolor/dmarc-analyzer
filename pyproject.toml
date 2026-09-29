@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "dmarc-analyzer"
-version = "0.5.2"
+version = "0.6.0"
 description = "Multi-tenant DMARC aggregate report analyzer"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -36,9 +36,10 @@ ignore = [
     "S101",  # assert in tests
     "B008",  # FastAPI Depends() calls in function defaults
     "S311",  # random not used for security here
-    "F821",  # SQLAlchemy string forward references are resolved at runtime
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "B"]
+# SQLAlchemy string forward references are resolved at runtime
+"app/models/*" = ["F821"]
 "migrations/*" = ["ALL"]

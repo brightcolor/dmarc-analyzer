@@ -2,12 +2,15 @@
 REST API v1 — authenticated with Bearer API tokens.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_api_auth
+from app.dependencies import get_api_auth, get_client_ip
 from app.models import AlertEvent, DmarcReport, Domain, InboundMailAddress, Organization, SourceIp
+from app.services.audit import log_action
+from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.senders import load_catalog
 from app.version import APP_NAME, VERSION
 
@@ -62,6 +65,56 @@ def list_domains(
         }
         for d in domains
     ]
+
+
+class DomainIn(BaseModel):
+    name: str
+
+
+def _require_role(db: Session, api_auth, minimum: str, what: str) -> None:
+    """The account behind a token needs the same role as in the web interface."""
+    user, org = api_auth
+    if user is None:
+        return
+    from app.services.auth import ROLE_LEVEL, ROLE_NAMES, role_level
+    if role_level(db, user, org.id) < ROLE_LEVEL[minimum]:
+        raise HTTPException(status_code=403, detail=f"{what} dürfen Konten ab der Rolle {ROLE_NAMES[minimum]}. "
+                            "Lege das Token mit einem solchen Konto an.")
+
+
+@router.post("/domains", status_code=201)
+def create_domain_api(
+    payload: DomainIn,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    api_auth=Depends(get_api_auth),
+):
+    """Create a domain with its report address; an existing domain comes back with status 200."""
+    org = _org_or_403(api_auth)
+    _require_role(db, api_auth, "manager", "Domains anlegen")
+    name = normalize_domain(payload.name)
+    if not name:
+        raise HTTPException(status_code=400, detail=INVALID_NAME)
+    try:
+        domain, address, created = create_domain(db, org, name)
+    except DomainLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if created:
+        user = api_auth[0]
+        log_action(db, "domain.create", org_id=org.id, user_id=user.id if user else None, resource_type="domain",
+                   resource_id=domain.id, new_value={"name": name, "via": "api"}, ip_address=get_client_ip(request))
+    db.commit()
+    if not created:
+        response.status_code = 200
+    return {
+        "id": domain.id,
+        "name": domain.name,
+        "is_active": domain.is_active,
+        "created": created,
+        "inbound_address": address.address,
+        "rua": f"mailto:{address.address}",
+    }
 
 
 @router.get("/domains/{domain_id}/stats")

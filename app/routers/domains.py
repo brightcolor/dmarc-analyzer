@@ -1,4 +1,3 @@
-import re
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -13,14 +12,13 @@ from app.services.audit import log_action
 from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
 from app.services.dmarc_record import suggest_dmarc_record
+from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.inbound_address import create_domain_address
 from app.services.recommendation import get_recommendations_for_domain
 from app.services.report_formats import reporter_formats
 from app.templates_config import templates
 
 router = APIRouter(prefix="/domains", tags=["domains"])
-
-DOMAIN_RE = re.compile(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
 def _paginate(q, page: int, per_page: int):
@@ -74,24 +72,19 @@ def domain_create(
     user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
-    name = name.strip().lower().rstrip(".")
-    if not DOMAIN_RE.match(name):
-        return _form(request, user, org, name, "Das ist kein gültiger Domainname. Erlaubt sind Buchstaben, Ziffern, "
-                     "Punkte und Bindestriche, etwa example.com.")
+    typed = name.strip()
+    name = normalize_domain(typed)
+    if not name:
+        return _form(request, user, org, typed, INVALID_NAME)
 
     if db.query(Domain).filter_by(organization_id=org.id, name=name).first():
         return _form(request, user, org, name, f"Die Domain {name} ist bereits angelegt. Du findest sie in der Liste.")
 
-    if db.query(Domain).filter_by(organization_id=org.id).count() >= org.max_domains:
+    try:
+        domain, _, _ = create_domain(db, org, name)
+    except DomainLimitReached:
         return _form(request, user, org, name, f"Diese Organisation darf höchstens {org.max_domains} Domains "
-                     "anlegen. Bitte den Administrator, die Grenze zu erhöhen.")
-
-    domain = Domain(organization_id=org.id, name=name, is_active=True)
-    db.add(domain)
-    db.flush()
-
-    # Auto-create domain-specific inbound address
-    create_domain_address(db, org, domain)
+                     "anlegen. Bitte den Betreiber, die Grenze zu erhöhen.")
 
     log_action(
         db, "domain.create", org_id=org.id, user_id=user.id,

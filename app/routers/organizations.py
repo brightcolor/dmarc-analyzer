@@ -8,6 +8,7 @@ from app.database import get_db
 from app.dependencies import get_client_ip, get_current_org, get_current_superadmin, get_current_user
 from app.models import Organization, OrganizationMembership, User
 from app.services.audit import log_action
+from app.services.domains import plan_limits
 from app.services.inbound_address import create_org_address
 from app.templates_config import templates
 
@@ -65,7 +66,7 @@ def org_create(
     if db.query(Organization).filter_by(slug=slug).first():
         return _org_form(request, user, values, f"Die Kennung {slug} ist schon vergeben. Wähle eine andere.", 400)
 
-    org = Organization(name=name.strip(), slug=slug, owner_id=user.id, is_active=True)
+    org = Organization(name=name.strip(), slug=slug, owner_id=user.id, is_active=True, **plan_limits())
     db.add(org)
     db.flush()
 
