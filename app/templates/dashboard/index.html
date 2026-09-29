@@ -13,6 +13,13 @@
 </div>
 {% endif %}
 
+{% if dns_errors %}
+<div class="bc-alert bc-alert--bad">
+  <p class="bc-alert__title">{{ dns_errors | plural('Domain hat', 'Domains haben') }} Fehler im DNS</p>
+  <p>Die <a href="/domains?dns=error">Domainliste</a> zeigt sie. Auf jeder Domainseite steht unter „DNS-Prüfung“, welcher Eintrag fehlt oder falsch ist, und der richtige Wert zum Kopieren.</p>
+</div>
+{% endif %}
+
 {% set rate = stats.pass_rate_30d %}
 <div class="bc-kpis">
   <div class="bc-kpi"><p class="bc-kpi__value">{{ stats.total_messages_30d | num }}</p><p class="bc-kpi__label">Nachrichten in {{ chart_days }} Tagen</p></div>

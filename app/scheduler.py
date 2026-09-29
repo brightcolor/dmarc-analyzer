@@ -55,6 +55,19 @@ def _run_senders(db: Session, now: datetime) -> int:
     return result.checked
 
 
+def _run_dns(db: Session, now: datetime) -> int:
+    from app.services.alert_service import evaluate_rules_for_org
+    from app.services.dns_check import run_due_checks
+
+    organizations = run_due_checks(db, now)
+    db.commit()
+    # A domain that turned faulty raises its alert with the new result
+    for org_id in sorted(organizations):
+        evaluate_rules_for_org(db, org_id, now)
+        db.commit()
+    return len(organizations)
+
+
 def _run_notifications(db: Session, now: datetime) -> dict:
     from app.services.notification import dispatch_pending
 
@@ -80,6 +93,7 @@ JOBS = (
         _run_notifications),
     Job("retention", "Alte Daten löschen", lambda: settings.RETENTION_INTERVAL_SECONDS, _run_retention),
     Job("digest", "Wochenberichte senden", lambda: settings.DIGEST_CHECK_INTERVAL_SECONDS, _run_digest),
+    Job("dns", "DNS-Einträge prüfen", lambda: settings.DNS_CHECK_INTERVAL_SECONDS, _run_dns),
 )
 JOB_LABELS = {job.name: job.label for job in JOBS}
 

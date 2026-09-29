@@ -73,8 +73,38 @@
   </section>
 </div>
 
+<section class="bc-panel" id="dns-pruefung" aria-labelledby="dnscheck-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="dnscheck-titel">DNS-Prüfung</h2>{{ ui.state(domain.dns_status | dns_status_text, domain.dns_status | dns_state) }}</div>
+  <div class="bc-panel__body">
+    <p style="margin:0">{% if dns_result %}Geprüft am {{ dns_result.checked_at | datetime }}. {% endif %}Die Prüfung sieht nach DMARC, der Zustimmung der Empfangsdomain, SPF, den DKIM-Schlüsseln aus den Berichten, den Mailservern und den TLS-Berichten.{% if dns_auto and domain.is_active %} Aktive Domains prüft die Anwendung {{ dns_max_age | interval }} neu.{% endif %}</p>
+    {% if can.analyst %}<form method="post" action="/domains/{{ domain.id }}/dns-check" style="margin-top:12px"><button class="bc-button bc-button--secondary" type="submit">Jetzt prüfen</button></form>{% endif %}
+  </div>
+  {% if dns_result %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Prüfung</th><th class="bc-hide-narrow">Ergebnis</th><th class="bc-hide-narrow">Im DNS gefunden</th></tr></thead>
+      <tbody>
+        {% for c in dns_result.checks %}
+        <tr>
+          <td>
+            <span class="bc-row-title">{{ c.title }}</span><span class="bc-row-sub"><span class="bc-only-narrow">{{ c.state | dns_state_text }} · </span>{{ c.message }}</span>
+            {% if c.suggestion and c.state in ('error', 'warning') %}<div class="app-dns-fix">{{ ui.copy_code("dns-fix-" ~ loop.index, c.suggestion, "Richtiger Wert für " ~ c.record) }}</div>{% endif %}
+          </td>
+          <td class="bc-hide-narrow">{{ ui.state(c.state | dns_state_text, c.state | dns_state) }}</td>
+          <td class="app-mono app-small app-break bc-hide-narrow">{% if c.record %}<span class="app-quiet">{{ c.record }}</span><br>{% endif %}{{ c.found or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {% if dns_auto %}{% set hint = "Die erste Prüfung startet der Zeitplaner" ~ (", oder du startest sie mit „Jetzt prüfen“." if can.analyst else ".") %}{% else %}{% set hint = "Starte die Prüfung mit „Jetzt prüfen“." if can.analyst else "Die Prüfung starten Mitglieder ab der Rolle Analyst." %}{% endif %}
+  <div class="bc-panel__body">{{ ui.empty("Noch nicht geprüft", hint) }}</div>
+  {% endif %}
+</section>
+
 {% if suggested_record %}
-<section class="bc-panel" aria-labelledby="dns-titel">
+<section class="bc-panel" id="dmarc-eintrag" aria-labelledby="dns-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="dns-titel">DNS-Eintrag</h2></div>
   <div class="bc-panel__body">
     <p style="margin-top:0">Trage diesen TXT-Eintrag in die DNS-Zone von {{ domain.name }} ein. {% if domain.dmarc_policy %}Er übernimmt die Policy aus den letzten Berichten{% else %}Er startet mit <code>p=none</code>, damit du erst beobachtest{% endif %} und leitet die Berichte an diese Anwendung.</p>
@@ -86,7 +116,7 @@
 {% endif %}
 
 {% if ext_verify_record %}
-<section class="bc-panel" aria-labelledby="zustimmung-titel">
+<section class="bc-panel" id="zustimmung" aria-labelledby="zustimmung-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="zustimmung-titel">Zustimmung der Empfangsdomain</h2></div>
   <div class="bc-panel__body">
     <p style="margin-top:0">Die Berichtsadresse liegt unter {{ rua_domain }}, also auf einer anderen Domain als {{ domain.name }}. Empfänger schicken Berichte dorthin erst, wenn {{ rua_domain }} zustimmt. Diesen Eintrag setzt, wer die DNS-Zone von {{ rua_domain }} verwaltet:</p>

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_org, get_current_user
-from app.models import Organization, User
+from app.models import Domain, Organization, User
 from app.services.charts import day_chart
 from app.services.dashboard import (
     get_dashboard_stats,
@@ -43,5 +43,6 @@ def dashboard(
         "top_ips": get_top_source_ips(db, org.id, limit=settings.UI_RECENT_LIMIT),
         "formats": format_counts(db, org.id, since=since),
         "dispositions": get_disposition_counts(db, org.id, days=days),
+        "dns_errors": db.query(Domain).filter_by(organization_id=org.id, is_active=True, dns_status="error").count(),
         "page_title": "Übersicht",
     })

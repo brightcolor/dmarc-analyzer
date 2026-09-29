@@ -1,6 +1,7 @@
 """
 REST API v1 — authenticated with Bearer API tokens.
 """
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
@@ -20,6 +21,7 @@ from app.models import (
     TlsReportPolicy,
 )
 from app.services.audit import log_action
+from app.services.dns_check import run_check, stored_result
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.senders import load_catalog
 from app.version import APP_NAME, VERSION
@@ -72,6 +74,8 @@ def list_domains(
             "name": d.name,
             "policy": d.dmarc_policy,
             "last_report_at": d.last_report_at.isoformat() if d.last_report_at else None,
+            "dns_status": d.dns_status,
+            "dns_checked_at": d.dns_checked_at.isoformat() if d.dns_checked_at else None,
         }
         for d in domains
     ]
@@ -142,6 +146,47 @@ def domain_stats(
     from app.services.dashboard import get_pass_fail_over_time
     chart = get_pass_fail_over_time(db, org.id, domain_id=domain_id, days=days)
     return {"domain": domain.name, "stats": chart}
+
+
+def _dns_check_json(domain: Domain) -> dict:
+    result = stored_result(domain)
+    return {
+        "domain": domain.name,
+        "status": domain.dns_status,
+        "checked_at": domain.dns_checked_at.isoformat() if domain.dns_checked_at else None,
+        "checks": [asdict(check) for check in result.checks] if result else [],
+    }
+
+
+@router.get("/domains/{domain_id}/dns-check")
+def domain_dns_check(
+    domain_id: str,
+    db: Session = Depends(get_db),
+    api_auth=Depends(get_api_auth),
+):
+    """Result of the last DNS check of a domain; status is null while it was never checked."""
+    org = _org_or_403(api_auth)
+    domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
+    if not domain:
+        raise HTTPException(status_code=404)
+    return _dns_check_json(domain)
+
+
+@router.post("/domains/{domain_id}/dns-check")
+def run_domain_dns_check(
+    domain_id: str,
+    db: Session = Depends(get_db),
+    api_auth=Depends(get_api_auth),
+):
+    """Check the DNS of a domain now, for example right after changing a record."""
+    org = _org_or_403(api_auth)
+    _require_role(db, api_auth, "analyst", "Die DNS-Prüfung starten")
+    domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
+    if not domain:
+        raise HTTPException(status_code=404)
+    run_check(db, domain)
+    db.commit()
+    return _dns_check_json(domain)
 
 
 @router.get("/reports")

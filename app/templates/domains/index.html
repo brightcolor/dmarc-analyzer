@@ -11,19 +11,28 @@
       <label for="f-search">Domain enthält</label>
       <input class="bc-input" id="f-search" type="search" name="search" value="{{ search }}" placeholder="z. B. example">
     </div>
+    <div>
+      <label for="f-dns">DNS-Prüfung</label>
+      <select class="bc-select" id="f-dns" name="dns">
+        <option value="">Alle</option>
+        {% for key in ('error', 'warning', 'unknown', 'ok') %}<option value="{{ key }}"{% if selected_dns == key %} selected{% endif %}>{{ key | dns_status_text }}</option>{% endfor %}
+        <option value="unchecked"{% if selected_dns == 'unchecked' %} selected{% endif %}>noch nicht geprüft</option>
+      </select>
+    </div>
     <button class="bc-button" type="submit">Suchen</button>
-    {% if search %}<a class="bc-button bc-button--secondary" href="/domains">Suche zurücksetzen</a>{% endif %}
+    {% if search or selected_dns %}<a class="bc-button bc-button--secondary" href="/domains">Suche zurücksetzen</a>{% endif %}
   </form>
 
   {% if domains %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Domain</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Policy</th><th class="bc-hide-narrow">Letzter Bericht</th><th class="bc-hide-narrow">Format</th></tr></thead>
+      <thead><tr><th>Domain</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">DNS</th><th class="bc-hide-narrow">Policy</th><th class="bc-hide-narrow">Letzter Bericht</th><th class="bc-hide-narrow">Format</th></tr></thead>
       <tbody>
         {% for d in domains %}
         <tr>
-          <td><a class="bc-row-title app-break" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">{{ 'aktiv' if d.is_active else 'inaktiv' }} · {% if d.dmarc_policy %}p={{ d.dmarc_policy }}{% else %}Policy noch unbekannt{% endif %} · letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td>
+          <td><a class="bc-row-title app-break" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">{{ 'aktiv' if d.is_active else 'inaktiv' }} · DNS {{ d.dns_status | dns_status_text }} · {% if d.dmarc_policy %}p={{ d.dmarc_policy }}{% else %}Policy noch unbekannt{% endif %} · letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td>
           <td class="bc-hide-narrow">{{ ui.state('aktiv' if d.is_active else 'inaktiv', 'bc-state--on' if d.is_active else '') }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(d.dns_status | dns_status_text, d.dns_status | dns_state) }}</td>
           <td class="app-nowrap bc-hide-narrow">{% if d.dmarc_policy %}<code>p={{ d.dmarc_policy }}</code>{% if d.dmarc_policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if d.dmarc_policy_pct is not none and d.dmarc_policy_pct < 100 %} <code>pct={{ d.dmarc_policy_pct }}</code>{% endif %}{% else %}<span class="app-quiet">noch unbekannt</span>{% endif %}</td>
           <td class="app-nowrap bc-hide-narrow">{{ d.last_report_at | date }}</td>
           <td class="bc-hide-narrow">{% if d.last_report_format %}{{ ui.format_badge(d.last_report_format) }}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
@@ -33,7 +42,7 @@
     </table>
   </div>
   {{ ui.pagination(page, pages, total, "Domains") }}
-  {% elif search %}
+  {% elif search or selected_dns %}
     {{ ui.empty("Keine Domain passt zur Suche", "Prüfe die Schreibweise oder setze die Suche zurück.", "/domains", "Suche zurücksetzen") }}
   {% else %}
     {% if can.manager %}

@@ -6,15 +6,22 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_manager, get_current_org, get_current_user
+from app.dependencies import (
+    get_client_ip,
+    get_current_analyst,
+    get_current_manager,
+    get_current_org,
+    get_current_user,
+)
 from app.models import DmarcReport, Domain, DomainRecipient, InboundMailAddress, Organization, User
 from app.services.audit import log_action
 from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
 from app.services.dmarc_record import suggest_dmarc_record
+from app.services.dns_check import run_check, stored_result
 from app.services.domain_recipients import RecipientError, add_recipient, recipients_for, update_recipient
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
-from app.services.inbound_address import create_domain_address
+from app.services.inbound_address import create_domain_address, report_address
 from app.services.mailer import mail_configured
 from app.services.recommendation import get_recommendations_for_domain
 from app.services.report_formats import reporter_formats
@@ -22,6 +29,9 @@ from app.services.tls_reports import DNS_PREFIX, recent_summary, suggest_tls_rec
 from app.templates_config import flash, templates
 
 router = APIRouter(prefix="/domains", tags=["domains"])
+
+# Filter of the domain list by the state of the last DNS check; "unchecked" means never checked
+DNS_FILTERS = ("error", "warning", "unknown", "ok", "unchecked")
 
 
 def _paginate(q, page: int, per_page: int):
@@ -35,6 +45,7 @@ def domain_list(
     request: Request,
     page: int = Query(1, ge=1),
     search: str | None = Query(None),
+    dns: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -42,13 +53,17 @@ def domain_list(
     q = db.query(Domain).filter_by(organization_id=org.id)
     if search:
         q = q.filter(Domain.name.ilike(f"%{search}%"))
+    if dns == "unchecked":
+        q = q.filter(Domain.dns_status.is_(None))
+    elif dns in DNS_FILTERS:
+        q = q.filter(Domain.dns_status == dns)
     q = q.order_by(Domain.name)
     domains, total, pages = _paginate(q, page, settings.UI_PAGE_SIZE)
 
     return templates.TemplateResponse(request, "domains/index.html", {
         "user": user, "org": org,
         "domains": domains, "total": total, "page": page, "pages": pages,
-        "search": search or "", "page_title": "Domains",
+        "search": search or "", "selected_dns": dns if dns in DNS_FILTERS else "", "page_title": "Domains",
     })
 
 
@@ -131,19 +146,8 @@ def domain_detail(
     )
     report_count = db.query(DmarcReport).filter_by(organization_id=org.id, domain_id=domain_id).count()
 
-    # DMARC record suggestion
-    rua_addr = next(
-        (a.address for a in addresses if a.status == "active" and a.purpose == "domain_report"),
-        None,
-    )
-    if not rua_addr:
-        # Fall back to org-level address
-        org_addr = db.query(InboundMailAddress).filter_by(
-            organization_id=org.id, status="active", purpose="org_report"
-        ).filter(InboundMailAddress.domain_id.is_(None)).first()
-        if org_addr:
-            rua_addr = org_addr.address
-
+    # DMARC record suggestion with the domain's own address, else the one of the organisation
+    rua_addr = report_address(db, org.id, domain_id)
     suggested_record = suggest_dmarc_record(domain, rua_addr) if rua_addr else None
 
     # External DMARC destination verification record
@@ -168,6 +172,8 @@ def domain_detail(
         "tls_summary": recent_summary(db, org.id, domain_id, days) if tls_on else None,
         "tls_record": suggest_tls_record(rua_addr) if tls_on and rua_addr else None,
         "tls_dns_name": f"{DNS_PREFIX}.{domain.name}",
+        "dns_result": stored_result(domain),
+        "dns_auto": settings.DNS_CHECK_ENABLED, "dns_max_age": settings.DNS_CHECK_MAX_AGE_SECONDS,
         "page_title": domain.name,
     })
 
@@ -191,6 +197,34 @@ def domain_toggle(
     )
     db.commit()
     return RedirectResponse(url=f"/domains/{domain_id}", status_code=303)
+
+
+@router.post("/{domain_id}/dns-check")
+def domain_dns_check(
+    request: Request,
+    domain_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_analyst),
+    org: Organization = Depends(get_current_org),
+):
+    domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
+    if not domain:
+        raise HTTPException(status_code=404)
+    result = run_check(db, domain)
+    db.commit()
+    errors, warnings = result.count("error"), result.count("warning")
+    if errors:
+        flash(request, "bad", f"{domain.name}: {errors} Fehler im DNS",
+              "Die betroffenen Prüfungen stehen in der Liste; der passende Eintrag steht jeweils daneben.")
+    elif warnings:
+        flash(request, "warn", f"{domain.name}: {warnings} {'Hinweis' if warnings == 1 else 'Hinweise'} zum DNS",
+              "Die Berichte kommen trotzdem an; die Hinweise stehen in der Liste.")
+    elif result.status == "unknown":
+        flash(request, "warn", f"{domain.name}: DNS-Prüfung unvollständig",
+              "Ein DNS-Server hat nicht geantwortet. Starte die Prüfung noch einmal.")
+    else:
+        flash(request, "ok", f"{domain.name}: DNS in Ordnung", "Alle Einträge, die die Anwendung braucht, stehen.")
+    return RedirectResponse(url=f"/domains/{domain_id}#dns-pruefung", status_code=303)
 
 
 @router.post("/{domain_id}/add-address")

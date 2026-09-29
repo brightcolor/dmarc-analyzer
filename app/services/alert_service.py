@@ -28,6 +28,7 @@ from app.models import (
     SourceIp,
 )
 from app.security import utcnow
+from app.services.dns_check import stored_result
 from app.services.domain_recipients import alert_addresses
 from app.services.tls_reports import RESULT_TEXT, summarize
 
@@ -44,6 +45,7 @@ ALERT_TYPES = {
     "volume_spike": "Versandmenge steigt plötzlich",
     "volume_drop": "Versandmenge fällt plötzlich",
     "reports_missing": "Berichte bleiben aus",
+    "dns_problem": "DNS-Einträge fehlerhaft",
     "import_failed": "Import fehlgeschlagen",
     "policy_tighten_ready": "Domain bereit für eine strengere Policy",
     "smtp_invalid_recipient": "Viele Mails an unbekannte Adressen",
@@ -57,7 +59,7 @@ OPERATOR_ALERT_TYPES = {"smtp_invalid_recipient", "smtp_rate_limit"}
 # and reaches the further recipients of that domain
 PER_DOMAIN_TYPES = {
     "dmarc_fail_rate", "spf_fail_rate", "dkim_fail_rate", "tls_failure_rate", "volume_spike", "volume_drop",
-    "reports_missing", "new_unknown_source", "high_volume_source", "new_source_dmarc_fail",
+    "reports_missing", "new_unknown_source", "high_volume_source", "new_source_dmarc_fail", "dns_problem",
 }
 
 # An event in one of these states blocks a second event for the same rule and subject
@@ -104,6 +106,9 @@ def alert_type_hints() -> dict[str, str]:
                        f"{_num(s.ALERT_DEFAULT_VOLUME_DROP)} %.",
         "reports_missing": "Schlägt an, wenn im Zeitraum kein Bericht ankam. Ohne Schwelle; ein Zeitraum von 2880 "
                            "Minuten deckt zwei Tage ab.",
+        "dns_problem": "Domains, deren DNS-Prüfung einen Fehler zeigt, etwa ein fehlender DMARC-Eintrag, eine rua "
+                       "ohne die Empfangsadresse oder ein SPF mit zu vielen Abfragen. Hinweise lösen keinen Alarm aus. "
+                       "Ohne Schwelle und Zeitraum; die Prüfung läuft im Takt von DNS_CHECK_MAX_AGE_SECONDS.",
         "import_failed": "Dateien, die sich im Zeitraum nicht importieren ließen. Schwelle: Anzahl, Vorgabe "
                          f"{_num(s.ALERT_DEFAULT_IMPORT_FAILURES)}.",
         "policy_tighten_ready": "Domains, deren Zahlen eine strengere Policy tragen. Ohne Schwelle.",
@@ -367,6 +372,27 @@ def _eval_new_source_dmarc_fail(db: Session, rule: AlertRule, now: datetime) -> 
     ]
 
 
+def _eval_dns_problem(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
+    domains = db.query(Domain).filter_by(organization_id=rule.organization_id, is_active=True, dns_status="error")
+    if rule.domain_id:
+        domains = domains.filter_by(id=rule.domain_id)
+    findings = []
+    for domain in domains.order_by(Domain.name):
+        result = stored_result(domain)
+        errors = [check for check in result.checks if check.state == "error"] if result else []
+        details = " ".join(f"{check.title}: {check.message}" for check in errors)
+        findings.append(Finding(
+            title=f"DNS-Einträge fehlerhaft für {domain.name}",
+            description=(f"{details} Alle Prüfungen stehen auf der Domainseite unter „DNS-Prüfung“."
+                         if details else "Die DNS-Prüfung zeigt einen Fehler. Die Einzelheiten stehen auf der "
+                                         "Domainseite unter „DNS-Prüfung“."),
+            domain_id=domain.id,
+            metrics={"errors": [check.key for check in errors],
+                     "checked_at": domain.dns_checked_at.isoformat() if domain.dns_checked_at else None},
+        ))
+    return findings
+
+
 def _eval_import_failed(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
     since = now - timedelta(minutes=rule.time_window_minutes)
     query = db.query(func.count(ImportJob.id)).filter(
@@ -445,6 +471,7 @@ EVALUATORS: dict[str, Callable[[Session, AlertRule, datetime], list[Finding]]] =
     "high_volume_source": _eval_high_volume_source,
     "new_source_dmarc_fail": _eval_new_source_dmarc_fail,
     "import_failed": _eval_import_failed,
+    "dns_problem": _eval_dns_problem,
     "policy_tighten_ready": _eval_policy_tighten_ready,
     "smtp_invalid_recipient": _eval_smtp_rejections(rate_limit=False),
     "smtp_rate_limit": _eval_smtp_rejections(rate_limit=True),

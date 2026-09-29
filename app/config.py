@@ -141,6 +141,40 @@ class Settings(BaseSettings):
                     "gescheiterten Verbindungen; die Summen des Berichts bleiben vollständig.",
     )
 
+    # DNS check per domain: DMARC, consent of the report domain, SPF, DKIM, MX and TLS reporting
+    DNS_CHECK_ENABLED: bool = Field(
+        True, description="DNS-Einträge jeder aktiven Domain regelmäßig prüfen. Aus: Die Prüfung läuft nur auf "
+                          "Knopfdruck.",
+    )
+    DNS_CHECK_INTERVAL_SECONDS: int = Field(
+        600, ge=60, le=86_400, description="Abstand in Sekunden, in dem der Zeitplaner nach fälligen Domains sieht.",
+    )
+    DNS_CHECK_MAX_AGE_SECONDS: int = Field(
+        86_400, ge=600, le=2_592_000, description="Nach so vielen Sekunden prüft die Anwendung eine Domain erneut.",
+    )
+    DNS_CHECK_BATCH_SIZE: int = Field(
+        20, ge=1, le=1000, description="Höchstzahl Domains, die ein Lauf des Zeitplaners prüft.",
+    )
+    DNS_CHECK_WORKERS: int = Field(
+        4, ge=1, le=32, description="Domains, die ein Lauf gleichzeitig prüft.",
+    )
+    DNS_CHECK_TIMEOUT_SECONDS: float = Field(
+        4.0, ge=0.5, le=30.0, description="Zeitlimit in Sekunden für eine DNS-Abfrage der Prüfung.",
+    )
+    DNS_CHECK_DKIM_DAYS: int = Field(
+        30, ge=1, le=365,
+        description="Tage, aus denen die Prüfung die DKIM-Selektoren einer Domain nimmt: Selektoren, die in "
+                    "Berichten dieses Zeitraums bestanden haben.",
+    )
+    DNS_CHECK_DKIM_MAX_SELECTORS: int = Field(
+        10, ge=1, le=100, description="Höchstzahl DKIM-Selektoren, die die Prüfung je Domain nachschlägt.",
+    )
+    DNS_CHECK_DKIM_RECOMMENDED_BITS: int = Field(
+        2048, ge=1024, le=8192,
+        description="Länge in Bit, ab der ein RSA-Schlüssel für DKIM ohne Hinweis bleibt. Unter 1024 Bit werten "
+                    "Empfänger den Schlüssel nicht (RFC 8301).",
+    )
+
     # Scheduler in the web process
     SCHEDULER_ENABLED: bool = Field(
         True, description="Zeitplaner für Alarme, Benachrichtigungen, Aufräumen und Wochenbericht einschalten.",

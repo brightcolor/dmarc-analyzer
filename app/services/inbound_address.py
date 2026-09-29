@@ -57,6 +57,25 @@ def lookup_by_address(db: Session, address: str) -> InboundMailAddress | None:
     return db.query(InboundMailAddress).filter_by(address=address.lower()).first()
 
 
+def report_address(db: Session, organization_id: str, domain_id: str) -> str | None:
+    """The address a domain names in rua: its own active address, else the one of the organisation."""
+    own = db.query(InboundMailAddress.address).filter_by(
+        organization_id=organization_id, domain_id=domain_id, status="active", purpose="domain_report",
+    ).order_by(InboundMailAddress.created_at).first()
+    if own:
+        return own.address
+    shared = db.query(InboundMailAddress.address).filter_by(
+        organization_id=organization_id, status="active", purpose="org_report",
+    ).filter(InboundMailAddress.domain_id.is_(None)).order_by(InboundMailAddress.created_at).first()
+    return shared.address if shared else None
+
+
+def active_addresses(db: Session, organization_id: str) -> set[str]:
+    """Every active report address of the organisation, in lower case."""
+    rows = db.query(InboundMailAddress.address).filter_by(organization_id=organization_id, status="active")
+    return {address.lower() for (address,) in rows}
+
+
 def disable_address(db: Session, addr: InboundMailAddress) -> None:
     from app.security import utcnow
     addr.status = "disabled"

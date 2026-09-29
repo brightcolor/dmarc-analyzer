@@ -7,6 +7,23 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.0] – 2026-09-30
+
+### Neu
+
+- DNS-Prüfung je Domain: DMARC-Eintrag mit Policy und Aufbau, `rua` und `ruf` mit der Empfangsadresse,
+  Zustimmung der Empfangsdomain unter `_report._dmarc`, SPF mit Zählung der DNS-Abfragen samt aller
+  `include` (höchstens 10, RFC 7208), die DKIM-Schlüssel der Selektoren, die in den Berichten bestanden
+  haben (Länge nach RFC 8301), Mailserver und der Eintrag für TLS-Berichte. Subdomains ohne eigenen
+  DMARC-Eintrag nutzen den der Organisationsdomain.
+- Die Domainseite zeigt jede Prüfung mit Ampel, dem gefundenen Wert und dem richtigen Wert zum Kopieren.
+  Der Vorschlag baut auf dem Eintrag im DNS auf und ergänzt nur, was fehlt; „Jetzt prüfen“ prüft sofort.
+- Die Domainliste zeigt den Stand der Prüfung und filtert danach; die Übersicht nennt Domains mit Fehlern.
+- Neue Alarmart „DNS-Einträge fehlerhaft“; Hinweise und Warnungen lösen keinen Alarm aus.
+- Der Zeitplaner prüft jede aktive Domain nach `DNS_CHECK_MAX_AGE_SECONDS` erneut. Einstellungen
+  `DNS_CHECK_*` für Takt, Menge, gleichzeitige Prüfungen, Zeitlimit und DKIM.
+- API: `GET` und `POST /api/v1/domains/{id}/dns-check`; `GET /api/v1/domains` nennt den Stand der Prüfung.
+
 ## [0.10.0] – 2026-09-29
 
 ### Neu

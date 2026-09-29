@@ -28,11 +28,14 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
   unbekannte Quellen und fehlende Berichte. Alle Schwellen sind einstellbar.
 - **DNS-Vorschlag** für den DMARC-Eintrag, der für Empfänger beider Standards passt, für den
   Zustimmungseintrag unter `_report._dmarc` und für den TLS-Berichtseintrag unter `_smtp._tls`.
+- **DNS-Prüfung je Domain**: DMARC, Zustimmung der Empfangsdomain, SPF samt Zahl der DNS-Abfragen, die
+  DKIM-Schlüssel der Selektoren aus den Berichten, Mailserver und TLS-Berichte, mit Ampel, dem richtigen
+  Wert zum Kopieren und einem Alarm, wenn ein Eintrag fehlt oder falsch ist.
 - **Absender mit Namen**: Jede IP-Adresse wird einem Dienst zugeordnet, etwa Google, Microsoft 365,
   Amazon SES, Mailchimp oder IONOS. Ein Klick gibt einen Dienst mit allen seinen Adressen frei, auch mit
   künftigen.
-- **Alarme** für 14 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten und
-  scheiternde TLS-Verbindungen bis zu ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
+- **Alarme** für 15 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten,
+  scheiternde TLS-Verbindungen und fehlerhafte DNS-Einträge bis zu ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
 - **Mailversand** über einen SMTP-Server oder die HTTP-API von Postal, auch von Hosts, deren Anbieter
   ausgehenden Port 25 sperrt.
 - **Weitere Empfänger je Domain** für ihre Alarme und einen eigenen Wochenbericht, der nur diese
@@ -126,6 +129,46 @@ docker compose exec web python -m app.org_limits <kennung> --max-domains 500
    ```
 
    Eine Zustimmung der Empfangsdomain wie bei DMARC braucht dieser Eintrag nicht.
+
+Ob alles steht, zeigt die [DNS-Prüfung](#dns-prüfung) auf jeder Domainseite.
+
+---
+
+## DNS-Prüfung
+
+Die Anwendung prüft für jede aktive Domain, ob die DNS-Einträge stehen, die DMARC und die Berichte
+brauchen. Das Ergebnis steht auf der Domainseite unter **DNS-Prüfung**, mit Ampel je Prüfung, dem
+gefundenen Wert und, wo etwas fehlt oder falsch ist, dem richtigen Wert zum Kopieren.
+
+| Prüfung | In Ordnung, wenn … |
+|---|---|
+| DMARC-Eintrag | unter `_dmarc.<domain>` genau ein Eintrag steht, der mit `v=DMARC1` beginnt; eine Subdomain ohne eigenen Eintrag nutzt den der Organisationsdomain |
+| Policy und Aufbau | `p` gültig ist und alle übrigen Angaben gültige Werte haben; `p=none`, `pct` unter 100 und `t=y` erscheinen als Hinweis |
+| Sammelberichte (`rua`) | `rua` eine aktive Empfangsadresse der Organisation nennt |
+| Fehlerberichte (`ruf`) | `ruf` die Empfangsadresse nennt, mit `fo=1` (Warnung, solange `DMARC_SUGGEST_FAILURE_REPORTS` an ist) |
+| Zustimmung der Empfangsdomain | `<domain>._report._dmarc.<Empfangsdomain>` mit `v=DMARC1` antwortet, wenn die Adresse unter einer anderen Domain liegt |
+| SPF | genau ein Eintrag steht, mit höchstens 10 DNS-Abfragen samt aller `include` (RFC 7208), ohne `+all`, ohne `ptr` |
+| DKIM | für jeden Selektor, der in den Berichten der letzten `DNS_CHECK_DKIM_DAYS` Tage bestanden hat, ein Schlüssel im DNS steht, RSA mit mindestens 1024 Bit (RFC 8301) |
+| Mailserver (MX) | jeder MX-Host eine IP-Adresse hat; ohne MX oder mit Null-MX gilt die Domain als ohne Mailempfang |
+| TLS-Berichte | eine Domain mit Mailempfang unter `_smtp._tls` genau einen Eintrag hat, dessen `rua` die Empfangsadresse nennt |
+
+Den richtigen Wert baut die Anwendung aus dem Eintrag, der gerade im DNS steht: Policy, Ausrichtung
+und alle übrigen Angaben bleiben, dazu kommt die Empfangsadresse. Andere Empfänger in `rua` bleiben
+stehen.
+
+- Der Zeitplaner prüft jede aktive Domain nach `DNS_CHECK_MAX_AGE_SECONDS` (Vorgabe ein Tag) erneut,
+  neue Domains zuerst, je Lauf höchstens `DNS_CHECK_BATCH_SIZE` Domains, `DNS_CHECK_WORKERS` gleichzeitig.
+- **Jetzt prüfen** auf der Domainseite prüft sofort, ab der Rolle Analyst.
+- Die Domainliste zeigt den Stand jeder Domain und filtert nach „Fehler“, „Warnungen“ oder „noch nicht
+  geprüft“; die Übersicht nennt die Zahl der Domains mit Fehlern.
+- Die Alarmart „DNS-Einträge fehlerhaft“ meldet jede Domain mit einem Fehler; Hinweise und Warnungen
+  lösen keinen Alarm aus.
+- Antwortet ein DNS-Server nicht, bleibt die betroffene Prüfung offen („keine Antwort“), und der nächste
+  Lauf versucht es erneut.
+
+Die Abfragen gehen an `DNS_NAMESERVERS` oder, wenn leer, an die DNS-Server des Systems. Hält der
+Resolver des Hosters ein „gibt es nicht“ lange fest, etwa direkt nach dem Anlegen eines Eintrags,
+helfen öffentliche Resolver wie `DNS_NAMESERVERS=1.1.1.1,9.9.9.9`.
 
 ---
 
@@ -289,6 +332,7 @@ alle Regeln direkt nach jedem Import und zusätzlich im Takt von `ALERT_EVAL_INT
 | TLS-Verbindungen scheitern | der Anteil gescheiterter TLS-Verbindungen laut TLS-Berichten die Schwelle erreicht | `ALERT_DEFAULT_TLS_FAIL_RATE` |
 | Versandmenge steigt oder fällt plötzlich | die Menge vom Durchschnitt der Zeiträume davor abweicht | `ALERT_DEFAULT_VOLUME_SPIKE`, `ALERT_DEFAULT_VOLUME_DROP` |
 | Berichte bleiben aus | im Zeitraum kein Bericht ankam | – |
+| DNS-Einträge fehlerhaft | die DNS-Prüfung einer Domain einen Fehler zeigt | – |
 | Import fehlgeschlagen | Dateien sich nicht importieren ließen | `ALERT_DEFAULT_IMPORT_FAILURES` |
 | Domain bereit für eine strengere Policy | die Zahlen `p=quarantine` oder `p=reject` tragen | – |
 | Viele Mails an unbekannte Adressen | der Mailempfang viele Mails an unbekannte Adressen ablehnt (nur Betreiber) | `ALERT_DEFAULT_INVALID_RECIPIENTS` |
@@ -399,7 +443,7 @@ sieht der Betreiber unter **Empfang → Status**.
 ### Zeitplaner und Aufräumen
 
 Der Zeitplaner läuft im Web-Container. Er prüft Regeln, verschickt Benachrichtigungen, sucht fällige
-Wochenberichte und räumt auf. Jede Aufgabe läuft pro Takt genau einmal, auch mit mehreren
+Wochenberichte, prüft das DNS der Domains und räumt auf. Jede Aufgabe läuft pro Takt genau einmal, auch mit mehreren
 Web-Containern. Letzten Lauf und Ergebnis jeder Aufgabe zeigt **Empfang → Status** dem Betreiber.
 
 Beim Aufräumen löscht die Anwendung Berichte, TLS-Berichte, Importe samt Dateien und empfangene Mails,
@@ -434,6 +478,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `FAILURE_REPORTS_ENABLED`, `FAILURE_REPORT_*` | an, 30 Tage, Kopfzeilen bis 64 KB | Fehlerberichte |
 | `DMARC_SUGGEST_FAILURE_REPORTS` | an | DNS-Vorschlag mit `ruf` und `fo=1` |
 | `TLS_REPORTS_ENABLED`, `TLS_REPORT_*` | an, 100 Richtlinien, 1000 Fehlerangaben | TLS-Berichte |
+| `DNS_CHECK_*` | an, täglich je Domain, 20 Domains je Lauf, 4 gleichzeitig, 4 s je Abfrage | DNS-Prüfung |
 | `DOMAIN_RECIPIENTS_MAX` | 20 | weitere Empfänger je Domain |
 | `DIGEST_*` | montags, 8 Uhr, 7 Tage | Termin und Inhalt des Wochenberichts |
 | `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
@@ -504,7 +549,9 @@ curl -H "Authorization: Bearer <token>" https://dmarc.example.com/api/v1/reports
 | GET | `/api/v1/health` | Healthcheck, ohne Anmeldung |
 | GET | `/api/v1/version` | Version |
 | GET | `/api/v1/me` | Token und Organisation |
-| GET | `/api/v1/domains` | Domains |
+| GET | `/api/v1/domains` | Domains mit dem Stand ihrer DNS-Prüfung |
+| GET | `/api/v1/domains/{id}/dns-check` | Ergebnis der letzten DNS-Prüfung |
+| POST | `/api/v1/domains/{id}/dns-check` | DNS sofort prüfen, etwa nach einer Änderung (ab Rolle Analyst) |
 | POST | `/api/v1/domains` | Domain anlegen, liefert ihre Empfangsadresse für `rua` (ab Rolle Manager) |
 | GET | `/api/v1/domains/{id}/stats` | Kennzahlen einer Domain |
 | GET | `/api/v1/reports` | Berichte mit Format (`report_format`, `format_evidence`) und Policy |

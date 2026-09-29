@@ -102,6 +102,8 @@
 }
 .app-code .bc-button { border-radius: 0 var(--bc-radius-sm) var(--bc-radius-sm) 0; }
 .app-code__label { margin: 0 0 4px; font-size: 12.5px; font-weight: 700; color: var(--bc-text-loud); }
+.app-dns-fix { margin-top: 10px; }
+.app-dns-fix .app-code { margin-bottom: 0; }
 
 /* Preformatted text such as mail headers: wraps long lines, scrolls when very long. */
 .app-pre {

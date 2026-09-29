@@ -11,6 +11,7 @@ os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["MAIL_SMTP_HOST"] = ""
 # Tests that need DNS answers bring their own
 os.environ["SENDER_LOOKUP_ENABLED"] = "false"
+os.environ["DNS_CHECK_ENABLED"] = "false"
 os.environ["NOTIFICATION_BLOCK_PRIVATE_TARGETS"] = "false"
 # Alerts by mail go out at once; the bundling tests set their own window
 os.environ["NOTIFICATION_EMAIL_BUNDLE_SECONDS"] = "0"
