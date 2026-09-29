@@ -53,6 +53,7 @@
           <option value="">alle Domains</option>
           {% for d in domains %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
         </select>
+        <p class="bc-formgrid__hint">Mit „alle Domains“ prüft die Regel jede Domain einzeln; jeder Alarm nennt seine Domain und geht auch an deren weitere Empfänger.</p>
         <label for="r-threshold">Schwelle</label>
         <input class="bc-input" id="r-threshold" name="threshold" type="number" step="any" min="0" placeholder="z. B. 10 für 10 %">
         <p class="bc-formgrid__hint">Nur für Arten mit Quote oder Menge; leer lassen für die Vorgabe.</p>

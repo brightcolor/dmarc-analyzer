@@ -7,6 +7,21 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.8.1] – 2026-09-29
+
+### Geändert
+
+- Eine Regel für alle Domains prüft jede aktive Domain einzeln. Jeder Alarm nennt seine Domain und
+  erreicht die weiteren Empfänger dieser Domain. Vorher wertete sie alle Domains zusammen aus; eine
+  einzelne Domain mit vielen Fehlern ging so unter.
+- Die Pause nach einem Alarm gilt je Domain und Quelle. Ein Alarm für eine Domain hält den Alarm einer
+  anderen nicht mehr auf.
+- „Berichte bleiben aus“ meldet bei einer Regel für alle Domains nur Domains, die schon Berichte hatten.
+
+### Behoben
+
+- Alarme tragen die Zeit der Prüfung, die Pause rechnet damit.
+
 ## [0.8.0] – 2026-09-29
 
 ### Neu

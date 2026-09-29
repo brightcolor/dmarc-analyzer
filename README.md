@@ -214,8 +214,14 @@ alle Regeln direkt nach jedem Import und zusätzlich im Takt von `ALERT_EVAL_INT
 | Viele Mails an unbekannte Adressen | der Mailempfang viele Mails an unbekannte Adressen ablehnt (nur Betreiber) | `ALERT_DEFAULT_INVALID_RECIPIENTS` |
 | Grenze für eingehende Mails erreicht | Absender die Mailgrenze treffen (nur Betreiber) | `ALERT_DEFAULT_RATE_LIMIT_HITS` |
 
-Eine Regel meldet denselben Befund erst wieder, wenn der vorige Alarm erledigt ist, und wartet nach
-jedem Alarm ihre Pause ab. So kommt eine neue Quelle genau einmal.
+Eine Regel für alle Domains prüft jede aktive Domain einzeln: Jeder Alarm nennt seine Domain und geht
+auch an deren weitere Empfänger. „Berichte bleiben aus“ meldet dabei nur Domains, die schon einmal einen
+Bericht hatten; geparkte Domains ohne Mailversand bleiben still. Gilt eine Regel für eine bestimmte
+Domain, meldet sie auch, wenn dort noch nie ein Bericht ankam.
+
+Eine Regel meldet denselben Befund erst wieder, wenn der vorige Alarm erledigt ist, und wartet danach
+ihre Pause ab. Befund und Pause gelten je Domain und Quelle: Scheitert eine zweite Domain, kommt ihr
+Alarm sofort. So kommt auch eine neue Quelle genau einmal.
 
 ### Kanäle
 

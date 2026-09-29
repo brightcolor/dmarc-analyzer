@@ -52,7 +52,8 @@ class TestRates:
         make_rule(session, org, "dmarc_fail_rate", threshold=25)
         events = evaluate_rules_for_org(session, org.id, NOW)
         assert len(events) == 1
-        assert events[0].title == "30 % scheitern an DMARC"
+        assert events[0].title == "30 % scheitern an DMARC für example.org"
+        assert events[0].domain_id == domain.id
         assert "30 von 100 Nachrichten" in events[0].description
         assert json.loads(events[0].metrics)["failed"] == 30
 
@@ -105,7 +106,7 @@ class TestRates:
                    created_at=minutes_ago(5))
         make_rule(session, org, alert_type, threshold=30)
         events = evaluate_rules_for_org(session, org.id, NOW)
-        assert [e.title for e in events] == [f"40 % ohne passendes {label}"]
+        assert [e.title for e in events] == [f"40 % ohne passendes {label} für example.org"]
 
 
 class TestVolume:
@@ -170,7 +171,7 @@ class TestReportsMissing:
         add_report(session, org, domain, [("192.0.2.1", 5, True, True, True)], created_at=NOW - timedelta(days=3))
         make_rule(session, org, "reports_missing", window=2880)
         events = evaluate_rules_for_org(session, org.id, NOW)
-        assert [e.title for e in events] == ["Seit 2 Tagen keine Berichte"]
+        assert [e.title for e in events] == ["Seit 2 Tagen keine Berichte für example.org"]
 
     def test_quiet_with_a_recent_report(self, session):
         org = make_org(session)
@@ -180,9 +181,17 @@ class TestReportsMissing:
         assert evaluate_rules_for_org(session, org.id, NOW) == []
 
 
+def _sent_for(session, org, *ips, name="example.org"):
+    """The sources sent for one domain in the window; a rule for all domains checks each domain."""
+    domain = make_domain(session, org, name)
+    add_report(session, org, domain, [(ip, 1, True, True, True) for ip in ips], created_at=minutes_ago(5))
+    return domain
+
+
 class TestSources:
     def test_new_unknown_source_once_per_ip(self, session):
         org = make_org(session)
+        _sent_for(session, org, "198.51.100.7", "198.51.100.8", "198.51.100.9")
         add_source(session, org, "198.51.100.7", total=12, failed=12, first_seen=minutes_ago(5))
         add_source(session, org, "198.51.100.8", total=5, first_seen=minutes_ago(5), classification="trusted")
         add_source(session, org, "198.51.100.9", total=5, first_seen=NOW - timedelta(days=5))
@@ -193,6 +202,7 @@ class TestSources:
 
     def test_high_volume_source_uses_threshold(self, session, monkeypatch):
         org = make_org(session)
+        _sent_for(session, org, "198.51.100.7")
         add_source(session, org, "198.51.100.7", total=300, first_seen=minutes_ago(5))
         make_rule(session, org, "high_volume_source")
         assert evaluate_rules_for_org(session, org.id, NOW) == []  # default 500
@@ -201,6 +211,7 @@ class TestSources:
 
     def test_new_source_with_failures(self, session):
         org = make_org(session)
+        _sent_for(session, org, "198.51.100.7", "198.51.100.8")
         add_source(session, org, "198.51.100.7", total=10, failed=4, first_seen=minutes_ago(5))
         add_source(session, org, "198.51.100.8", total=10, failed=0, first_seen=minutes_ago(5))
         make_rule(session, org, "new_source_dmarc_fail")
@@ -241,6 +252,55 @@ class TestSmtpRules:
         make_rule(session, org, "smtp_rate_limit", threshold=1)
         titles = sorted(e.title for e in evaluate_rules_for_org(session, org.id, NOW))
         assert titles == ["1-mal Grenze für eingehende Mails erreicht", "2 Mails an unbekannte Adressen abgelehnt"]
+
+
+class TestRulesForAllDomains:
+    def test_each_domain_gets_its_own_event(self, session):
+        org = make_org(session)
+        failing = make_domain(session, org, "example.org")
+        fine = make_domain(session, org, "example.net")
+        also_failing = make_domain(session, org, "example.com")
+        add_report(session, org, failing, [("192.0.2.2", 40, False, False, False)], created_at=minutes_ago(5))
+        add_report(session, org, fine, [("192.0.2.1", 400, True, True, True)], created_at=minutes_ago(5))
+        add_report(session, org, also_failing, [("192.0.2.3", 30, False, False, False)], created_at=minutes_ago(5))
+        make_rule(session, org, "dmarc_fail_rate", threshold=10)
+        events = evaluate_rules_for_org(session, org.id, NOW)
+        assert sorted(e.title for e in events) == ["100 % scheitern an DMARC für example.com",
+                                                   "100 % scheitern an DMARC für example.org"]
+
+    def test_pause_counts_per_domain(self, session):
+        org = make_org(session)
+        first = make_domain(session, org, "example.org")
+        second = make_domain(session, org, "example.net")
+        add_report(session, org, first, [("192.0.2.2", 40, False, False, False)], created_at=minutes_ago(5))
+        make_rule(session, org, "dmarc_fail_rate", threshold=10, cooldown=600, window=240)
+        assert len(evaluate_rules_for_org(session, org.id, NOW)) == 1
+        # The second domain starts failing later; the pause of the first one does not hold it back
+        add_report(session, org, second, [("192.0.2.3", 40, False, False, False)], created_at=NOW + timedelta(minutes=5))
+        later = evaluate_rules_for_org(session, org.id, NOW + timedelta(minutes=10))
+        assert [e.domain_id for e in later] == [second.id]
+
+    def test_domains_without_any_report_stay_quiet(self, session):
+        org = make_org(session)
+        reporting = make_domain(session, org, "example.org")
+        make_domain(session, org, "geparkt.example")
+        add_report(session, org, reporting, [("192.0.2.1", 5, True, True, True)], created_at=NOW - timedelta(days=3))
+        make_rule(session, org, "reports_missing", window=2880)
+        assert [e.domain_id for e in evaluate_rules_for_org(session, org.id, NOW)] == [reporting.id]
+
+    def test_inactive_domains_are_left_out(self, session):
+        org = make_org(session)
+        domain = make_domain(session, org)
+        add_report(session, org, domain, [("192.0.2.2", 40, False, False, False)], created_at=minutes_ago(5))
+        domain.is_active = False
+        make_rule(session, org, "dmarc_fail_rate", threshold=10)
+        assert evaluate_rules_for_org(session, org.id, NOW) == []
+
+    def test_domain_rule_reports_never_seen_domains(self, session):
+        org = make_org(session)
+        domain = make_domain(session, org)
+        make_rule(session, org, "reports_missing", window=2880, domain=domain)
+        assert [e.domain_id for e in evaluate_rules_for_org(session, org.id, NOW)] == [domain.id]
 
 
 class TestDeduplicationAndCooldown:

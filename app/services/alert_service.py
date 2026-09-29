@@ -51,6 +51,13 @@ ALERT_TYPES = {
 # These types count server-wide mail traffic; only the operator may create them
 OPERATOR_ALERT_TYPES = {"smtp_invalid_recipient", "smtp_rate_limit"}
 
+# A rule for all domains checks each active domain on its own for these types, so every alert names its domain
+# and reaches the further recipients of that domain
+PER_DOMAIN_TYPES = {
+    "dmarc_fail_rate", "spf_fail_rate", "dkim_fail_rate", "volume_spike", "volume_drop", "reports_missing",
+    "new_unknown_source", "high_volume_source", "new_source_dmarc_fail",
+}
+
 # An event in one of these states blocks a second event for the same rule and subject
 ACTIVE_STATUSES = ("open", "acknowledged")
 
@@ -252,6 +259,9 @@ def _eval_reports_missing(db: Session, rule: AlertRule, now: datetime) -> list[F
         query = query.filter_by(domain_id=rule.domain_id)
     if query.filter(DmarcReport.created_at >= since).first():
         return []
+    if getattr(rule, "for_each_domain", False) and not query.first():
+        # Checked as one of all domains: a domain that never had a report has nothing that stays away
+        return []
     window = _window_text(rule.time_window_minutes)
     return [Finding(
         title=f"Seit {window} keine Berichte{_domain_label(db, rule.domain_id)}",
@@ -411,13 +421,32 @@ EVALUATORS: dict[str, Callable[[Session, AlertRule, datetime], list[Finding]]] =
 
 # Rules ------------------------------------------------------------------------------
 
-def _can_fire(rule: AlertRule, now: datetime) -> bool:
-    if not rule.is_active:
-        return False
-    next_allowed = rule.next_allowed_at
-    if next_allowed is not None and next_allowed.tzinfo is None:
-        next_allowed = next_allowed.replace(tzinfo=now.tzinfo)
-    return next_allowed is None or next_allowed <= now
+class _DomainView:
+    """A rule for all domains as it applies to one of them: same settings, this domain."""
+
+    for_each_domain = True
+
+    def __init__(self, rule: AlertRule, domain_id: str) -> None:
+        self._rule = rule
+        self.domain_id = domain_id
+
+    def __getattr__(self, name: str):
+        return getattr(self._rule, name)
+
+
+def _findings(db: Session, rule: AlertRule, evaluator, now: datetime) -> list[Finding]:
+    if rule.domain_id or rule.alert_type not in PER_DOMAIN_TYPES:
+        return evaluator(db, rule, now)
+    domain_ids = [d for (d,) in db.query(Domain.id).filter_by(organization_id=rule.organization_id, is_active=True)
+                  .order_by(Domain.name)]
+    return [finding for domain_id in domain_ids for finding in evaluator(db, _DomainView(rule, domain_id), now)]
+
+
+def _same_subject(query, finding: Finding):
+    query = query.filter(AlertEvent.domain_id == finding.domain_id) if finding.domain_id else \
+        query.filter(AlertEvent.domain_id.is_(None))
+    return query.filter(AlertEvent.source_ip == finding.source_ip) if finding.source_ip else \
+        query.filter(AlertEvent.source_ip.is_(None))
 
 
 def _is_duplicate(db: Session, rule: AlertRule, finding: Finding) -> bool:
@@ -425,11 +454,16 @@ def _is_duplicate(db: Session, rule: AlertRule, finding: Finding) -> bool:
         AlertEvent.rule_id == rule.id,
         AlertEvent.status.in_(ACTIVE_STATUSES),
     )
-    query = query.filter(AlertEvent.domain_id == finding.domain_id) if finding.domain_id else \
-        query.filter(AlertEvent.domain_id.is_(None))
-    query = query.filter(AlertEvent.source_ip == finding.source_ip) if finding.source_ip else \
-        query.filter(AlertEvent.source_ip.is_(None))
-    return query.first() is not None
+    return _same_subject(query, finding).first() is not None
+
+
+def _in_pause(db: Session, rule: AlertRule, finding: Finding, now: datetime) -> bool:
+    """The rule raised an event for the same domain and source within its pause."""
+    if not rule.cooldown_minutes:
+        return False
+    since = now - timedelta(minutes=rule.cooldown_minutes)
+    query = db.query(AlertEvent.id).filter(AlertEvent.rule_id == rule.id, AlertEvent.created_at > since)
+    return _same_subject(query, finding).first() is not None
 
 
 def evaluate_rules_for_org(db: Session, org_id: str, now: datetime | None = None) -> list[AlertEvent]:
@@ -438,14 +472,12 @@ def evaluate_rules_for_org(db: Session, org_id: str, now: datetime | None = None
     fired: list[AlertEvent] = []
     rules = db.query(AlertRule).filter_by(organization_id=org_id, is_active=True).all()
     for rule in rules:
-        if not _can_fire(rule, now):
-            continue
         evaluator = EVALUATORS.get(rule.alert_type)
         if evaluator is None:
             logger.warning("Rule %s has unknown alert type %s", rule.id, rule.alert_type)
             continue
         try:
-            findings = evaluator(db, rule, now)
+            findings = _findings(db, rule, evaluator, now)
         except Exception:
             logger.exception("Error evaluating rule %s", rule.id)
             continue
@@ -453,10 +485,10 @@ def evaluate_rules_for_org(db: Session, org_id: str, now: datetime | None = None
             raise_event(
                 db, org_id=org_id, rule=rule, alert_type=rule.alert_type, severity=rule.severity,
                 title=f.title, description=f.description, domain_id=f.domain_id, source_ip=f.source_ip,
-                metrics=f.metrics,
+                metrics=f.metrics, now=now,
             )
             for f in findings
-            if not _is_duplicate(db, rule, f)
+            if not _is_duplicate(db, rule, f) and not _in_pause(db, rule, f, now)
         ]
         if events:
             rule.last_triggered_at = now
@@ -503,6 +535,7 @@ def raise_event(
     metrics: dict | None = None,
     report_id: str | None = None,
     smtp_message_id: str | None = None,
+    now: datetime | None = None,
 ) -> AlertEvent:
     """Store an event and queue one notification per channel and per further recipient of its domain."""
     event = AlertEvent(
@@ -519,6 +552,8 @@ def raise_event(
         smtp_message_id=smtp_message_id,
         status="open",
     )
+    if now is not None:
+        event.created_at = now
     db.add(event)
     db.flush()
     for channel_id in _channel_ids_for(db, org_id, rule):
