@@ -119,7 +119,7 @@ def refresh_now(
 def decide_sender(
     request: Request,
     sender_key: str,
-    decision: str = Form(...),
+    decision: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),

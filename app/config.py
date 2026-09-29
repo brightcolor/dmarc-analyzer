@@ -274,6 +274,10 @@ class Settings(BaseSettings):
         "", description="Zusätzlicher Absenderkatalog als JSON-Datei. Einträge mit gleichem Schlüssel ersetzen "
                         "die eingebauten, neue kommen dazu.",
     )
+    PUBLIC_SUFFIX_LIST_PATH: str = Field(
+        "", description="Eigene Fassung der Public Suffix List (public_suffix_list.dat) für die Organisationsdomain; "
+                        "leer für die mitgelieferte.",
+    )
     DNS_NAMESERVERS: str = Field(
         "", description="DNS-Server für das Nachschlagen, durch Komma getrennt; leer für die des Systems.",
     )
@@ -400,6 +404,16 @@ class Settings(BaseSettings):
         for entry in (v.strip() for v in value.split(",")):
             if entry and (urlsplit(entry).scheme not in ("http", "https") or not urlsplit(entry).netloc):
                 raise ValueError(f"{entry!r} ist keine Adresse; erwartet wird etwa https://dmarc.example.com")
+        return value
+
+    @field_validator("PUBLIC_SUFFIX_LIST_PATH")
+    @classmethod
+    def _suffix_list_file(cls, value: str) -> str:
+        from pathlib import Path
+
+        if value and not Path(value).is_file():
+            raise ValueError(f"die Datei {value!r} gibt es nicht; lade sie etwa von publicsuffix.org herunter "
+                             "oder lass die Einstellung leer")
         return value
 
     @field_validator("DNS_NAMESERVERS")

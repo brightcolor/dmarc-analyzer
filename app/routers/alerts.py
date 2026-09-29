@@ -94,8 +94,8 @@ def alert_rules(
 @router.post("/rules/new")
 def create_alert_rule(
     request: Request,
-    name: str = Form(...),
-    alert_type: str = Form(...),
+    name: str = Form(""),
+    alert_type: str = Form(""),
     domain_id: str | None = Form(None),
     threshold: str = Form(""),
     time_window_minutes: str = Form("60"),
@@ -290,7 +290,7 @@ def notification_channels(
 def create_channel(
     request: Request,
     name: str = Form(""),
-    channel_type: str = Form(...),
+    channel_type: str = Form(""),
     url: str = Form(""),
     topic: str = Form(""),
     token: str = Form(""),

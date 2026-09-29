@@ -269,6 +269,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `NOTIFICATION_BLOCK_PRIVATE_TARGETS`, `NOTIFICATION_ALLOWED_INTERNAL_HOSTS` | an, leer | Schutz interner Dienste |
 | `DEFAULT_PLAN_*` | 50 Domains, 20 Benutzer, 365 Tage | Grenzen des Standardtarifs für neue Organisationen |
 | `DNS_NAMESERVERS` | die des Systems | DNS-Server für das Nachschlagen |
+| `PUBLIC_SUFFIX_LIST_PATH` | mitgelieferte Liste | eigene Public Suffix List für die Organisationsdomain |
 
 ---
 

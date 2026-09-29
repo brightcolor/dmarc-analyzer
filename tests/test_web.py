@@ -327,3 +327,20 @@ class TestAlertsAfterImport:
         # The seeded sources are new as well, all within the last hour
         assert "198.51.100.77" in {e.source_ip for e in events}
         assert len(events) == len({e.source_ip for e in events})
+
+
+class TestEmptyFields:
+    def test_empty_domain_name_gets_the_routes_message(self, web, session_factory):
+        _login(web, _seed(session_factory)["org"])
+        response = web.post("/domains/new", data={"name": ""})
+        assert response.status_code == 400
+        assert "kein gültiger Domainname" in response.text
+
+    def test_note_can_be_cleared(self, web, session_factory):
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        web.post(f"/source-ips/{ids['source']}/classify", data={"classification": "trusted", "notes": "Newsletter"})
+        web.post(f"/source-ips/{ids['source']}/classify", data={"classification": "trusted", "notes": ""})
+        db = session_factory()
+        assert db.get(SourceIp, ids["source"]).notes is None
+        db.close()

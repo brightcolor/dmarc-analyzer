@@ -104,8 +104,8 @@ def source_ip_detail(
 def classify_ip(
     request: Request,
     ip_id: str,
-    classification: str = Form(...),
-    notes: str | None = Form(None),
+    classification: str = Form(""),
+    notes: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
@@ -120,7 +120,6 @@ def classify_ip(
 
     if classification != sip.classification or sip.classification_source != "manual":
         classify_manually(sip, classification, user.id, db)
-    if notes is not None:
-        sip.notes = notes
+    sip.notes = notes.strip() or None
     db.commit()
     return RedirectResponse(url=f"/source-ips/{ip_id}", status_code=303)

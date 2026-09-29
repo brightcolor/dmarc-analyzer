@@ -111,7 +111,7 @@ def select_org_page(
 @router.post("/select")
 def select_org(
     request: Request,
-    org_id: str = Form(...),
+    org_id: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):

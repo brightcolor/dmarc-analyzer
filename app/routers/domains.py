@@ -69,7 +69,7 @@ def _form(request: Request, user: User, org: Organization, name: str = "", error
 @router.post("/new")
 def domain_create(
     request: Request,
-    name: str = Form(...),
+    name: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),

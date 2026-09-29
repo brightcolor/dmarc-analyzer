@@ -5,6 +5,11 @@ All rules are pure functions operating on plain data structures
 so they can be tested in isolation without a database.
 """
 from dataclasses import dataclass, field
+from functools import lru_cache
+
+from publicsuffixlist import PublicSuffixList
+
+from app.config import settings
 
 
 @dataclass
@@ -48,18 +53,24 @@ class EvalResult:
     detail: str
 
 
+@lru_cache(maxsize=1)
+def public_suffix_list() -> PublicSuffixList:
+    """The list that comes with the package, or the file in PUBLIC_SUFFIX_LIST_PATH."""
+    if settings.PUBLIC_SUFFIX_LIST_PATH:
+        with open(settings.PUBLIC_SUFFIX_LIST_PATH, "rb") as source:
+            return PublicSuffixList(source)
+    return PublicSuffixList()
+
+
 def _organizational_domain(fqdn: str) -> str:
     """
-    Minimal organizational domain extraction (no Public Suffix List).
-    Takes the last two labels (e.g. mail.example.com → example.com).
-    A proper implementation should use the Public Suffix List.
+    Organizational domain per RFC 7489: the public suffix plus one label, from the Public Suffix List
+    (mail.example.co.uk → example.co.uk). A name that is itself a public suffix stays as it is.
     """
     if not fqdn:
         return ""
-    parts = fqdn.lower().rstrip(".").split(".")
-    if len(parts) <= 2:
-        return ".".join(parts)
-    return ".".join(parts[-2:])
+    name = fqdn.lower().strip().rstrip(".")
+    return public_suffix_list().privatesuffix(name) or name
 
 
 def _domains_aligned(d1: str, d2: str, mode: str) -> bool:

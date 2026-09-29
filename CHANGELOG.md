@@ -7,6 +7,24 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.5.1] – 2026-09-29
+
+### Behoben
+
+- Die Organisationsdomain für das Alignment kommt aus der Public Suffix List. `mail.example.co.uk`
+  gehört damit zu `example.co.uk`, und Kunden gemeinsamer Domains wie `github.io` bleiben getrennt.
+  Eine neuere Fassung der Liste kann der Betreiber über `PUBLIC_SUFFIX_LIST_PATH` einbinden.
+- Eine geleerte Notiz an einer IP-Adresse wird gespeichert.
+
+### Geändert
+
+- Abhängigkeiten aktualisiert: FastAPI 0.136, Starlette 1.2, pydantic 2.13, Jinja2 3.1.6,
+  python-multipart 0.0.29 und psycopg2 2.9.12; dazu pytest 9 und die GitHub Actions für Build und
+  Tests.
+- Nicht genutzte Pakete entfernt: python-jose, aiofiles, APScheduler, slowapi, limits und
+  email-validator.
+- Formulare mit leerem Pflichtfeld zeigen die Meldung der jeweiligen Seite.
+
 ## [0.5.0] – 2026-09-29
 
 ### Neu
@@ -235,7 +253,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.1
 [0.5.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.4.0
 [0.3.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.3.0
