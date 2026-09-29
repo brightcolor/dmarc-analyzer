@@ -556,10 +556,11 @@ def raise_event(
         event.created_at = now
     db.add(event)
     db.flush()
+    stamp = {"created_at": now} if now is not None else {}
     for channel_id in _channel_ids_for(db, org_id, rule):
-        db.add(NotificationDelivery(alert_event_id=event.id, channel_id=channel_id, status="pending"))
+        db.add(NotificationDelivery(alert_event_id=event.id, channel_id=channel_id, status="pending", **stamp))
     for address in alert_addresses(db, domain_id):
-        db.add(NotificationDelivery(alert_event_id=event.id, recipient=address, status="pending"))
+        db.add(NotificationDelivery(alert_event_id=event.id, recipient=address, status="pending", **stamp))
     db.flush()
     return event
 

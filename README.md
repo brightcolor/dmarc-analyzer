@@ -237,6 +237,12 @@ verdoppelt sich mit jedem Versuch. Den Grund eines Fehlschlags zeigen Kanalliste
 | ntfy | Thema, optional eigener Server und Zugangstoken | Nachricht mit Titel, Priorität nach Schwere und Link |
 | Slack oder Mattermost | Adresse des eingehenden Webhooks | Nachricht mit Farbe nach Schwere |
 
+Alarme per E-Mail sammelt die Anwendung `NOTIFICATION_EMAIL_BUNDLE_SECONDS` Sekunden lang (Vorgabe 900)
+und schickt sie dann in einer Mail je Kanal oder Adresse, die wichtigsten zuerst. Ein einzelner Alarm
+kommt in seiner eigenen Mail. Eine Sammelmail führt höchstens `NOTIFICATION_BUNDLE_MAX_ITEMS` Alarme
+einzeln auf und nennt die übrigen als Zahl. Mit `0` geht jeder Alarm sofort einzeln raus. Webhook, ntfy
+und Slack bekommen jeden Alarm sofort.
+
 Der Webhook bekommt:
 
 ```json
@@ -350,6 +356,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `DIGEST_*` | montags, 8 Uhr, 7 Tage | Termin und Inhalt des Wochenberichts |
 | `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
 | `NOTIFICATION_*`, `NTFY_DEFAULT_URL` | 3 Versuche, `https://ntfy.sh` | Wiederholungen und Zeitlimits der Benachrichtigungen |
+| `NOTIFICATION_EMAIL_BUNDLE_SECONDS`, `NOTIFICATION_BUNDLE_MAX_ITEMS` | 900, 50 | Sammelmails für Alarme |
 | `SCHEDULER_ENABLED`, Takte `*_INTERVAL_SECONDS` | an | Zeitplaner im Web-Container |
 | `RETENTION_*`, `SMTP_REJECTION_RETENTION_DAYS` | täglich, 30 Tage | Aufräumen |
 | `SENDER_LOOKUP_*`, `SENDER_ASN_*` | an, jede Minute, 30 Tage | Zuordnung der Absender per DNS |

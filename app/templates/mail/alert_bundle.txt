@@ -1,0 +1,29 @@
+{% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
+Hallo,
+
+der {{ app_name }} meldet für {{ title }} {{ count }} neue Alarme ({{ summary }}). Die wichtigsten stehen oben.
+
+{% for item in items %}
+{{ item.title }}
+{{ item.severity }}{% if item.domain %} · {{ item.domain }}{% endif %} · {{ item.time }}
+{% if item.description %}
+{{ item.description }}
+{% endif %}
+
+{% endfor %}
+{% if more %}
+Dazu {{ more }} weitere Alarme, alle stehen in der Liste.
+
+{% endif %}
+Alarme ansehen: {{ events_url }}
+
+Viele Grüße
+{{ app_name }}
+{% endfilter %}
+
+
+{{ "-- " }}
+{% filter wordwrap(width=78, break_long_words=false, break_on_hyphens=false) %}
+{{ app_name }} · {{ organization.name }}
+{% if channel %}Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Alarme, die kurz nacheinander entstehen, kommen gesammelt in einer Mail. Kanäle verwaltest du unter Alarme → Kanäle: {{ app_url }}/alerts/channels{% else %}Du bekommst diese Mail, weil deine Adresse bei {{ domains | join(", ") }} als Empfänger für Alarme eingetragen ist. Austragen kann dich ein Manager von {{ organization.name }} auf der Seite der Domain.{% endif %}
+{% endfilter %}

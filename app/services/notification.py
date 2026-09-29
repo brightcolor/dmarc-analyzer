@@ -263,6 +263,16 @@ def send_event(event: AlertEvent, channel: NotificationChannel) -> None:
         raise ChannelError(f"Die Kanalart {channel.channel_type!r} kennt die Anwendung nicht. Lege den Kanal neu an.")
 
 
+def send_bundle(events: list[AlertEvent], *, channel: NotificationChannel | None = None,
+                address: str | None = None) -> None:
+    """Several events in one mail, to an email channel or to a further recipient of their domain."""
+    from app.services.mail_render import render_alert_bundle
+
+    subject, text, html = render_alert_bundle(events, channel, recipient=address)
+    recipients = [address] if address else (channel_config(channel).get("to") or [])
+    send_mail(recipients, subject, text, html)
+
+
 def send_event_to_address(event: AlertEvent, address: str) -> None:
     """Send one event by mail to a further recipient of its domain."""
     from app.services.mail_render import render_alert_mail
@@ -316,6 +326,8 @@ def dispatch_pending(db: Session, now: datetime | None = None) -> dict[str, int]
     )
     from app.services.domain_recipients import still_wants_alerts
 
+    window = timedelta(seconds=settings.NOTIFICATION_EMAIL_BUNDLE_SECONDS)
+    singles, mailboxes = [], {}
     for delivery in deliveries:
         event, channel = delivery.alert_event, delivery.channel
         if delivery.channel_id is None:
@@ -330,29 +342,65 @@ def dispatch_pending(db: Session, now: datetime | None = None) -> dict[str, int]
             delivery.error_message = "Der Kanal ist ausgeschaltet. Die Benachrichtigung wurde nicht verschickt."
             counts["skipped"] += 1
             continue
-        try:
-            if channel is None:
-                send_event_to_address(event, delivery.recipient)
-            else:
-                send_event(event, channel)
-        except (ChannelError, MailNotConfigured, MailDeliveryError) as exc:
-            _mark_failed(delivery, str(exc), now)
-            counts["failed"] += 1
-        except Exception as exc:
-            logger.exception("Unexpected error sending delivery %s", delivery.id)
-            _mark_failed(delivery, f"Unerwarteter Fehler beim Versand ({exc.__class__.__name__}). Die Anwendung "
-                         "versucht es erneut; bleibt der Fehler, hilft das Log des Web-Containers weiter.", now)
-            counts["failed"] += 1
+        target = _mailbox(delivery) if window else None
+        if target:
+            mailboxes.setdefault(target, []).append(delivery)
         else:
-            delivery.status = "sent"
-            delivery.sent_at = now
-            delivery.error_message = None
-            delivery.next_attempt_at = None
-            counts["sent"] += 1
+            singles.append(delivery)
+
+    for delivery in singles:
+        _attempt(delivery, [delivery], now, counts)
+    for (kind, key), members in mailboxes.items():
+        if now - min(_aware(m.created_at, now) for m in members) < window:
+            continue  # still collecting; the next run sends them together
+        _attempt(members[0] if len(members) == 1 else None, members, now, counts,
+                 address=key if kind == "address" else None)
     db.flush()
     if any(counts.values()):
         logger.info("Notifications: %(sent)d sent, %(failed)d failed, %(skipped)d skipped", counts)
     return counts
+
+
+def _mailbox(delivery: NotificationDelivery) -> tuple[str, str] | None:
+    """Mail deliveries are collected per channel or address; other channels go out at once."""
+    if delivery.channel_id is None:
+        return "address", delivery.recipient
+    if delivery.channel.channel_type == "email":
+        return "channel", delivery.channel_id
+    return None
+
+
+def _aware(value: datetime, now: datetime) -> datetime:
+    return value.replace(tzinfo=now.tzinfo) if value.tzinfo is None else value
+
+
+def _attempt(single: NotificationDelivery | None, members: list[NotificationDelivery], now: datetime,
+             counts: dict[str, int], address: str | None = None) -> None:
+    """Send one delivery, or all members as one mail, and record the outcome on each of them."""
+    try:
+        if single is not None and single.channel is None:
+            send_event_to_address(single.alert_event, single.recipient)
+        elif single is not None:
+            send_event(single.alert_event, single.channel)
+        else:
+            send_bundle([m.alert_event for m in members], channel=members[0].channel, address=address)
+    except (ChannelError, MailNotConfigured, MailDeliveryError) as exc:
+        for member in members:
+            _mark_failed(member, str(exc), now)
+        counts["failed"] += len(members)
+    except Exception as exc:
+        logger.exception("Unexpected error sending %d deliveries", len(members))
+        for member in members:
+            _mark_failed(member, f"Unerwarteter Fehler beim Versand ({exc.__class__.__name__}). Die Anwendung "
+                         "versucht es erneut; bleibt der Fehler, hilft das Log des Web-Containers weiter.", now)
+        counts["failed"] += len(members)
+    else:
+        for member in members:
+            member.status = "sent"
+            member.sent_at = now
+            member.error_message = None
+            member.next_attempt_at = None
+        counts["sent"] += len(members)
 
 
 def _mark_failed(delivery: NotificationDelivery, reason: str, now: datetime) -> None:

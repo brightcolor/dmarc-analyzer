@@ -12,6 +12,8 @@ os.environ["MAIL_SMTP_HOST"] = ""
 # Tests that need DNS answers bring their own
 os.environ["SENDER_LOOKUP_ENABLED"] = "false"
 os.environ["NOTIFICATION_BLOCK_PRIVATE_TARGETS"] = "false"
+# Alerts by mail go out at once; the bundling tests set their own window
+os.environ["NOTIFICATION_EMAIL_BUNDLE_SECONDS"] = "0"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

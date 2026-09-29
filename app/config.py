@@ -142,6 +142,14 @@ class Settings(BaseSettings):
     NOTIFICATION_BATCH_SIZE: int = Field(
         100, ge=1, le=10_000, description="Höchstzahl Benachrichtigungen, die ein Lauf verschickt.",
     )
+    NOTIFICATION_EMAIL_BUNDLE_SECONDS: int = Field(
+        900, ge=0, le=86_400,
+        description="Sekunden, die Alarme per E-Mail gesammelt werden; danach kommen sie in einer Mail je Kanal oder "
+                    "Adresse. 0 schickt jeden Alarm sofort einzeln.",
+    )
+    NOTIFICATION_BUNDLE_MAX_ITEMS: int = Field(
+        50, ge=1, le=500, description="Alarme, die eine Sammelmail einzeln aufführt; die übrigen nennt sie als Zahl.",
+    )
     NOTIFICATION_HTTP_TIMEOUT_SECONDS: int = Field(
         10, ge=1, le=120, description="Zeitlimit in Sekunden für Webhook, ntfy und Slack.",
     )

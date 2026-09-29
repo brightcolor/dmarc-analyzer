@@ -7,6 +7,15 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.9.0] – 2026-09-29
+
+### Neu
+
+- Alarme per E-Mail kommen gebündelt: Die Anwendung sammelt sie `NOTIFICATION_EMAIL_BUNDLE_SECONDS`
+  Sekunden (Vorgabe 900) und schickt dann eine Mail je Kanal oder Adresse, die wichtigsten zuerst. Ein
+  einzelner Alarm behält seine eigene Mail. `NOTIFICATION_BUNDLE_MAX_ITEMS` begrenzt die Liste in
+  einer Mail (Vorgabe 50), `0` schaltet das Sammeln ab. Webhook, ntfy und Slack bleiben sofort.
+
 ## [0.8.1] – 2026-09-29
 
 ### Geändert

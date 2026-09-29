@@ -97,6 +97,50 @@ def render_alert_mail(event, channel, recipient: str | None = None) -> tuple[str
     return subject, text, html
 
 
+SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
+SEVERITY_COUNT_WORDS = {"critical": ("kritischer Alarm", "kritische Alarme"), "warning": ("Warnung", "Warnungen"),
+                        "info": ("Hinweis", "Hinweise")}
+
+
+def render_alert_bundle(events, channel=None, recipient: str | None = None) -> tuple[str, str, str]:
+    """Subject, text and HTML for several alerts in one mail, most severe first."""
+    from app.config import settings as current
+
+    events = sorted(events, key=lambda e: (SEVERITY_ORDER.get(e.severity, 9), e.created_at))
+    shown = events[:current.NOTIFICATION_BUNDLE_MAX_ITEMS]
+    organization = events[0].organization or (channel.organization if channel else None)
+    domains = sorted({e.domain.name for e in events if e.domain})
+    title = ", ".join(domains) if recipient and domains else organization.name
+    counts = {level: sum(1 for e in events if e.severity == level) for level in SEVERITY_COUNT_WORDS}
+    summary = " · ".join(_plural(counts[level], *SEVERITY_COUNT_WORDS[level])
+                         for level in SEVERITY_COUNT_WORDS if counts[level])
+    subject = f"{len(events)} Alarme für {title}"
+    if counts["critical"]:
+        subject = f"Kritisch: {subject}"
+    context = {
+        **_common(),
+        "subject": subject,
+        "title": title,
+        "summary": summary,
+        "count": len(events),
+        "more": len(events) - len(shown),
+        "items": [
+            {"title": e.title, "severity": SEVERITY_LABELS.get(e.severity, e.severity),
+             "domain": e.domain.name if e.domain else None, "time": _format_datetime(e.created_at),
+             "description": e.description}
+            for e in shown
+        ],
+        "organization": organization,
+        "channel": channel,
+        "recipient": recipient,
+        "domains": domains,
+        "square": SEVERITY_SQUARE.get(events[0].severity, SEVERITY_SQUARE["info"]),
+        "events_url": f"{_app_url()}/alerts/events?status=open",
+    }
+    text, html = _render("alert_bundle", context)
+    return subject, text, html
+
+
 def _plural(count: int, one: str, many: str) -> str:
     return f"{_format_number(count)} {one if count == 1 else many}"
 
