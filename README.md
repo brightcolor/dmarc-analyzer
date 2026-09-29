@@ -137,8 +137,10 @@ Ob alles steht, zeigt die [DNS-Prüfung](#dns-prüfung) auf jeder Domainseite.
 ## DNS-Prüfung
 
 Die Anwendung prüft für jede aktive Domain, ob die DNS-Einträge stehen, die DMARC und die Berichte
-brauchen. Das Ergebnis steht auf der Domainseite unter **DNS-Prüfung**, mit Ampel je Prüfung, dem
-gefundenen Wert und, wo etwas fehlt oder falsch ist, dem richtigen Wert zum Kopieren.
+brauchen. Das Ergebnis steht auf der Domainseite unter **DNS-Prüfung**, mit einem Zeichen je Prüfung
+(Haken: in Ordnung, i: Hinweis, Ausrufezeichen: Warnung, Kreuz: Fehler, Fragezeichen: keine Antwort), dem
+gefundenen Wert und, wo etwas fehlt oder falsch ist, dem richtigen Wert zum Kopieren. Die Wörter stehen
+im Tooltip, in einer Zeile über der Liste und für Screenreader.
 
 | Prüfung | In Ordnung, wenn … |
 |---|---|

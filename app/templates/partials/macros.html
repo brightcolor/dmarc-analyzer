@@ -4,6 +4,12 @@
 <span class="bc-state {{ cls }}">{{ text }}</span>
 {%- endmacro %}
 
+{#- DNS state as a round icon: shape and color carry the state, the word is the tooltip and the text for
+    screen readers. -#}
+{% macro dns_icon(state, text) -%}
+<span class="app-status app-status--{{ state or 'none' }}" title="{{ text }}"><svg aria-hidden="true"><use href="#{{ (state or '') | dns_icon }}"/></svg><span class="bc-sr">{{ text }}</span></span>
+{%- endmacro %}
+
 {% macro format_badge(code) -%}
 {% set info = format_info(code) -%}
 <span class="app-format app-format--{{ code or 'unknown' }}" title="{{ info.name }}">{{ info.label }}</span>

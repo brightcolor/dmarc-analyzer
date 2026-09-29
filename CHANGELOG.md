@@ -7,6 +7,15 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.1] – 2026-09-30
+
+### Geändert
+
+- Die DNS-Prüfung zeigt Zeichen statt Wörtern: Haken für in Ordnung, i für Hinweis, Ausrufezeichen für
+  Warnung, Kreuz für Fehler, Fragezeichen für keine Antwort, jeweils in der Farbe des Zustands. Das Zeichen
+  steht vor jeder Prüfung, im Kopf des Kastens und in der Spalte „DNS“ der Domainliste. Die Wörter stehen
+  im Tooltip, in einer Zeile über der Liste und für Screenreader; die Spalte „Ergebnis“ fällt weg.
+
 ## [0.11.0] – 2026-09-30
 
 ### Neu

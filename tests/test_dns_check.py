@@ -594,7 +594,8 @@ class TestPages:
         _login(web, ids["org"])
         page = web.get(f"/domains/{ids['domain']}").text
         assert 'id="dns-pruefung"' in page
-        assert "Noch nicht geprüft" in page and "noch nicht geprüft" in page
+        assert "Noch nicht geprüft" in page
+        assert 'class="app-status app-status--none" title="noch nicht geprüft"' in page
 
     def test_check_now(self, web, session_factory, fake_dns):
         ids = _seed_with_address(session_factory)
@@ -608,6 +609,12 @@ class TestPages:
         assert "Kein DMARC-Eintrag. Ohne ihn schicken Empfänger keine Berichte" in page
         assert "Richtiger Wert für _dmarc.example.com" in page
         assert 'class="bc-row-title">DMARC-Eintrag</span>' in page
+        # States as icons: the word stays as tooltip and for screen readers, the pill with the word is gone
+        assert ('<span class="app-status app-status--error" title="Fehler"><svg aria-hidden="true">'
+                '<use href="#i-st-error"/></svg><span class="bc-sr">Fehler</span></span>') in page
+        assert 'class="app-status app-status--ok" title="in Ordnung"' in page
+        assert 'bc-state--bad">Fehler<' not in page
+        assert 'aria-label="Bedeutung der Zeichen"' in page
 
     def test_all_in_order(self, web, session_factory, fake_dns):
         ids = _seed_with_address(session_factory)
@@ -644,7 +651,8 @@ class TestPages:
         _login(web, ids["org"])
         web.post(f"/domains/{ids['domain']}/dns-check")
         listing = web.get("/domains?dns=error").text
-        assert "example.com" in listing and "Fehler" in listing
+        assert "example.com" in listing
+        assert 'class="app-status app-status--error" title="Fehler"' in listing
         assert "Keine Domain passt zur Suche" in web.get("/domains?dns=ok").text
         dashboard = web.get("/dashboard").text
         assert "1 Domain hat Fehler im DNS" in dashboard

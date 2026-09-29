@@ -74,23 +74,32 @@
 </div>
 
 <section class="bc-panel" id="dns-pruefung" aria-labelledby="dnscheck-titel">
-  <div class="bc-panel__head"><h2 class="bc-panel__title" id="dnscheck-titel">DNS-Prüfung</h2>{{ ui.state(domain.dns_status | dns_status_text, domain.dns_status | dns_state) }}</div>
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="dnscheck-titel">DNS-Prüfung</h2>{{ ui.dns_icon(domain.dns_status, domain.dns_status | dns_status_text) }}</div>
   <div class="bc-panel__body">
     <p style="margin:0">{% if dns_result %}Geprüft am {{ dns_result.checked_at | datetime }}. {% endif %}Die Prüfung sieht nach DMARC, der Zustimmung der Empfangsdomain, SPF, den DKIM-Schlüsseln aus den Berichten, den Mailservern und den TLS-Berichten.{% if dns_auto and domain.is_active %} Aktive Domains prüft die Anwendung {{ dns_max_age | interval }} neu.{% endif %}</p>
+    {% if dns_result %}
+    <ul class="app-legend app-small app-quiet" aria-label="Bedeutung der Zeichen">
+      {% for key in ('ok', 'info', 'warning', 'error', 'unknown') %}<li>{{ ui.dns_icon(key, key | dns_state_text) }}<span aria-hidden="true">{{ key | dns_state_text }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
     {% if can.analyst %}<form method="post" action="/domains/{{ domain.id }}/dns-check" style="margin-top:12px"><button class="bc-button bc-button--secondary" type="submit">Jetzt prüfen</button></form>{% endif %}
   </div>
   {% if dns_result %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Prüfung</th><th class="bc-hide-narrow">Ergebnis</th><th class="bc-hide-narrow">Im DNS gefunden</th></tr></thead>
+      <thead><tr><th>Prüfung</th><th class="bc-hide-narrow">Im DNS gefunden</th></tr></thead>
       <tbody>
         {% for c in dns_result.checks %}
         <tr>
           <td>
-            <span class="bc-row-title">{{ c.title }}</span><span class="bc-row-sub"><span class="bc-only-narrow">{{ c.state | dns_state_text }} · </span>{{ c.message }}</span>
-            {% if c.suggestion and c.state in ('error', 'warning') %}<div class="app-dns-fix">{{ ui.copy_code("dns-fix-" ~ loop.index, c.suggestion, "Richtiger Wert für " ~ c.record) }}</div>{% endif %}
+            <div class="app-check">
+              {{ ui.dns_icon(c.state, c.state | dns_state_text) }}
+              <div>
+                <span class="bc-row-title">{{ c.title }}</span><span class="bc-row-sub">{{ c.message }}</span>
+                {% if c.suggestion and c.state in ('error', 'warning') %}<div class="app-dns-fix">{{ ui.copy_code("dns-fix-" ~ loop.index, c.suggestion, "Richtiger Wert für " ~ c.record) }}</div>{% endif %}
+              </div>
+            </div>
           </td>
-          <td class="bc-hide-narrow">{{ ui.state(c.state | dns_state_text, c.state | dns_state) }}</td>
           <td class="app-mono app-small app-break bc-hide-narrow">{% if c.record %}<span class="app-quiet">{{ c.record }}</span><br>{% endif %}{{ c.found or '—' }}</td>
         </tr>
         {% endfor %}

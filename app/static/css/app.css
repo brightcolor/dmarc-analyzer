@@ -105,6 +105,32 @@
 .app-dns-fix { margin-top: 10px; }
 .app-dns-fix .app-code { margin-bottom: 0; }
 
+/* State as a round icon: shape and color carry the state; the word is tooltip and screen reader text. */
+.app-status {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	background: var(--bc-head);
+	border-radius: 50%;
+	box-shadow: inset 0 0 0 1px var(--bc-rule);
+	color: var(--bc-text-quiet);
+	vertical-align: -5px;
+}
+.app-status svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.app-status--ok { background: var(--bc-lime); box-shadow: none; color: var(--bc-ink); }
+.app-status--warning { background: var(--bc-yellow); box-shadow: none; color: var(--bc-ink); }
+.app-status--error { background: var(--bc-pink); box-shadow: none; color: #ffffff; }
+.bc-row-sub .app-status { width: 18px; height: 18px; vertical-align: -4px; }
+.bc-row-sub .app-status svg { width: 12px; height: 12px; }
+
+/* One check: icon in front, title, message and fix beside it. */
+.app-check { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; }
+.app-check > .app-status { margin-top: 1px; }
+.app-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none; }
+.app-legend li { display: inline-flex; align-items: center; gap: 6px; }
+
 /* Preformatted text such as mail headers: wraps long lines, scrolls when very long. */
 .app-pre {
 	margin: 0;

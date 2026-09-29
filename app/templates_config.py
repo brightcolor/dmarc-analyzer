@@ -292,6 +292,8 @@ DNS_STATE_TEXT = {"ok": "in Ordnung", "info": "Hinweis", "warning": "Warnung", "
 DNS_STATUS_TEXT = {"ok": "in Ordnung", "warning": "Warnungen", "error": "Fehler", "unknown": "unvollständig",
                    "": "noch nicht geprüft"}
 DNS_STATE = {"ok": "bc-state--on", "warning": "bc-state--warn", "error": "bc-state--bad"}
+DNS_ICON = {"ok": "i-check", "info": "i-st-info", "warning": "i-st-warn", "error": "i-st-error",
+            "unknown": "i-st-unknown", "": "i-st-none"}
 
 ROLE_TEXT = {"super_admin": "Betreiber", "org_admin": "Administrator", "manager": "Manager", "analyst": "Analyst",
              "read_only": "Lesezugriff", "member": "Mitglied", "viewer": "Lesezugriff"}
@@ -425,6 +427,7 @@ env.filters["tls_rate_state"] = _tls_rate_state
 env.filters["dns_state_text"] = _lookup(DNS_STATE_TEXT, keep_unknown=True)
 env.filters["dns_status_text"] = _lookup(DNS_STATUS_TEXT, keep_unknown=True)
 env.filters["dns_state"] = _lookup(DNS_STATE)
+env.filters["dns_icon"] = _lookup(DNS_ICON)
 env.filters["tls_policy_text"] = _lookup(tls_reports.POLICY_TEXT, keep_unknown=True)
 env.filters["tls_policy_hint"] = _lookup(tls_reports.POLICY_HINT)
 env.filters["tls_result_text"] = _lookup(tls_reports.RESULT_TEXT, keep_unknown=True)

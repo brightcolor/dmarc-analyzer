@@ -30,9 +30,9 @@
       <tbody>
         {% for d in domains %}
         <tr>
-          <td><a class="bc-row-title app-break" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">{{ 'aktiv' if d.is_active else 'inaktiv' }} · DNS {{ d.dns_status | dns_status_text }} · {% if d.dmarc_policy %}p={{ d.dmarc_policy }}{% else %}Policy noch unbekannt{% endif %} · letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td>
+          <td><a class="bc-row-title app-break" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">{{ 'aktiv' if d.is_active else 'inaktiv' }} · DNS {{ ui.dns_icon(d.dns_status, d.dns_status | dns_status_text) }} · {% if d.dmarc_policy %}p={{ d.dmarc_policy }}{% else %}Policy noch unbekannt{% endif %} · letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td>
           <td class="bc-hide-narrow">{{ ui.state('aktiv' if d.is_active else 'inaktiv', 'bc-state--on' if d.is_active else '') }}</td>
-          <td class="bc-hide-narrow">{{ ui.state(d.dns_status | dns_status_text, d.dns_status | dns_state) }}</td>
+          <td class="bc-hide-narrow">{{ ui.dns_icon(d.dns_status, d.dns_status | dns_status_text) }}</td>
           <td class="app-nowrap bc-hide-narrow">{% if d.dmarc_policy %}<code>p={{ d.dmarc_policy }}</code>{% if d.dmarc_policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if d.dmarc_policy_pct is not none and d.dmarc_policy_pct < 100 %} <code>pct={{ d.dmarc_policy_pct }}</code>{% endif %}{% else %}<span class="app-quiet">noch unbekannt</span>{% endif %}</td>
           <td class="app-nowrap bc-hide-narrow">{{ d.last_report_at | date }}</td>
           <td class="bc-hide-narrow">{% if d.last_report_format %}{{ ui.format_badge(d.last_report_format) }}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
