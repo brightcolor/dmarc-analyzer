@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_org_admin, get_current_user
+from app.dependencies import (
+    get_client_ip,
+    get_current_analyst,
+    get_current_manager,
+    get_current_org,
+    get_current_org_admin,
+    get_current_user,
+)
 from app.models import AlertEvent, AlertRule, Domain, NotificationChannel, NotificationDelivery, Organization, User
 from app.security import utcnow
 from app.services.alert_service import ALERT_TYPES, OPERATOR_ALERT_TYPES, alert_type_hints
@@ -96,7 +103,7 @@ def create_alert_rule(
     severity: str = Form("warning"),
     channel_ids: list[str] | None = Form(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     try:
@@ -144,7 +151,7 @@ def toggle_rule(
     rule_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     rule = db.query(AlertRule).filter_by(id=rule_id, organization_id=org.id).first()
@@ -198,7 +205,7 @@ def acknowledge_event(
     event_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
 ):
     event = db.query(AlertEvent).filter_by(id=event_id, organization_id=org.id).first()
@@ -216,7 +223,7 @@ def resolve_event(
     event_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
 ):
     event = db.query(AlertEvent).filter_by(id=event_id, organization_id=org.id).first()

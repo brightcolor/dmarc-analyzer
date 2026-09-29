@@ -258,20 +258,45 @@ def page_url(request: Request, page: int) -> str:
 
 # Page-wide context --------------------------------------------------------------
 
+def _with_db(request: Request, work, default):
+    """Run a small query for the page frame on the database the request uses."""
+    from app.database import get_db
+    source = request.app.dependency_overrides.get(get_db, get_db)()
+    try:
+        return work(next(source))
+    except Exception:
+        logger.exception("Page context query failed")
+        return default
+    finally:
+        source.close()
+
+
 def _open_alert_count(request: Request) -> int:
     org_id = request.session.get("org_id") if "session" in request.scope else None
     if not org_id:
         return 0
-    from app.database import SessionLocal
     from app.models import AlertEvent
-    db = SessionLocal()
-    try:
-        return db.query(AlertEvent.id).filter_by(organization_id=org_id, status="open").count()
-    except Exception:
-        logger.exception("Could not count open alerts")
-        return 0
-    finally:
-        db.close()
+    return _with_db(
+        request, lambda db: db.query(AlertEvent.id).filter_by(organization_id=org_id, status="open").count(), 0,
+    )
+
+
+def _rights(request: Request) -> dict[str, bool]:
+    """What the signed-in user may do in the current organisation, for showing or hiding forms."""
+    session = request.session if "session" in request.scope else {}
+    user_id, org_id = session.get("user_id"), session.get("org_id")
+    level = -1
+    if user_id:
+        from app.models import User
+        from app.services.auth import role_level
+
+        def lookup(db):
+            user = db.query(User).filter_by(id=user_id, is_active=True).first()
+            return role_level(db, user, org_id) if user else -1
+        level = _with_db(request, lookup, -1)
+    from app.services.auth import ROLE_LEVEL
+    return {"analyst": level >= ROLE_LEVEL["analyst"], "manager": level >= ROLE_LEVEL["manager"],
+            "admin": level >= ROLE_LEVEL["org_admin"]}
 
 
 def page_context(request: Request) -> dict:
@@ -279,6 +304,7 @@ def page_context(request: Request) -> dict:
         "app_name": APP_NAME,
         "version": VERSION,
         "open_alert_count": _open_alert_count(request),
+        "can": _rights(request),
         "flash": request.session.pop("flash", None) if "session" in request.scope else None,
         "password_min_length": settings.PASSWORD_MIN_LENGTH,
     }

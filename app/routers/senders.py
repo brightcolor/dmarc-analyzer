@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_user
+from app.dependencies import get_client_ip, get_current_analyst, get_current_org, get_current_user
 from app.models import Organization, SourceIp, User
 from app.services.alert_service import evaluate_rules_for_org
 from app.services.audit import log_action
@@ -100,7 +100,7 @@ def sender_list(
 def refresh_now(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
 ):
     result = refresh_sources(db, organization_id=org.id)
@@ -121,7 +121,7 @@ def decide_sender(
     sender_key: str,
     decision: str = Form(...),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
 ):
     catalog = load_catalog()

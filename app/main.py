@@ -7,6 +7,7 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from http import HTTPStatus
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 # Slim container images lack /etc/mime.types; without these, fonts and icons go out as text/plain
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("image/svg+xml", ".svg")
+
+# Methods that change something; they need a form from this application
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # Title and next step per status for pages people see
 ERROR_TEXT = {
@@ -110,14 +114,14 @@ def _create_default_plan() -> None:
             db.add(PlanDefinition(
                 name="Default",
                 slug="default",
-                max_domains=50,
-                max_users=20,
-                max_api_tokens=10,
-                max_alert_rules=50,
-                max_inbound_addresses=50,
-                report_retention_days=365,
-                smtp_rate_limit_per_hour=500,
-                api_rate_limit_per_hour=2000,
+                max_domains=settings.DEFAULT_PLAN_MAX_DOMAINS,
+                max_users=settings.DEFAULT_PLAN_MAX_USERS,
+                max_api_tokens=settings.DEFAULT_PLAN_MAX_API_TOKENS,
+                max_alert_rules=settings.DEFAULT_PLAN_MAX_ALERT_RULES,
+                max_inbound_addresses=settings.DEFAULT_PLAN_MAX_INBOUND_ADDRESSES,
+                report_retention_days=settings.DEFAULT_PLAN_REPORT_RETENTION_DAYS,
+                smtp_rate_limit_per_hour=settings.DEFAULT_PLAN_SMTP_RATE_LIMIT_PER_HOUR,
+                api_rate_limit_per_hour=settings.DEFAULT_PLAN_API_RATE_LIMIT_PER_HOUR,
             ))
             db.commit()
     except Exception:
@@ -150,6 +154,24 @@ def create_app() -> FastAPI:
                 session_source.close()
             if not app.state.setup_done and not setup_path_is_open(request.url.path):
                 return RedirectResponse(url="/auth/setup", status_code=303)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def same_origin_forms(request: Request, call_next):
+        """Forms only count when they come from this application (Origin, else Referer)."""
+        if request.method in UNSAFE_METHODS and not request.url.path.startswith("/api/"):
+            source = request.headers.get("origin") or request.headers.get("referer")
+            if source is not None:
+                host = urlsplit(source).netloc.lower() if source != "null" else ""
+                allowed = settings.csrf_trusted_origins | {request.headers.get("host", "").lower()}
+                if host not in allowed:
+                    logger.warning("Refused %s %s from foreign origin %r", request.method, request.url.path, source)
+                    return _error_response(request, 403, (
+                        f"Das Formular kam von einer fremden Seite ({host or 'ohne Absender'}) und wurde deshalb "
+                        "abgelehnt. Öffne den DMARC Analyzer direkt über seine Adresse und sende das Formular "
+                        "dort erneut. Nutzt ihr eine weitere Adresse, trägt der Betreiber sie in "
+                        "CSRF_TRUSTED_ORIGINS ein."
+                    ))
         return await call_next(request)
 
     # Added last, so it runs first and the gate above can rely on it

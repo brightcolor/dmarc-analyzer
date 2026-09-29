@@ -95,7 +95,11 @@
     </table>
   </div>
   {% else %}
+    {% if can.manager %}
     {{ ui.empty("Noch keine Empfangsadresse", "Beim Anlegen einer Domain erzeugt die Anwendung eine Adresse.", "/domains/new", "Domain anlegen") }}
+    {% else %}
+    {{ ui.empty("Noch keine Empfangsadresse", "Beim Anlegen einer Domain erzeugt die Anwendung eine Adresse; Domains legen Mitglieder ab der Rolle Manager an.") }}
+    {% endif %}
   {% endif %}
 </section>
 

@@ -5,9 +5,11 @@ Alert evaluation queues one NotificationDelivery per channel; the scheduler call
 A failed delivery is tried again after a growing pause, up to NOTIFICATION_RETRY_MAX times.
 Every failure stores a reason the user can act on.
 """
+import ipaddress
 import json
 import logging
 import re
+import socket
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
@@ -54,11 +56,56 @@ def invalid_addresses(addresses: list[str]) -> list[str]:
     return [a for a in addresses if not EMAIL_PATTERN.match(a)]
 
 
+def _is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
+def target_problem(url: str) -> str | None:
+    """Why a notification may not go to this address, or None. Internal networks stay closed to channels."""
+    if not settings.NOTIFICATION_BLOCK_PRIVATE_TARGETS:
+        return None
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().rstrip(".")
+    if not host:
+        return "Die Adresse enthält keinen Hostnamen."
+    if host in settings.notification_allowed_internal_hosts:
+        return None
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        if _is_ip_literal(host):
+            addresses = [host]
+        else:
+            addresses = [str(info[4][0]) for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
+    except ValueError:
+        return "Die Portangabe in der Adresse ist ungültig."
+    except OSError:
+        return f"Der Name {host} lässt sich nicht auflösen. Prüfe die Adresse."
+    for value in addresses:
+        address = ipaddress.ip_address(value.split("%")[0])
+        if address.version == 6 and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        if not address.is_global:
+            if _is_ip_literal(host):
+                where = f"{host} ist eine interne Adresse"
+            else:
+                where = f"{host} zeigt auf die interne Adresse {address}"
+            return (f"{where}. Benachrichtigungen gehen nur an öffentliche Adressen; der Betreiber kann den Namen "
+                    "in NOTIFICATION_ALLOWED_INTERNAL_HOSTS freigeben.")
+    return None
+
+
 def _http_url(value: str, field: str) -> str:
     value = (value or "").strip()
     parts = urlsplit(value)
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise ChannelError(f"{field} muss mit http:// oder https:// beginnen, etwa https://hooks.example.org/alarme.")
+    problem = target_problem(value)
+    if problem:
+        raise ChannelError(problem)
     return value
 
 
@@ -82,6 +129,8 @@ def build_channel_config(channel_type: str, *, url: str = "", topic: str = "", t
         config = {"topic": topic}
         if url.strip():
             config["url"] = _http_url(url, "Der ntfy-Server").rstrip("/")
+        else:
+            _http_url(settings.NTFY_DEFAULT_URL, "Der ntfy-Server aus NTFY_DEFAULT_URL")
         if token.strip():
             config["token"] = token.strip()
         return config
@@ -127,6 +176,10 @@ def _host(url: str) -> str:
 def _post(url: str, **kwargs) -> None:
     timeout = settings.NOTIFICATION_HTTP_TIMEOUT_SECONDS
     host = _host(url)
+    # Checked again before every send: the name may point elsewhere by now
+    problem = target_problem(url)
+    if problem:
+        raise ChannelError(problem)
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(url, **kwargs)

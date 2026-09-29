@@ -2,7 +2,7 @@
 {% import "partials/macros.html" as ui with context %}
 
 {% block lede %}<p>Domains, für die diese Organisation DMARC-Berichte auswertet. Neue Domains legt die Anwendung auch selbst an, sobald ein Bericht für sie ankommt.</p>{% endblock %}
-{% block actions %}<a class="bc-button" href="/domains/new"><svg class="bc-icon" aria-hidden="true" style="width:16px;height:16px"><use href="#i-plus"/></svg>Domain anlegen</a>{% endblock %}
+{% block actions %}{% if can.manager %}<a class="bc-button" href="/domains/new"><svg class="bc-icon" aria-hidden="true" style="width:16px;height:16px"><use href="#i-plus"/></svg>Domain anlegen</a>{% endif %}{% endblock %}
 
 {% block content %}
 <section class="bc-panel">
@@ -36,7 +36,11 @@
   {% elif search %}
     {{ ui.empty("Keine Domain passt zur Suche", "Prüfe die Schreibweise oder setze die Suche zurück.", "/domains", "Suche zurücksetzen") }}
   {% else %}
+    {% if can.manager %}
     {{ ui.empty("Noch keine Domains", "Lege deine erste Domain an. Die Anwendung erzeugt dazu eine Empfangsadresse für die Berichte.", "/domains/new", "Domain anlegen") }}
+    {% else %}
+    {{ ui.empty("Noch keine Domains", "Domains legen Mitglieder ab der Rolle Manager an.") }}
+    {% endif %}
   {% endif %}
 </section>
 {% endblock %}

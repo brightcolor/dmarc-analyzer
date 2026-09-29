@@ -9,8 +9,10 @@ from app.database import get_db
 from app.dependencies import get_client_ip, get_current_user_optional
 from app.services.audit import log_action
 from app.services.auth import authenticate_user, create_user, get_user_orgs
+from app.services.login_guard import locked_until, record_attempt
 from app.services.passwords import password_problem
 from app.services.setup import admin_exists, consume_setup_code
+from app.templates_config import _format_datetime as format_datetime
 from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -76,9 +78,18 @@ def setup_submit(
     if db.query(User.id).filter_by(email=email).first():
         return _setup_form(request, values, "Zu dieser E-Mail-Adresse gibt es schon ein Konto ohne "
                            "Administratorrechte. Nimm eine andere Adresse.", "email", 400)
+    client_ip = get_client_ip(request)
+    until = locked_until(db, "setup", client_ip)
+    if until:
+        return _setup_form(request, values, "Der Einrichtungscode wurde zu oft falsch eingegeben. Aus "
+                           f"Sicherheitsgründen ist die Einrichtung bis {format_datetime(until)} Uhr gesperrt. "
+                           + SETUP_CODE_HINT, "setup_code", 429)
     if not consume_setup_code(db, setup_code):
+        record_attempt(db, "setup", client_ip, None, success=False)
+        db.commit()
         return _setup_form(request, values, "Der Einrichtungscode stimmt nicht. " + SETUP_CODE_HINT,
                            "setup_code", 400)
+    record_attempt(db, "setup", client_ip, None, success=True)
 
     folded = org_name.lower().strip().translate(str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}))
     base_slug = re.sub(r"[^a-z0-9]+", "-", folded).strip("-")[:70] or "organisation"
@@ -124,7 +135,20 @@ def login(
     next: str = Form("/dashboard"),
     db: Session = Depends(get_db),
 ):
+    client_ip = get_client_ip(request)
+    account = email.lower().strip()
+    until = locked_until(db, "login", client_ip, account)
+    if until:
+        request.session["login_error"] = (
+            "Zu viele fehlgeschlagene Anmeldungen. Aus Sicherheitsgründen ist die Anmeldung bis "
+            f"{format_datetime(until)} Uhr gesperrt. Hast du dein Passwort vergessen, bitte einen Administrator, "
+            "es neu zu setzen."
+        )
+        request.session["login_email"] = email
+        return RedirectResponse(url="/auth/login", status_code=303)
     user = authenticate_user(db, email, password)
+    record_attempt(db, "login", client_ip, account, success=user is not None)
+    db.commit()
     if not user:
         request.session["login_error"] = ("E-Mail-Adresse oder Passwort stimmen nicht. Prüfe die Schreibweise; "
                                           "beim Passwort zählt Groß- und Kleinschreibung.")
@@ -139,7 +163,7 @@ def login(
     if len(orgs) == 1:
         request.session["org_id"] = orgs[0].id
 
-    log_action(db, "user.login", user_id=user.id, ip_address=get_client_ip(request),
+    log_action(db, "user.login", user_id=user.id, ip_address=client_ip,
                user_agent=request.headers.get("User-Agent"))
     db.commit()
     return RedirectResponse(url=_safe_next(next), status_code=303)

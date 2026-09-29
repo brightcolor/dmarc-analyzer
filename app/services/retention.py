@@ -4,7 +4,8 @@ Retention: removes data older than the limits of each organisation and the serve
 - DMARC reports with their records, import jobs with their files and received mails after the
   report_retention_days of the organisation,
 - stored raw mails after SMTP_INBOUND_RAW_RETENTION_DAYS,
-- rejected delivery attempts after SMTP_REJECTION_RETENTION_DAYS.
+- rejected delivery attempts after SMTP_REJECTION_RETENTION_DAYS,
+- login attempts after LOGIN_ATTEMPT_RETENTION_DAYS.
 
 One run deletes at most RETENTION_BATCH_SIZE entries per kind; the scheduler continues in the next run.
 Bulk statements keep the run quick and work without foreign key cascades in SQLite.
@@ -26,6 +27,7 @@ from app.models import (
     ImportError,
     ImportJob,
     InboundMailAttachment,
+    LoginAttempt,
     Organization,
     SmtpInboundMessage,
     SmtpInboundRejection,
@@ -44,6 +46,7 @@ class RetentionResult:
     messages: int = 0
     raw_mails: int = 0
     rejections: int = 0
+    login_attempts: int = 0
     files: int = 0
 
     def __bool__(self) -> bool:
@@ -135,6 +138,12 @@ def _purge_rejections(db: Session, now: datetime) -> int:
     return result.rowcount or 0
 
 
+def _purge_login_attempts(db: Session, now: datetime) -> int:
+    cutoff = now - timedelta(days=settings.LOGIN_ATTEMPT_RETENTION_DAYS)
+    result = db.execute(delete(LoginAttempt).where(LoginAttempt.created_at < cutoff).execution_options(**NO_SYNC))
+    return result.rowcount or 0
+
+
 def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
     now = now or utcnow()
     limit = settings.RETENTION_BATCH_SIZE
@@ -149,6 +158,7 @@ def run_retention(db: Session, now: datetime | None = None) -> RetentionResult:
         result.files += job_files + mail_files
     result.raw_mails = _purge_raw_mails(db, now, limit)
     result.rejections = _purge_rejections(db, now)
+    result.login_attempts = _purge_login_attempts(db, now)
     db.flush()
     if result:
         logger.info("Retention removed %s", result)

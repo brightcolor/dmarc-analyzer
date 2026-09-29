@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_org, get_current_user
+from app.dependencies import get_current_analyst, get_current_org, get_current_user
 from app.models import DmarcRecord, DmarcReport, Organization, SourceIp, User
 from app.services.senders import classify_manually, decisions, load_catalog
 from app.templates_config import templates
@@ -107,7 +107,7 @@ def classify_ip(
     classification: str = Form(...),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
 ):
     sip = db.query(SourceIp).filter_by(id=ip_id, organization_id=org.id).first()

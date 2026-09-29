@@ -11,6 +11,7 @@ os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["MAIL_SMTP_HOST"] = ""
 # Tests that need DNS answers bring their own
 os.environ["SENDER_LOOKUP_ENABLED"] = "false"
+os.environ["NOTIFICATION_BLOCK_PRIVATE_TARGETS"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

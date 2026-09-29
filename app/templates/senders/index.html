@@ -15,7 +15,7 @@
 <div class="bc-alert">
   <p class="bc-alert__title">{{ waiting }} IP-Adressen warten auf die Zuordnung</p>
   <p>Der Zeitplaner ordnet neue Adressen {{ interval | interval }} zu. Mit „Jetzt erkennen“ geht es sofort.</p>
-  <form method="post" action="/senders/refresh"><button class="bc-button bc-button--secondary" type="submit">Jetzt erkennen</button></form>
+  {% if can.analyst %}<form method="post" action="/senders/refresh"><button class="bc-button bc-button--secondary" type="submit">Jetzt erkennen</button></form>{% endif %}
 </div>
 {% endif %}
 
@@ -41,6 +41,7 @@
           <td>{{ ui.state(row.rate | percent, row.rate | rate_state) }}</td>
           <td>{{ ui.state(decision_text.get(row.decision, 'offen'), decision_state.get(row.decision, 'bc-state--warn')) }}</td>
           <td>
+            {% if can.analyst %}
             <div class="bc-row-actions">
               {% if row.decision != 'trusted' %}
               <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="trusted"><button class="bc-button" type="submit">Freigeben</button></form>
@@ -52,6 +53,7 @@
               <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="reset"><button class="bc-button bc-button--secondary" type="submit">Aufheben</button></form>
               {% endif %}
             </div>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

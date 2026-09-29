@@ -29,7 +29,7 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
   und Empfehlungen.
 - **Aufräumen nach Frist**: alte Berichte, Importe, Rohmails und abgelehnte Zustellversuche verschwinden
   nach den eingestellten Tagen.
-- **Mehrere Organisationen** mit getrennten Daten, Rollen und API-Tokens.
+- **Mehrere Organisationen** mit getrennten Daten, abgestuften Rollen und API-Tokens.
 - **Sicher beim Einlesen**: XML mit `defusedxml`, Grenzen für ZIP und GZ gegen Archivbomben.
 - **Weboberfläche** in der Werkbank von bright color, hell und dunkel, auf Deutsch.
 - **REST-API** mit Bearer-Token.
@@ -263,6 +263,11 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `RETENTION_*`, `SMTP_REJECTION_RETENTION_DAYS` | täglich, 30 Tage | Aufräumen |
 | `SENDER_LOOKUP_*`, `SENDER_ASN_*` | an, jede Minute, 30 Tage | Zuordnung der Absender per DNS |
 | `SENDER_CATALOG_PATH` | leer | eigener Absenderkatalog |
+| `TRUSTED_PROXIES` | leer | Proxys, deren `X-Forwarded-For` zählt |
+| `CSRF_TRUSTED_ORIGINS` | leer | weitere Adressen, von denen Formulare kommen dürfen |
+| `LOGIN_*` | 10 je Konto, 20 je Adresse, 15 Minuten | Sperre gegen Raten |
+| `NOTIFICATION_BLOCK_PRIVATE_TARGETS`, `NOTIFICATION_ALLOWED_INTERNAL_HOSTS` | an, leer | Schutz interner Dienste |
+| `DEFAULT_PLAN_*` | 50 Domains, 20 Benutzer, 365 Tage | Grenzen des Standardtarifs für neue Organisationen |
 | `DNS_NAMESERVERS` | die des Systems | DNS-Server für das Nachschlagen |
 
 ---
@@ -331,7 +336,39 @@ Die vollständige Beschreibung steht unter `/api/docs`.
 
 ---
 
+## Rollen
+
+Jedes Mitglied hat in seiner Organisation eine Rolle. Höhere Rollen dürfen alles, was die darunter
+dürfen.
+
+| Rolle | Darf |
+|---|---|
+| Lesezugriff | alles ansehen |
+| Analyst | Berichte hochladen, IP-Adressen einstufen, Absender freigeben, Alarme als gesehen oder erledigt markieren |
+| Manager | Domains anlegen und schalten, Alarmregeln anlegen und schalten |
+| Administrator | Benachrichtigungskanäle, Wochenbericht, Mitglieder und API-Tokens verwalten |
+| Betreiber | alle Organisationen, dazu Mailempfang, abgelehnte Empfänger und neue Organisationen |
+
+Formulare, die eine Rolle nicht nutzen darf, blendet die Oberfläche aus; ein direkter Aufruf endet mit
+einer Meldung, welche Rolle nötig ist. Ein API-Token handelt mit den Rechten des Kontos, das es angelegt
+hat.
+
+---
+
 ## Sicherheit
+
+- **Formulare nur von der eigenen Seite.** Jede Änderung prüft `Origin` bzw. `Referer`; Formulare
+  fremder Seiten lehnt die Anwendung ab. Weitere Adressen der Oberfläche nennt `CSRF_TRUSTED_ORIGINS`.
+  Das Sitzungscookie trägt `SameSite=Lax`.
+- **Sperre gegen Raten.** Nach `LOGIN_MAX_FAILURES_PER_ACCOUNT` Fehlversuchen für ein Konto oder
+  `LOGIN_MAX_FAILURES_PER_IP` von einer Adresse innerhalb von `LOGIN_FAILURE_WINDOW_SECONDS` sperrt die
+  Anmeldung für `LOGIN_LOCKOUT_SECONDS`. Dasselbe gilt für den Einrichtungscode.
+- **Benachrichtigungen nur an öffentliche Adressen.** Webhook, ntfy und Slack dürfen nicht auf
+  localhost, private oder reservierte Netze zeigen; die Anwendung prüft das beim Anlegen und vor jedem
+  Versand. Interne Dienste wie ein eigener ntfy-Server kommen über `NOTIFICATION_ALLOWED_INTERNAL_HOSTS`
+  dazu.
+- **Client-Adresse hinter Proxys.** `X-Forwarded-For` zählt nur, wenn die Verbindung von einem Proxy
+  aus `TRUSTED_PROXIES` kommt (Adressen oder Netze wie `172.16.0.0/12`).
 
 Hinweise zum Melden von Schwachstellen stehen in [SECURITY.md](SECURITY.md).
 

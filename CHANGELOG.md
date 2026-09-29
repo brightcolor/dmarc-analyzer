@@ -7,6 +7,30 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.5.0] – 2026-09-29
+
+### Neu
+
+- Rollen wirken: Lesezugriff sieht alles; Analysten laden Berichte hoch, stufen IP-Adressen und
+  Absender ein und bearbeiten Alarme; Manager verwalten Domains und Alarmregeln; Administratoren
+  Kanäle, Wochenbericht, Mitglieder und API-Tokens. Die Oberfläche zeigt jeder Rolle nur die Formulare,
+  die sie nutzen darf, und nennt sonst die nötige Rolle.
+- Formulare zählen nur, wenn sie von der Anwendung selbst kommen (`Origin` bzw. `Referer`); weitere
+  Adressen der Oberfläche trägt der Betreiber in `CSRF_TRUSTED_ORIGINS` ein.
+- Sperre gegen Raten: Nach zu vielen Fehlversuchen je Konto oder je Adresse sperrt die Anmeldung für
+  eine einstellbare Zeit; die Meldung nennt das Ende der Sperre. Der Einrichtungscode ist genauso
+  geschützt.
+- Webhook, ntfy und Slack gehen nur an öffentliche Adressen. Die Anwendung prüft das beim Anlegen eines
+  Kanals und vor jedem Versand; interne Dienste gibt der Betreiber über
+  `NOTIFICATION_ALLOWED_INTERNAL_HOSTS` frei.
+- Die Grenzen des Standardtarifs für neue Organisationen sind Einstellungen (`DEFAULT_PLAN_*`).
+
+### Geändert
+
+- `X-Forwarded-For` zählt nur noch, wenn die Verbindung von einem Proxy aus `TRUSTED_PROXIES` kommt;
+  die Einstellung nimmt jetzt auch Netze wie `172.16.0.0/12`.
+- Das Aufräumen löscht alte Anmeldeversuche nach `LOGIN_ATTEMPT_RETENTION_DAYS`.
+
 ## [0.4.0] – 2026-09-29
 
 ### Neu
@@ -211,7 +235,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.0
 [0.4.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.4.0
 [0.3.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.3.0
 [0.2.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.1

@@ -26,7 +26,31 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:8000"
     DEBUG: bool = False
     SECRET_KEY: str = Field("", validate_default=True)
-    TRUSTED_PROXIES: str = ""
+    TRUSTED_PROXIES: str = Field(
+        "", description="Reverse-Proxys, deren X-Forwarded-For die Anwendung glaubt: IP-Adressen oder Netze wie "
+                        "172.16.0.0/12, durch Komma getrennt. Leer: die Anwendung nimmt die Adresse der Verbindung.",
+    )
+    CSRF_TRUSTED_ORIGINS: str = Field(
+        "", description="Weitere Adressen, von denen Formulare kommen dürfen, etwa https://dmarc.example.com, durch "
+                        "Komma getrennt. Die eigene Adresse und APP_URL gelten immer.",
+    )
+
+    # Protection against guessing passwords and setup codes
+    LOGIN_FAILURE_WINDOW_SECONDS: int = Field(
+        900, ge=60, le=86_400, description="Zeitraum in Sekunden, in dem fehlgeschlagene Anmeldungen zählen.",
+    )
+    LOGIN_MAX_FAILURES_PER_IP: int = Field(
+        20, ge=1, le=10_000, description="Fehlversuche je IP-Adresse im Zeitraum, ab denen die Anmeldung sperrt.",
+    )
+    LOGIN_MAX_FAILURES_PER_ACCOUNT: int = Field(
+        10, ge=1, le=10_000, description="Fehlversuche je Konto im Zeitraum, ab denen das Konto gesperrt wird.",
+    )
+    LOGIN_LOCKOUT_SECONDS: int = Field(
+        900, ge=60, le=86_400, description="Dauer der Sperre in Sekunden nach dem letzten Fehlversuch.",
+    )
+    LOGIN_ATTEMPT_RETENTION_DAYS: int = Field(
+        30, ge=1, le=3650, description="Tage, die Anmeldeversuche für die Sperre gespeichert bleiben.",
+    )
 
     # Database
     DATABASE_URL: str = "sqlite:///./dmarc_analyzer.db"
@@ -94,6 +118,14 @@ class Settings(BaseSettings):
     )
     NOTIFICATION_HTTP_TIMEOUT_SECONDS: int = Field(
         10, ge=1, le=120, description="Zeitlimit in Sekunden für Webhook, ntfy und Slack.",
+    )
+    NOTIFICATION_BLOCK_PRIVATE_TARGETS: bool = Field(
+        True, description="Webhook, ntfy und Slack nur an öffentliche Adressen schicken. Sperrt localhost, private "
+                          "und reservierte Netze, damit niemand über Kanäle interne Dienste abfragt.",
+    )
+    NOTIFICATION_ALLOWED_INTERNAL_HOSTS: str = Field(
+        "", description="Hostnamen, die trotz interner Adresse erlaubt sind, etwa ntfy.lan oder ntfy, durch Komma "
+                        "getrennt.",
     )
     NTFY_DEFAULT_URL: str = Field(
         "https://ntfy.sh", description="ntfy-Server für Kanäle, die keinen eigenen Server angeben.",
@@ -164,6 +196,28 @@ class Settings(BaseSettings):
     )
     DIGEST_LIST_LIMIT: int = Field(
         5, ge=1, le=50, description="Einträge je Liste im Wochenbericht: Quellen, Alarme und Empfehlungen.",
+    )
+
+    # Limits of the default plan for new organisations
+    DEFAULT_PLAN_MAX_DOMAINS: int = Field(50, ge=1, le=100_000, description="Domains je Organisation im Standardtarif.")
+    DEFAULT_PLAN_MAX_USERS: int = Field(20, ge=1, le=100_000, description="Benutzer je Organisation im Standardtarif.")
+    DEFAULT_PLAN_MAX_API_TOKENS: int = Field(
+        10, ge=0, le=100_000, description="API-Tokens je Organisation im Standardtarif.",
+    )
+    DEFAULT_PLAN_MAX_ALERT_RULES: int = Field(
+        50, ge=0, le=100_000, description="Alarmregeln je Organisation im Standardtarif.",
+    )
+    DEFAULT_PLAN_MAX_INBOUND_ADDRESSES: int = Field(
+        50, ge=1, le=100_000, description="Empfangsadressen je Organisation im Standardtarif.",
+    )
+    DEFAULT_PLAN_REPORT_RETENTION_DAYS: int = Field(
+        365, ge=1, le=36_500, description="Tage, die Berichte im Standardtarif aufbewahrt werden.",
+    )
+    DEFAULT_PLAN_SMTP_RATE_LIMIT_PER_HOUR: int = Field(
+        500, ge=1, le=10_000_000, description="Mails je Stunde, die eine Organisation im Standardtarif empfängt.",
+    )
+    DEFAULT_PLAN_API_RATE_LIMIT_PER_HOUR: int = Field(
+        2000, ge=1, le=10_000_000, description="API-Anfragen je Stunde im Standardtarif.",
     )
 
     # First-run setup and accounts
@@ -323,6 +377,31 @@ class Settings(BaseSettings):
             raise ValueError(f"unbekannte Zeitzone {value!r}, erwartet wird etwa Europe/Berlin oder UTC") from exc
         return value
 
+    @field_validator("TRUSTED_PROXIES")
+    @classmethod
+    def _proxy_networks(cls, value: str) -> str:
+        import ipaddress
+
+        for entry in (v.strip() for v in value.split(",")):
+            if not entry:
+                continue
+            try:
+                ipaddress.ip_network(entry, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"{entry!r} ist weder IP-Adresse noch Netz; erwartet wird etwa 127.0.0.1 oder "
+                                 "172.16.0.0/12") from exc
+        return value
+
+    @field_validator("CSRF_TRUSTED_ORIGINS")
+    @classmethod
+    def _origins(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and (urlsplit(entry).scheme not in ("http", "https") or not urlsplit(entry).netloc):
+                raise ValueError(f"{entry!r} ist keine Adresse; erwartet wird etwa https://dmarc.example.com")
+        return value
+
     @field_validator("DNS_NAMESERVERS")
     @classmethod
     def _nameservers(cls, value: str) -> str:
@@ -371,6 +450,25 @@ class Settings(BaseSettings):
         p = Path(self.RAW_MAIL_DIR)
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    @property
+    def trusted_proxy_networks(self) -> list:
+        import ipaddress
+
+        return [ipaddress.ip_network(v.strip(), strict=False) for v in self.TRUSTED_PROXIES.split(",") if v.strip()]
+
+    @property
+    def csrf_trusted_origins(self) -> set[str]:
+        from urllib.parse import urlsplit
+
+        hosts = {urlsplit(v.strip()).netloc.lower() for v in self.CSRF_TRUSTED_ORIGINS.split(",") if v.strip()}
+        hosts.add(urlsplit(self.APP_URL).netloc.lower())
+        return {h for h in hosts if h}
+
+    @property
+    def notification_allowed_internal_hosts(self) -> set[str]:
+        return {v.strip().lower().rstrip(".") for v in self.NOTIFICATION_ALLOWED_INTERNAL_HOSTS.split(",")
+                if v.strip()}
 
     @property
     def dns_nameservers(self) -> list[str]:

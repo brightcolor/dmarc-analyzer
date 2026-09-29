@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_user
+from app.dependencies import get_client_ip, get_current_manager, get_current_org, get_current_user
 from app.models import DmarcReport, Domain, InboundMailAddress, Organization, User
 from app.services.audit import log_action
 from app.services.charts import day_chart
@@ -54,7 +54,7 @@ def domain_list(
 @router.get("/new", response_class=HTMLResponse)
 def domain_new_form(
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     return _form(request, user, org)
@@ -71,7 +71,7 @@ def domain_create(
     request: Request,
     name: str = Form(...),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     name = name.strip().lower().rstrip(".")
@@ -175,7 +175,7 @@ def domain_toggle(
     request: Request,
     domain_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
@@ -196,7 +196,7 @@ def domain_add_address(
     request: Request,
     domain_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()

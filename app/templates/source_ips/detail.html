@@ -15,6 +15,7 @@
 <div class="app-grid app-grid--2">
   <section class="bc-panel" aria-labelledby="einstufung-titel">
     <div class="bc-panel__head"><h2 class="bc-panel__title" id="einstufung-titel">Einstufung</h2>{{ ui.state(sip.classification | classification_text, sip.classification | classification_state) }}</div>
+    {% if can.analyst %}
     <form method="post" action="/source-ips/{{ sip.id }}/classify">
       <div class="bc-panel__body">
         <div class="bc-formgrid">
@@ -30,6 +31,13 @@
       </div>
       <div class="bc-panel__foot"><button class="bc-button" type="submit">Speichern</button></div>
     </form>
+    {% else %}
+    <div class="bc-panel__body">
+      {% if sip.classification_reason %}<p style="margin-top:0">{{ sip.classification_reason }}.</p>{% endif %}
+      {% if sip.notes %}<p>{{ sip.notes }}</p>{% endif %}
+      <p class="app-small app-quiet">Einstufen dürfen Mitglieder ab der Rolle Analyst.</p>
+    </div>
+    {% endif %}
   </section>
 
   <section class="bc-panel" aria-labelledby="herkunft-titel">

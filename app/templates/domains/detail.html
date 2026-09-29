@@ -4,9 +4,11 @@
 {% block lede %}<p>DMARC-Stand, Empfangsadressen und Empfehlungen für diese Domain.</p>{% endblock %}
 {% block actions %}
 <a class="bc-button bc-button--secondary" href="/reports?domain_id={{ domain.id }}">Berichte ansehen</a>
+{% if can.manager %}
 <form method="post" action="/domains/{{ domain.id }}/toggle"{% if domain.is_active %} data-confirm="Domain {{ domain.name }} deaktivieren? Die Anwendung nimmt dann keine Berichte mehr für sie an."{% endif %}>
   <button class="bc-button bc-button--secondary" type="submit">{{ 'Deaktivieren' if domain.is_active else 'Aktivieren' }}</button>
 </form>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -48,7 +50,7 @@
   <section class="bc-panel" aria-labelledby="adressen-titel">
     <div class="bc-panel__head">
       <h2 class="bc-panel__title" id="adressen-titel">Empfangsadressen</h2>
-      <form method="post" action="/domains/{{ domain.id }}/add-address"><button class="bc-button bc-button--secondary" type="submit">Neue Adresse</button></form>
+      {% if can.manager %}<form method="post" action="/domains/{{ domain.id }}/add-address"><button class="bc-button bc-button--secondary" type="submit">Neue Adresse</button></form>{% endif %}
     </div>
     {% if addresses %}
     <div class="bc-table-wrap">

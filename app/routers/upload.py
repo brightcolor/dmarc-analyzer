@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_user
+from app.dependencies import get_client_ip, get_current_analyst, get_current_org, get_current_user
 from app.models import Domain, ImportJob, Organization, User
 from app.services.alert_service import evaluate_after_import
 from app.services.audit import log_action
@@ -44,7 +44,7 @@ async def upload_file(
     file: UploadFile = File(...),
     domain_id: str | None = Form(None),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
 ):
     original_name = file.filename or ""

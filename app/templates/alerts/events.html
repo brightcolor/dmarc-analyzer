@@ -41,6 +41,7 @@
           <td>{{ ui.state(e.status | status_text, e.status | status_state) }}</td>
           <td class="app-nowrap">{{ e.created_at | datetime }}</td>
           <td>
+            {% if can.analyst %}
             <div class="bc-row-actions">
               {% if e.status == 'open' %}
               <form method="post" action="/alerts/events/{{ e.id }}/acknowledge"><button class="bc-button bc-button--secondary" type="submit">Gesehen</button></form>
@@ -49,6 +50,7 @@
               <form method="post" action="/alerts/events/{{ e.id }}/resolve"><button class="bc-button" type="submit">Erledigt</button></form>
               {% endif %}
             </div>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

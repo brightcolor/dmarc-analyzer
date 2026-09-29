@@ -199,6 +199,12 @@ def ack_event(
     api_auth=Depends(get_api_auth),
 ):
     org = _org_or_403(api_auth)
+    token_user = api_auth[0]
+    if token_user is not None:
+        from app.services.auth import ROLE_LEVEL, role_level
+        if role_level(db, token_user, org.id) < ROLE_LEVEL["analyst"]:
+            raise HTTPException(status_code=403, detail="Das Token gehört zu einem Konto mit Lesezugriff. Alarme "
+                                "bestätigen dürfen Konten ab der Rolle Analyst.")
     event = db.query(AlertEvent).filter_by(id=event_id, organization_id=org.id).first()
     if not event:
         raise HTTPException(status_code=404)

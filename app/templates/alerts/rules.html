@@ -24,7 +24,7 @@
           <td class="app-nowrap">{{ rule.time_window_minutes | num }} min</td>
           <td class="app-nowrap">{{ rule.cooldown_minutes | num }} min</td>
           <td class="app-nowrap">{{ rule.last_triggered_at | datetime }}</td>
-          <td><div class="bc-row-actions"><form method="post" action="/alerts/rules/{{ rule.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if rule.is_active else 'Einschalten' }}</button></form></div></td>
+          <td>{% if can.manager %}<div class="bc-row-actions"><form method="post" action="/alerts/rules/{{ rule.id }}/toggle"><button class="bc-button bc-button--secondary" type="submit">{{ 'Ausschalten' if rule.is_active else 'Einschalten' }}</button></form></div>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -35,6 +35,7 @@
   {% endif %}
 </section>
 
+{% if can.manager %}
 <section class="bc-panel" aria-labelledby="neu-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="neu-titel">Neue Regel</h2></div>
   <form method="post" action="/alerts/rules/new">
@@ -76,6 +77,9 @@
     <div class="bc-panel__foot"><button class="bc-button" type="submit">Regel anlegen</button></div>
   </form>
 </section>
+{% else %}
+<p class="app-small app-quiet">Regeln anlegen und schalten dürfen Mitglieder ab der Rolle Manager.</p>
+{% endif %}
 
 <section class="bc-panel" aria-labelledby="arten-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="arten-titel">Was die Arten prüfen</h2></div>

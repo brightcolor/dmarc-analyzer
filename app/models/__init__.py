@@ -9,6 +9,7 @@ from app.models.dmarc_report import DmarcAuthResult, DmarcRecord, DmarcReport  #
 from app.models.domain import Domain  # noqa: F401
 from app.models.import_job import ImportError, ImportJob  # noqa: F401
 from app.models.inbound_mail_address import InboundMailAddress  # noqa: F401
+from app.models.login_attempt import LoginAttempt  # noqa: F401
 from app.models.notification import NotificationChannel, NotificationDelivery  # noqa: F401
 from app.models.organization import (  # noqa: F401
     Organization,
