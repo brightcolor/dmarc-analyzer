@@ -1,14 +1,23 @@
 {% extends "base.html" %}
 {% import "partials/macros.html" as ui with context %}
 
-{% block lede %}<p>Jede IP-Adresse, die in einem Bericht Mails für deine Domains verschickt hat. Stufe bekannte Absender als vertrauenswürdig ein, dann fallen fremde Quellen auf.</p>{% endblock %}
+{% block lede %}<p>Jede IP-Adresse, die in einem Bericht Mails für deine Domains verschickt hat. Bekannte Dienste gibst du unter „Absender“ auf einmal frei; einzelne Adressen stufst du hier ein.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/senders">Absender</a>{% endblock %}
 
 {% block content %}
 <section class="bc-panel">
   <form class="app-filter" method="get" role="search" aria-label="Quellen filtern">
     <div>
-      <label for="f-search">IP-Adresse enthält</label>
-      <input class="bc-input" id="f-search" type="search" name="search" value="{{ search }}" placeholder="z. B. 192.0.2.">
+      <label for="f-search">IP-Adresse oder Hostname enthält</label>
+      <input class="bc-input" id="f-search" type="search" name="search" value="{{ search }}" placeholder="z. B. 192.0.2. oder google">
+    </div>
+    <div>
+      <label for="f-sender">Absender</label>
+      <select class="bc-select" id="f-sender" name="sender">
+        <option value="">Alle</option>
+        {% for key, name in senders %}<option value="{{ key }}"{% if sender_filter == key %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        <option value="none"{% if sender_filter == 'none' %} selected{% endif %}>nicht zugeordnet</option>
+      </select>
     </div>
     <div>
       <label for="f-class">Einstufung</label>
@@ -18,17 +27,18 @@
       </select>
     </div>
     <button class="bc-button" type="submit">Filtern</button>
-    {% if search or classification_filter %}<a class="bc-button bc-button--secondary" href="/source-ips">Filter zurücksetzen</a>{% endif %}
+    {% if search or classification_filter or sender_filter %}<a class="bc-button bc-button--secondary" href="/source-ips">Filter zurücksetzen</a>{% endif %}
   </form>
   {% if ips %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>IP-Adresse</th><th>Einstufung</th><th class="bc-num">Nachrichten</th><th>Bestanden</th><th>Zuerst gesehen</th><th>Zuletzt gesehen</th></tr></thead>
+      <thead><tr><th>IP-Adresse</th><th>Absender</th><th>Einstufung</th><th class="bc-num">Nachrichten</th><th>Bestanden</th><th>Zuerst gesehen</th><th>Zuletzt gesehen</th></tr></thead>
       <tbody>
         {% for s in ips %}
         <tr>
-          <td class="app-mono"><a href="/source-ips/{{ s.id }}">{{ s.ip_address }}</a>{% if s.reverse_dns %}<br><span class="app-small app-quiet">{{ s.reverse_dns }}</span>{% endif %}</td>
-          <td>{{ ui.state(s.classification | classification_text, s.classification | classification_state) }}</td>
+          <td class="app-mono"><a href="/source-ips/{{ s.id }}">{{ s.ip_address }}</a>{% if s.reverse_dns %}<br><span class="app-small app-quiet app-break">{{ s.reverse_dns }}</span>{% endif %}</td>
+          <td>{% if s.sender_key %}<a href="/source-ips?sender={{ s.sender_key }}">{{ catalog.name(s.sender_key) }}</a>{% elif s.enriched_at %}<span class="app-quiet app-nowrap">nicht zugeordnet</span>{% else %}<span class="app-quiet app-nowrap">wird ermittelt</span>{% endif %}</td>
+          <td>{{ ui.state(s.classification | classification_text, s.classification | classification_state) }}{% if s.classification_source == 'sender' %}<span class="app-reason">über den Absender</span>{% endif %}</td>
           <td class="bc-num">{{ s.total_messages | num }}</td>
           <td>{{ ui.state(s.pass_rate | percent, s.pass_rate | rate_state) }}</td>
           <td class="app-nowrap">{{ s.first_seen_at | date }}</td>
@@ -39,7 +49,7 @@
     </table>
   </div>
   {{ ui.pagination(page, pages, total, "Quellen") }}
-  {% elif search or classification_filter %}
+  {% elif search or classification_filter or sender_filter %}
     {{ ui.empty("Keine Quelle passt zum Filter", "", "/source-ips", "Filter zurücksetzen") }}
   {% else %}
     {{ ui.empty("Noch keine Quellen", "Sobald Berichte ankommen, stehen hier die IP-Adressen, die für deine Domains Mails verschicken.") }}

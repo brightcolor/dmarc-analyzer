@@ -180,14 +180,52 @@ class Settings(BaseSettings):
     API_RATE_LIMIT: str = "100/minute"
     API_TOKEN_EXPIRE_DAYS: int = 365
 
-    # DNS enrichment (optional)
-    DNS_ENRICHMENT_ENABLED: bool = False
-    DNS_ENRICHMENT_TIMEOUT: float = 2.0
-    DNS_ENRICHMENT_RATE_LIMIT: int = 10  # per minute
+    # Sender identification: which service a source IP belongs to
+    SENDER_LOOKUP_ENABLED: bool = Field(
+        True, description="Hostname und Netzbetreiber jeder Quelle per DNS nachschlagen. Aus: Absender werden nur "
+                          "über DKIM und SPF aus den Berichten erkannt.",
+    )
+    SENDER_LOOKUP_TIMEOUT_SECONDS: float = Field(
+        2.0, ge=0.2, le=30.0, description="Zeitlimit in Sekunden für eine DNS-Abfrage.",
+    )
+    SENDER_LOOKUP_BATCH_SIZE: int = Field(
+        50, ge=1, le=5000, description="Höchstzahl Quellen, die ein Lauf nachschlägt und zuordnet.",
+    )
+    SENDER_LOOKUP_INTERVAL_SECONDS: int = Field(
+        60, ge=10, le=86_400, description="Abstand in Sekunden, in dem der Zeitplaner neue Quellen zuordnet.",
+    )
+    SENDER_LOOKUP_REFRESH_DAYS: int = Field(
+        30, ge=1, le=365, description="Nach so vielen Tagen schlägt die Anwendung eine Quelle erneut nach.",
+    )
+    SENDER_LOOKUP_WORKERS: int = Field(
+        8, ge=1, le=64, description="Anzahl gleichzeitiger DNS-Abfragen in einem Lauf.",
+    )
+    SENDER_EVIDENCE_LIMIT: int = Field(
+        200, ge=10, le=100_000,
+        description="Höchstzahl DKIM- und SPF-Ergebnisse je Quelle, die für die Zuordnung gelesen werden.",
+    )
+    SENDER_ASN_LOOKUP_ENABLED: bool = Field(
+        True, description="Netzbetreiber (AS-Nummer, Name, Land) über den DNS-Dienst von Team Cymru nachschlagen.",
+    )
+    SENDER_ASN_ZONE_V4: str = Field(
+        "origin.asn.cymru.com", description="DNS-Zone für die AS-Nummer einer IPv4-Adresse.",
+    )
+    SENDER_ASN_ZONE_V6: str = Field(
+        "origin6.asn.cymru.com", description="DNS-Zone für die AS-Nummer einer IPv6-Adresse.",
+    )
+    SENDER_ASN_NAME_ZONE: str = Field(
+        "asn.cymru.com", description="DNS-Zone für Name und Land zu einer AS-Nummer.",
+    )
+    SENDER_CATALOG_PATH: str = Field(
+        "", description="Zusätzlicher Absenderkatalog als JSON-Datei. Einträge mit gleichem Schlüssel ersetzen "
+                        "die eingebauten, neue kommen dazu.",
+    )
+    DNS_NAMESERVERS: str = Field(
+        "", description="DNS-Server für das Nachschlagen, durch Komma getrennt; leer für die des Systems.",
+    )
 
     # Feature flags
     FEATURE_DOMAIN_VERIFICATION: bool = True
-    FEATURE_SOURCE_ENRICHMENT: bool = False
     FEATURE_SAAS_MODE: bool = False
 
     # Display
@@ -285,6 +323,30 @@ class Settings(BaseSettings):
             raise ValueError(f"unbekannte Zeitzone {value!r}, erwartet wird etwa Europe/Berlin oder UTC") from exc
         return value
 
+    @field_validator("DNS_NAMESERVERS")
+    @classmethod
+    def _nameservers(cls, value: str) -> str:
+        import ipaddress
+
+        for entry in (v.strip() for v in value.split(",")):
+            if not entry:
+                continue
+            try:
+                ipaddress.ip_address(entry)
+            except ValueError as exc:
+                raise ValueError(f"{entry!r} ist keine IP-Adresse; erwartet werden etwa 9.9.9.9,1.1.1.1") from exc
+        return value
+
+    @field_validator("SENDER_ASN_ZONE_V4", "SENDER_ASN_ZONE_V6", "SENDER_ASN_NAME_ZONE")
+    @classmethod
+    def _dns_zone(cls, value: str) -> str:
+        import re
+
+        zone = value.strip().strip(".").lower()
+        if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", zone):
+            raise ValueError(f"{value!r} ist kein DNS-Name, erwartet wird etwa origin.asn.cymru.com")
+        return zone
+
     @field_validator("NTFY_DEFAULT_URL")
     @classmethod
     def _http_url(cls, value: str) -> str:
@@ -309,6 +371,10 @@ class Settings(BaseSettings):
         p = Path(self.RAW_MAIL_DIR)
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    @property
+    def dns_nameservers(self) -> list[str]:
+        return [v.strip() for v in self.DNS_NAMESERVERS.split(",") if v.strip()]
 
     @property
     def setup_open_paths(self) -> list[str]:

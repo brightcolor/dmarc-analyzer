@@ -80,9 +80,10 @@ class TestRunJob:
         assert run_job(alerts, NOW + timedelta(seconds=120)) is True
 
     def test_all_jobs_run_on_an_empty_database(self, job_session):
-        assert scheduler.run_due_jobs(NOW) == ["alerts", "notifications", "retention", "digest"]
+        names = ["senders", "alerts", "notifications", "retention", "digest"]
+        assert scheduler.run_due_jobs(NOW) == names
         runs = {run.name: run.last_status for run in job_session.query(SchedulerRun)}
-        assert runs == {"alerts": "ok", "notifications": "ok", "retention": "ok", "digest": "ok"}
+        assert runs == dict.fromkeys(names, "ok")
 
 
 @pytest.fixture

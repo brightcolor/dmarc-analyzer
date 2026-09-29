@@ -75,3 +75,25 @@ def test_migrations_match_models(file_engine):
     with file_engine.connect() as conn:
         diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
     assert diff == []
+
+
+def test_existing_classifications_count_as_manual(file_engine):
+    with file_engine.begin() as conn:
+        command.upgrade(_alembic_config(conn), "0003")
+        conn.execute(text(
+            "INSERT INTO organizations (id, name, slug, is_active, max_domains, max_users, max_api_tokens, "
+            "max_alert_rules, max_inbound_addresses, report_retention_days, smtp_rate_limit_per_hour, "
+            "api_rate_limit_per_hour, digest_enabled, created_at, updated_at) "
+            "VALUES ('org-1', 'Muster Farben', 'muster-farben', 1, 10, 5, 5, 20, 20, 365, 200, 1000, 1, "
+            "'2026-05-28', '2026-05-28')"
+        ))
+        for ip, classification in (("192.0.2.1", "trusted"), ("192.0.2.2", "unknown")):
+            conn.execute(text(
+                "INSERT INTO source_ips (id, organization_id, ip_address, total_messages, pass_count, fail_count, "
+                "classification, created_at, updated_at) "
+                f"VALUES ('{ip}', 'org-1', '{ip}', 1, 1, 0, '{classification}', '2026-05-28', '2026-05-28')"
+            ))
+    run_migrations(file_engine)
+    with file_engine.connect() as conn:
+        rows = dict(conn.execute(text("SELECT ip_address, classification_source FROM source_ips")).all())
+    assert rows == {"192.0.2.1": "manual", "192.0.2.2": None}

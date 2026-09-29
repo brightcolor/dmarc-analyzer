@@ -7,6 +7,32 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.4.0] – 2026-09-29
+
+### Neu
+
+- Absender mit Namen: Jede IP-Adresse wird einem Dienst zugeordnet, etwa Google, Microsoft 365,
+  Amazon SES, Mailchimp, SendGrid, Postmark, IONOS, Strato oder ALL-INKL.COM. Als Nachweis zählen ein
+  Hostname, der per DNS wieder auf die Adresse zeigt, eine bestandene DKIM-Signatur des Dienstes und
+  bestandenes SPF für seine Bounce-Domain.
+- Neue Seite „Quellen → Absender“: Dienste mit IP-Adressen, Nachrichten und Bestehensquote. Ein Klick
+  gibt einen Dienst frei oder stuft ihn als verdächtig ein; das gilt für alle seine Adressen, auch für
+  künftige. Einzeln eingestufte Adressen behalten ihre Einstufung.
+- Neue Adressen eines freigegebenen Dienstes lösen keinen Alarm „Neue unbekannte Versandquelle“ mehr
+  aus. Alarme, Wochenbericht, Übersicht und API nennen den Dienst zur Adresse.
+- Hostname, AS-Nummer, Netzbetreiber und Land jeder Quelle kommen per DNS (Team Cymru); der
+  Zeitplaner schlägt neue Quellen nach und prüft bekannte regelmäßig erneut. „Jetzt erkennen“ startet
+  das sofort.
+- Der Absenderkatalog lässt sich über eine eigene JSON-Datei (`SENDER_CATALOG_PATH`) ergänzen.
+- Die Liste der IP-Adressen lässt sich nach Absender filtern und nach Hostname durchsuchen.
+
+### Geändert
+
+- Die Spalte für die berichtende Stelle heißt jetzt „Berichtet von“; „Absender“ meint die Dienste, die
+  Mails verschicken.
+- Die ungenutzten Einstellungen `DNS_ENRICHMENT_*` und `FEATURE_SOURCE_ENRICHMENT` sind entfallen; an
+  ihre Stelle treten `SENDER_LOOKUP_*`.
+
 ## [0.3.0] – 2026-09-29
 
 ### Neu
@@ -185,7 +211,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.4.0
 [0.3.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.3.0
 [0.2.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.1
 [0.2.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.2.0

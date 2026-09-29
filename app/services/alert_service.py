@@ -260,19 +260,32 @@ def _eval_reports_missing(db: Session, rule: AlertRule, now: datetime) -> list[F
     )]
 
 
+def _source_title(src: SourceIp) -> str:
+    from app.services.senders import load_catalog
+
+    name = load_catalog().name(src.sender_key)
+    return f"{src.ip_address} ({name})" if name else src.ip_address
+
+
 def _eval_new_unknown_source(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
     start = now - timedelta(minutes=rule.time_window_minutes)
+    sources = _new_sources(db, rule, start, now)
+    if settings.SCHEDULER_ENABLED:
+        # The scheduler names the sender first; a decision about the sender may already cover the address
+        sources = [src for src in sources if src.enriched_at is not None]
     return [
         Finding(
-            title=f"Neue unbekannte Quelle {src.ip_address}",
+            title=f"Neue unbekannte Quelle {_source_title(src)}",
             description=(f"{src.ip_address} verschickt Mails für deine Domains und ist noch nicht eingestuft. Bisher "
                          f"{_num(src.total_messages)} Nachrichten, davon {_num(src.pass_rate or 0)} % bestanden. "
-                         "Stufe sie unter „Quellen“ ein."),
+                         + ("Gehört der Dienst zu dir, gib ihn unter „Absender“ frei."
+                            if src.sender_key else "Stufe sie unter „Quellen“ ein.")),
             domain_id=rule.domain_id,
             source_ip=src.ip_address,
-            metrics={"ip": src.ip_address, "total": src.total_messages, "pass_rate": src.pass_rate},
+            metrics={"ip": src.ip_address, "total": src.total_messages, "pass_rate": src.pass_rate,
+                     "sender": src.sender_key},
         )
-        for src in _new_sources(db, rule, start, now)
+        for src in sources
         if src.classification == "unknown"
     ]
 
@@ -282,7 +295,7 @@ def _eval_high_volume_source(db: Session, rule: AlertRule, now: datetime) -> lis
     threshold = _threshold(rule, settings.ALERT_DEFAULT_HIGH_VOLUME)
     return [
         Finding(
-            title=f"Neue Quelle {src.ip_address} mit {_num(src.total_messages)} Nachrichten",
+            title=f"Neue Quelle {_source_title(src)} mit {_num(src.total_messages)} Nachrichten",
             description=(f"{src.ip_address} ist neu und hat schon {_num(src.total_messages)} Nachrichten für deine "
                          f"Domains verschickt (Schwelle {_num(threshold)})."),
             domain_id=rule.domain_id,
@@ -299,7 +312,7 @@ def _eval_new_source_dmarc_fail(db: Session, rule: AlertRule, now: datetime) -> 
     minimum = _threshold(rule, settings.ALERT_DEFAULT_NEW_SOURCE_FAILURES)
     return [
         Finding(
-            title=f"Neue Quelle {src.ip_address} scheitert an DMARC",
+            title=f"Neue Quelle {_source_title(src)} scheitert an DMARC",
             description=(f"{_num(src.fail_count)} von {_num(src.total_messages)} Nachrichten dieser neuen Quelle "
                          "bestehen DMARC nicht. Ist sie ein eigener Versanddienst, fehlt ihr SPF oder DKIM."),
             domain_id=rule.domain_id,

@@ -177,7 +177,7 @@ def parse_xml_bytes(data: bytes, max_records: int | None = None) -> ParsedReport
     meta = root.find("report_metadata")
     if meta is None:
         raise DmarcParseError(
-            "Dem Bericht fehlt der Abschnitt <report_metadata> mit Absender und Berichtsnummer. "
+            "Dem Bericht fehlt der Abschnitt <report_metadata> mit berichtender Stelle und Berichtsnummer. "
             "Der Bericht ist unvollständig und wurde übersprungen."
         )
 

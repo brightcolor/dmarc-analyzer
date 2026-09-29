@@ -96,7 +96,7 @@
   <div class="bc-panel__body">
     <dl class="app-dl">
       <dt>Berichtsnummer</dt><dd class="app-mono">{{ report.report_id }}</dd>
-      <dt>Absender</dt><dd>{{ report.reporting_org or '—' }}{% if report.reporting_email %} · {{ report.reporting_email }}{% endif %}</dd>
+      <dt>Berichtet von</dt><dd>{{ report.reporting_org or '—' }}{% if report.reporting_email %} · {{ report.reporting_email }}{% endif %}</dd>
       <dt>Herkunft</dt><dd>{{ report.import_source | source_text }}</dd>
       <dt>Importiert</dt><dd>{{ report.created_at | datetime }}</dd>
       <dt>Parser</dt><dd>Version {{ report.parser_version or '1.0' }}</dd>

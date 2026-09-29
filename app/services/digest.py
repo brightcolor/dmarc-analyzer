@@ -225,9 +225,9 @@ def build_digest(db: Session, org: Organization, end: datetime | None = None) ->
 
 
 def _source_name(source: SourceIp | None) -> str | None:
-    if source is None:
-        return None
-    return source.reverse_dns or source.asn_org
+    from app.services.senders import sender_label
+
+    return sender_label(source) if source is not None else None
 
 
 # Recipients and schedule ---------------------------------------------------------------

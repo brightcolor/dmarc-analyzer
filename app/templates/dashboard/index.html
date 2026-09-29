@@ -41,7 +41,7 @@
       <tbody>
         {% for ip in top_ips %}
         <tr>
-          <td class="app-mono">{{ ip.ip }}</td>
+          <td><a class="app-mono" href="/source-ips/{{ ip.id }}">{{ ip.ip }}</a>{% if ip.sender %}<br><span class="app-small app-quiet">{{ ip.sender }}</span>{% endif %}</td>
           <td>{{ ui.state(ip.classification | classification_text, ip.classification | classification_state) }}</td>
           <td class="bc-num">{{ ip.total | num }}</td>
           <td class="bc-num">{{ ip.pass_rate | percent }}</td>

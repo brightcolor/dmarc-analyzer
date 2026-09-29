@@ -74,7 +74,7 @@
   {% if reporters %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Absender</th><th>Format</th><th class="bc-num">Berichte</th><th>Letzter Zeitraum bis</th></tr></thead>
+      <thead><tr><th>Berichtet von</th><th>Format</th><th class="bc-num">Berichte</th><th>Letzter Zeitraum bis</th></tr></thead>
       <tbody>
         {% for r in reporters %}
         <tr><td class="app-break">{{ r.reporting_org }}</td><td>{{ ui.format_badge(r.report_format) }}</td><td class="bc-num">{{ r.reports | num }}</td><td>{{ r.last_period_end | date }}</td></tr>

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% set decision_text = {'trusted': 'freigegeben', 'suspicious': 'verdächtig', 'ignored': 'ignoriert'} %}
+{% set decision_state = {'trusted': 'bc-state--on', 'suspicious': 'bc-state--bad', 'ignored': ''} %}
+
+{% block lede %}<p>Wer Mails für deine Domains verschickt, zusammengefasst nach Dienst. Gib bekannte Dienste frei; das gilt für alle ihre IP-Adressen, auch für künftige.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/source-ips">Alle IP-Adressen</a>{% endblock %}
+
+{% block content %}
+{% for problem in catalog_problems %}
+<div class="bc-alert bc-alert--warn"><p class="bc-alert__title">Absenderkatalog unvollständig</p><p>{{ problem }} Die übrigen Einträge und der eingebaute Katalog gelten weiter.</p></div>
+{% endfor %}
+{% if waiting %}
+<div class="bc-alert">
+  <p class="bc-alert__title">{{ waiting }} IP-Adressen warten auf die Zuordnung</p>
+  <p>Der Zeitplaner ordnet neue Adressen {{ interval | interval }} zu. Mit „Jetzt erkennen“ geht es sofort.</p>
+  <form method="post" action="/senders/refresh"><button class="bc-button bc-button--secondary" type="submit">Jetzt erkennen</button></form>
+</div>
+{% endif %}
+
+<div class="bc-kpis">
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ rows | length }}</p><p class="bc-kpi__label">Absender erkannt</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ rows | selectattr('decision', 'equalto', 'trusted') | list | length }}</p><p class="bc-kpi__label">freigegeben</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ trusted_share | percent }}</p><p class="bc-kpi__label">der Nachrichten von freigegebenen Absendern</p></div>
+  <div class="bc-kpi"><p class="bc-kpi__value">{{ (unassigned.addresses if unassigned else 0) | num }}</p><p class="bc-kpi__label">IP-Adressen ohne Absender</p></div>
+</div>
+
+<section class="bc-panel" aria-labelledby="absender-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="absender-titel">Absender</h2></div>
+  {% if rows or unassigned %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Absender</th><th class="bc-num">IP-Adressen</th><th class="bc-num">Nachrichten</th><th>Bestanden</th><th>Entscheidung</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><a href="/source-ips?sender={{ row.key }}"><strong>{{ row.name }}</strong></a><br><span class="app-small app-quiet">{{ row.kind }}</span></td>
+          <td class="bc-num">{{ row.addresses | num }}{% if row.unknown and row.decision %}<span class="app-reason">{{ row.unknown | num }} offen</span>{% endif %}</td>
+          <td class="bc-num">{{ row.messages | num }}</td>
+          <td>{{ ui.state(row.rate | percent, row.rate | rate_state) }}</td>
+          <td>{{ ui.state(decision_text.get(row.decision, 'offen'), decision_state.get(row.decision, 'bc-state--warn')) }}</td>
+          <td>
+            <div class="bc-row-actions">
+              {% if row.decision != 'trusted' %}
+              <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="trusted"><button class="bc-button" type="submit">Freigeben</button></form>
+              {% endif %}
+              {% if row.decision != 'suspicious' %}
+              <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="suspicious"><button class="bc-button bc-button--secondary" type="submit">Verdächtig</button></form>
+              {% endif %}
+              {% if row.decision %}
+              <form method="post" action="/senders/{{ row.key }}/decide"><input type="hidden" name="decision" value="reset"><button class="bc-button bc-button--secondary" type="submit">Aufheben</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if unassigned %}
+        <tr>
+          <td><a href="/source-ips?sender=none"><strong>Nicht zugeordnet</strong></a><br><span class="app-small app-quiet">einzeln einstufen</span></td>
+          <td class="bc-num">{{ unassigned.addresses | num }}</td>
+          <td class="bc-num">{{ unassigned.messages | num }}</td>
+          <td>{{ ui.state(unassigned.rate | percent, unassigned.rate | rate_state) }}</td>
+          <td>{% if unassigned.unknown %}{{ ui.state(unassigned.unknown | num ~ ' offen', 'bc-state--warn') }}{% endif %}</td>
+          <td></td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    {{ ui.empty("Noch keine Absender", "Sobald Berichte ankommen, erscheinen hier die Dienste, die für deine Domains Mails verschicken.") }}
+  {% endif %}
+</section>
+
+<section class="bc-panel" aria-labelledby="erkennung-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="erkennung-titel">So erkennt der Analyzer Absender</h2></div>
+  <div class="bc-panel__body">
+    <dl class="app-dl">
+      <dt>Hostname</dt><dd>Der Name hinter der IP-Adresse, etwa <span class="app-mono">mail-sor-f41.google.com</span>. Er zählt nur, wenn er wieder auf dieselbe Adresse zeigt; so lässt er sich nicht fälschen.{% if not lookup_enabled %} Das Nachschlagen per DNS ist ausgeschaltet (<code>SENDER_LOOKUP_ENABLED</code>).{% endif %}</dd>
+      <dt>DKIM</dt><dd>Eine bestandene Signatur von einer Domain des Dienstes, etwa <span class="app-mono">amazonses.com</span>.</dd>
+      <dt>SPF</dt><dd>Bestandenes SPF für die Bounce-Domain des Dienstes, etwa <span class="app-mono">mcsv.net</span> bei Mailchimp.</dd>
+    </dl>
+    <p class="app-small app-quiet" style="margin:16px 0 0">Webhoster wie IONOS oder Hetzner betreiben Server für viele Kunden. Eine Freigabe gilt dann für alle Server dieses Hosters, die für deine Domains Mails verschicken.{% if user.is_superadmin %} Eigene Dienste ergänzt der Betreiber über eine Katalogdatei in <code>SENDER_CATALOG_PATH</code>.{% endif %}</p>
+  </div>
+</section>
+{% endblock %}

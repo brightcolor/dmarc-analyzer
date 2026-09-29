@@ -35,6 +35,7 @@ from app.services.auth import create_user  # noqa: E402
 from app.services.dmarc_parser import parse_xml_bytes  # noqa: E402
 from app.services.import_service import store_parsed_report  # noqa: E402
 from app.services.inbound_address import create_domain_address, create_org_address  # noqa: E402
+from app.services.senders import refresh_sources  # noqa: E402
 from app.services.setup import clear_setup_code  # noqa: E402
 
 LOGIN_FILE = Path(__file__).resolve().parent.parent / "demo-login.txt"
@@ -45,12 +46,17 @@ SOURCES = {
     "198.51.100.20": ("example.com", True), "198.51.100.66": ("example.org", False),
     "203.0.113.5": ("example.net", False), "203.0.113.77": ("example.net", True),
 }
+# Signing domain of the sending service; the demo addresses have no host names, DKIM names the sender
+SERVICE_DKIM = {"192.0.2.10": "gappssmtp.com", "192.0.2.11": "gappssmtp.com", "198.51.100.20": "amazonses.com",
+                "203.0.113.77": "mcsv.net"}
 
 
 def _record(ip: str, count: int, passed: bool, domain: str, dmarcbis: bool, testing: bool) -> str:
     if passed:
         disposition = "pass" if dmarcbis else "none"
         dkim = f"<dkim><domain>{domain}</domain><selector>s1</selector><result>pass</result></dkim>"
+        if ip in SERVICE_DKIM:
+            dkim += f"<dkim><domain>{SERVICE_DKIM[ip]}</domain><selector>s2</selector><result>pass</result></dkim>"
         spf = f"<spf><domain>{domain}</domain><scope>mfrom</scope><result>pass</result></spf>"
         evaluated = "<dkim>pass</dkim><spf>pass</spf>"
         reason = ""
@@ -144,12 +150,15 @@ def main() -> None:
             source = db.query(SourceIp).filter_by(organization_id=org.id, ip_address=ip).first()
             if source:
                 source.classification = classification
+                source.classification_source = "manual"
 
         example_net = db.query(Domain).filter_by(organization_id=org.id, name="example.net").one()
         db.add(AlertEvent(organization_id=org.id, domain_id=example_net.id, alert_type="new_unknown_source",
                           severity="warning", title="Neue unbekannte Versandquelle 203.0.113.5",
                           description="203.0.113.5 verschickt Mails für example.net und besteht DMARC nicht.",
                           source_ip="203.0.113.5", status="open"))
+        db.flush()
+        refresh_sources(db, everything=True)
         db.commit()
         LOGIN_FILE.write_text(f"E-Mail: admin@example.test\nPasswort: {password}\n", encoding="utf-8")
         print(f"Demo-Daten angelegt. Anmeldung steht in {LOGIN_FILE.name}.")

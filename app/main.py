@@ -176,6 +176,7 @@ def create_app() -> FastAPI:
         imports,
         organizations,
         reports,
+        senders,
         smtp_admin,
         source_ips,
         upload,
@@ -192,6 +193,7 @@ def create_app() -> FastAPI:
     app.include_router(upload.router)
     app.include_router(imports.router)
     app.include_router(smtp_admin.router)
+    app.include_router(senders.router)
     app.include_router(source_ips.router)
     app.include_router(alerts.router)
     app.include_router(api_tokens.router)

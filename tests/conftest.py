@@ -9,6 +9,8 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 # Tests call the jobs themselves; outgoing mail only goes to the local test server of a test
 os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["MAIL_SMTP_HOST"] = ""
+# Tests that need DNS answers bring their own
+os.environ["SENDER_LOOKUP_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

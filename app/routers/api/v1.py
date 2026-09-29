@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_api_auth
 from app.models import AlertEvent, DmarcReport, Domain, InboundMailAddress, Organization, SourceIp
+from app.services.senders import load_catalog
 from app.version import APP_NAME, VERSION
 
 router = APIRouter(prefix="/api/v1", tags=["api_v1"])
@@ -139,6 +140,7 @@ def list_source_ips(
 
     total = q.count()
     ips = q.offset((page - 1) * per_page).limit(per_page).all()
+    catalog = load_catalog()
     return {
         "total": total,
         "results": [
@@ -146,6 +148,9 @@ def list_source_ips(
                 "id": s.id,
                 "ip": s.ip_address,
                 "classification": s.classification,
+                "sender": s.sender_key,
+                "sender_name": catalog.name(s.sender_key),
+                "reverse_dns": s.reverse_dns,
                 "total_messages": s.total_messages,
                 "pass_rate": s.pass_rate,
                 "first_seen": s.first_seen_at.isoformat() if s.first_seen_at else None,

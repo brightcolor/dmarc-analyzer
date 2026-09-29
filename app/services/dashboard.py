@@ -198,9 +198,13 @@ def get_top_source_ips(db: Session, org_id: str, limit: int = 10) -> list[dict]:
         .limit(limit)
         .all()
     )
+    from app.services.senders import sender_label
+
     return [
         {
+            "id": s.id,
             "ip": s.ip_address,
+            "sender": sender_label(s),
             "total": s.total_messages,
             "pass_rate": s.pass_rate,
             "classification": s.classification,

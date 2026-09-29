@@ -42,7 +42,10 @@ NAVIGATION = [
         NavLink("Hochladen", "/upload", ("/upload",)),
         NavLink("Importe", "/imports", ("/imports",)),
     ]),
-    NavModule("Quellen", "server", [NavLink("Quellen", "/source-ips", ("/source-ips",))]),
+    NavModule("Quellen", "server", [
+        NavLink("Absender", "/senders", ("/senders",)),
+        NavLink("IP-Adressen", "/source-ips", ("/source-ips",)),
+    ]),
     NavModule("Alarme", "bell", [
         NavLink("Ereignisse", "/alerts/events", ("/alerts/events",)),
         NavLink("Regeln", "/alerts/rules", ("/alerts/rules",)),

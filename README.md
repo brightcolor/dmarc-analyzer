@@ -20,6 +20,9 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
   unbekannte Quellen und fehlende Berichte. Alle Schwellen sind einstellbar.
 - **DNS-Vorschlag** für den DMARC-Eintrag, der für Empfänger beider Standards passt, und für den
   Zustimmungseintrag unter `_report._dmarc`.
+- **Absender mit Namen**: Jede IP-Adresse wird einem Dienst zugeordnet, etwa Google, Microsoft 365,
+  Amazon SES, Mailchimp oder IONOS. Ein Klick gibt einen Dienst mit allen seinen Adressen frei, auch mit
+  künftigen.
 - **Alarme** für 13 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten bis zu
   ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
 - **Wochenbericht** per Mail mit Bestehensquote, Quellen mit Fehlern, neuen Quellen, offenen Alarmen
@@ -104,6 +107,41 @@ Die Anwendung erkennt RFC-9990-Berichte am Namespace oder, wenn er fehlt, an Fel
 dort gibt (`np`, `testing`, `discovery_method`, `generator`, Behandlung `pass`, Grund
 `policy_test_mode`). Alle übrigen liest sie nach RFC 7489. Die Seite **Hilfe → DMARC-Formate**
 erklärt das ausführlich und zeigt, welcher Empfänger in welchem Format berichtet.
+
+---
+
+## Absender mit Namen
+
+Unter **Quellen → Absender** stehen die Dienste, die für deine Domains Mails verschicken, mit Zahl der
+IP-Adressen, Nachrichten und Bestehensquote. **Freigeben** stuft alle Adressen des Dienstes als
+vertrauenswürdig ein, auch Adressen, die er später nutzt; **Verdächtig** macht das Gegenteil,
+**Aufheben** nimmt die Entscheidung zurück. Eine Adresse, die jemand einzeln eingestuft hat, behält
+ihre Einstufung. Neue Adressen eines freigegebenen Dienstes lösen keinen Alarm „Neue unbekannte
+Versandquelle“ aus.
+
+Der Zeitplaner ordnet neue Adressen im Takt von `SENDER_LOOKUP_INTERVAL_SECONDS` zu und prüft
+bekannte nach `SENDER_LOOKUP_REFRESH_DAYS` erneut. Als Nachweis zählen, in dieser Reihenfolge:
+
+1. der Hostname der Adresse, wenn er per DNS wieder auf dieselbe Adresse zeigt,
+2. eine bestandene DKIM-Signatur von einer Domain des Dienstes,
+3. bestandenes SPF für die Bounce-Domain des Dienstes.
+
+Den Netzbetreiber (AS-Nummer, Name, Land) holt die Anwendung über den DNS-Dienst von Team Cymru.
+Ohne DNS-Abfragen (`SENDER_LOOKUP_ENABLED=false`) erkennt sie Dienste nur über DKIM und SPF.
+
+Die Dienste stehen im Katalog `app/data/sender_catalog.json`. Eigene Einträge kommen in eine
+JSON-Datei gleichen Aufbaus, deren Pfad `SENDER_CATALOG_PATH` nennt; gleiche Schlüssel ersetzen
+eingebaute Einträge:
+
+```json
+{"senders": [
+  {"key": "beispiel-crm", "name": "Beispiel-CRM", "kind": "app",
+   "rdns": ["mail.crm.example.net"], "dkim": ["crm.example.net"], "spf": ["bounce.crm.example.net"]}
+]}
+```
+
+`kind` ist `mailbox` (Postfachanbieter), `esp` (Versanddienst), `app` (Anwendung) oder `hosting`
+(Webhoster). Fehler in der Datei zeigt die Seite „Absender“ dem Betreiber.
 
 ---
 
@@ -223,6 +261,9 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `NOTIFICATION_*`, `NTFY_DEFAULT_URL` | 3 Versuche, `https://ntfy.sh` | Wiederholungen und Zeitlimits der Benachrichtigungen |
 | `SCHEDULER_ENABLED`, Takte `*_INTERVAL_SECONDS` | an | Zeitplaner im Web-Container |
 | `RETENTION_*`, `SMTP_REJECTION_RETENTION_DAYS` | täglich, 30 Tage | Aufräumen |
+| `SENDER_LOOKUP_*`, `SENDER_ASN_*` | an, jede Minute, 30 Tage | Zuordnung der Absender per DNS |
+| `SENDER_CATALOG_PATH` | leer | eigener Absenderkatalog |
+| `DNS_NAMESERVERS` | die des Systems | DNS-Server für das Nachschlagen |
 
 ---
 

@@ -42,6 +42,19 @@ def _run_alerts(db: Session, now: datetime) -> int:
     return fired
 
 
+def _run_senders(db: Session, now: datetime) -> int:
+    from app.services.alert_service import evaluate_rules_for_org
+    from app.services.senders import refresh_sources
+
+    result = refresh_sources(db, now)
+    db.commit()
+    # Rules about new sources wait for the sender; check them as soon as it is known
+    for org_id in sorted(result.organizations):
+        evaluate_rules_for_org(db, org_id, now)
+        db.commit()
+    return result.checked
+
+
 def _run_notifications(db: Session, now: datetime) -> dict:
     from app.services.notification import dispatch_pending
 
@@ -61,6 +74,7 @@ def _run_digest(db: Session, now: datetime) -> int:
 
 
 JOBS = (
+    Job("senders", "Absender erkennen", lambda: settings.SENDER_LOOKUP_INTERVAL_SECONDS, _run_senders),
     Job("alerts", "Alarmregeln prüfen", lambda: settings.ALERT_EVAL_INTERVAL_SECONDS, _run_alerts),
     Job("notifications", "Benachrichtigungen senden", lambda: settings.NOTIFICATION_DISPATCH_INTERVAL_SECONDS,
         _run_notifications),

@@ -152,7 +152,7 @@ class TestPages:
             "/reports?format=rfc9990", f"/reports/{ids['classic']}", f"/reports/{ids['bis']}", "/upload",
             "/imports", f"/imports/{ids['job']}", "/smtp/status", "/smtp/messages", "/smtp/rejections",
             "/source-ips", f"/source-ips/{ids['source']}", "/alerts/events", "/alerts/rules", "/alerts/channels",
-            "/alerts/digest", "/alerts/digest/preview",
+            "/alerts/digest", "/alerts/digest/preview", "/senders", "/source-ips?sender=none",
             "/users", "/users/invite", "/api-tokens", "/organizations", f"/organizations/{ids['org']}",
             "/organizations/new", "/organizations/select", "/hilfe/dmarc-formate",
         ]
