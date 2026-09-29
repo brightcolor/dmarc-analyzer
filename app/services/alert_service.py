@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.security import utcnow
 from app.services.domain_recipients import alert_addresses
+from app.services.tls_reports import RESULT_TEXT, summarize
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ ALERT_TYPES = {
     "dmarc_fail_rate": "DMARC-Fehlerquote über der Schwelle",
     "spf_fail_rate": "Viele Nachrichten ohne passendes SPF",
     "dkim_fail_rate": "Viele Nachrichten ohne passendes DKIM",
+    "tls_failure_rate": "TLS-Verbindungen scheitern",
     "volume_spike": "Versandmenge steigt plötzlich",
     "volume_drop": "Versandmenge fällt plötzlich",
     "reports_missing": "Berichte bleiben aus",
@@ -54,8 +56,8 @@ OPERATOR_ALERT_TYPES = {"smtp_invalid_recipient", "smtp_rate_limit"}
 # A rule for all domains checks each active domain on its own for these types, so every alert names its domain
 # and reaches the further recipients of that domain
 PER_DOMAIN_TYPES = {
-    "dmarc_fail_rate", "spf_fail_rate", "dkim_fail_rate", "volume_spike", "volume_drop", "reports_missing",
-    "new_unknown_source", "high_volume_source", "new_source_dmarc_fail",
+    "dmarc_fail_rate", "spf_fail_rate", "dkim_fail_rate", "tls_failure_rate", "volume_spike", "volume_drop",
+    "reports_missing", "new_unknown_source", "high_volume_source", "new_source_dmarc_fail",
 }
 
 # An event in one of these states blocks a second event for the same rule and subject
@@ -90,6 +92,10 @@ def alert_type_hints() -> dict[str, str]:
                          f"{_num(s.ALERT_DEFAULT_AUTH_FAIL_RATE)} %.",
         "dkim_fail_rate": "Anteil der Nachrichten ohne zur Domain passendes DKIM. Schwelle in Prozent, Vorgabe "
                           f"{_num(s.ALERT_DEFAULT_AUTH_FAIL_RATE)} %.",
+        "tls_failure_rate": "Anteil der Verbindungen zu deinen Mailservern, die laut TLS-Berichten ohne gültiges TLS "
+                            "blieben. Schwelle in Prozent, Vorgabe "
+                            f"{_num(s.ALERT_DEFAULT_TLS_FAIL_RATE)} %. Empfänger berichten einmal am Tag; ein "
+                            "Zeitraum von 1440 Minuten oder mehr passt.",
         "volume_spike": "Nachrichten im Zeitraum im Vergleich zum Durchschnitt der "
                         f"{s.ALERT_VOLUME_BASELINE_WINDOWS} Zeiträume davor. Schwelle: Anstieg in Prozent, Vorgabe "
                         f"{_num(s.ALERT_DEFAULT_VOLUME_SPIKE)} %.",
@@ -207,6 +213,31 @@ def _eval_auth_fail_rate(mechanism: str) -> Callable[[Session, AlertRule, dateti
         )]
 
     return evaluate
+
+
+def _eval_tls_failure_rate(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
+    summary = summarize(db, rule.organization_id, now - timedelta(minutes=rule.time_window_minutes),
+                        now + timedelta(seconds=1), rule.domain_id)
+    if not summary.total or summary.total < rule.min_message_count:
+        return []
+    rate = summary.failure_rate
+    threshold = _threshold(rule, settings.ALERT_DEFAULT_TLS_FAIL_RATE)
+    if rate < threshold:
+        return []
+    reason = ""
+    if summary.top_result is not None:
+        reason = (f" Häufigster Grund: {RESULT_TEXT.get(summary.top_result, summary.top_result)} "
+                  f"({_num(summary.top_result_sessions)}).")
+    return [Finding(
+        title=f"{_num(rate)} % der TLS-Verbindungen gescheitert{_domain_label(db, rule.domain_id)}",
+        description=(f"{_num(summary.failed)} von {_num(summary.total)} Verbindungen zu deinen Mailservern kamen laut "
+                     f"den TLS-Berichten der letzten {_window_text(rule.time_window_minutes)} ohne gültiges TLS "
+                     f"zustande (Schwelle {_num(threshold)} %).{reason} Die Einzelheiten stehen unter "
+                     "Berichte → TLS-Berichte."),
+        domain_id=rule.domain_id,
+        metrics={"rate": round(rate, 2), "failed": summary.failed, "total": summary.total, "threshold": threshold,
+                 "top_result": summary.top_result},
+    )]
 
 
 def _volumes(db: Session, rule: AlertRule, now: datetime) -> tuple[int, float | None]:
@@ -406,6 +437,7 @@ EVALUATORS: dict[str, Callable[[Session, AlertRule, datetime], list[Finding]]] =
     "dmarc_fail_rate": _eval_dmarc_fail_rate,
     "spf_fail_rate": _eval_auth_fail_rate("spf"),
     "dkim_fail_rate": _eval_auth_fail_rate("dkim"),
+    "tls_failure_rate": _eval_tls_failure_rate,
     "volume_spike": _eval_volume_spike,
     "volume_drop": _eval_volume_drop,
     "reports_missing": _eval_reports_missing,

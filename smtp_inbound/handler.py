@@ -24,6 +24,7 @@ from app.services.mime_parser import (
     parse_mail_headers,
     sha256_hex,
 )
+from app.services.tls_reports import TlsReportMail, find_tls_reports, mail_outcome, store_tls_report
 from smtp_inbound.validator import validate_recipient
 
 logger = logging.getLogger(__name__)
@@ -193,9 +194,10 @@ class DmarcSmtpHandler:
                     msg.processed_at = datetime.now(UTC)
                     return True
 
-                # Extract DMARC attachments
+                # TLS reports next: their JSON files would fail as DMARC reports
                 try:
-                    attachments = extract_dmarc_attachments(raw)
+                    tls = find_tls_reports(raw) if settings.TLS_REPORTS_ENABLED else None
+                    attachments = [] if tls is not None else extract_dmarc_attachments(raw)
                 except ZipBombError as exc:
                     logger.warning("ZIP bomb detected from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
@@ -215,6 +217,10 @@ class DmarcSmtpHandler:
                     logger.warning("MIME parse error from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
                     msg.error_message = f"Die Mail ließ sich nicht lesen: {exc}"
+                    return True
+
+                if tls is not None:
+                    self._store_tls_reports(db, msg, tls, organization_id, domain_id)
                     return True
 
                 if not attachments:
@@ -291,6 +297,23 @@ class DmarcSmtpHandler:
             logger.exception("Error processing mail from %s to %s: %s", remote_ip, envelope_recipient, exc)
             return False
         return True
+
+    @staticmethod
+    def _store_tls_reports(db, msg: SmtpInboundMessage, tls: TlsReportMail, organization_id: str,
+                           domain_id: str | None) -> None:
+        stored = duplicates = 0
+        for report in tls.reports:
+            record = store_tls_report(db, report, organization_id=organization_id, domain_id=domain_id,
+                                      smtp_message_id=msg.id)
+            if record is None:
+                duplicates += 1
+            else:
+                stored += 1
+        msg.attachment_count = len(tls.reports) + len(tls.errors)
+        msg.import_status, msg.error_message = mail_outcome(stored, duplicates, tls.errors)
+        msg.processed_at = datetime.now(UTC)
+        if stored:
+            evaluate_after_import(db, organization_id)
 
     @staticmethod
     def _save_raw_mail(organization_id: str, raw: bytes) -> str | None:

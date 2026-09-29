@@ -11,7 +11,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.services import report_formats
+from app.services import report_formats, tls_reports
 from app.version import APP_NAME, VERSION
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ NAVIGATION = [
     NavModule("Berichte", "file", [
         NavLink("Berichte", "/reports", ("/reports",)),
         NavLink("Fehlerberichte", "/failure-reports", ("/failure-reports",)),
+        NavLink("TLS-Berichte", "/tls-reports", ("/tls-reports",)),
         NavLink("Hochladen", "/upload", ("/upload",)),
         NavLink("Importe", "/imports", ("/imports",)),
     ]),
@@ -153,6 +154,28 @@ def _format_date(value: datetime | date | None) -> str:
     return value.strftime("%d.%m.%Y")
 
 
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _format_utc(value: datetime | None) -> str:
+    """Moment in UTC, for periods that reporters give in UTC."""
+    if value is None:
+        return "—"
+    return f"{_as_utc(value):%d.%m.%Y %H:%M} UTC"
+
+
+def _day_span(begin: datetime | None, end: datetime | None) -> str:
+    """Reported days in UTC, e.g. 28.09.2026 or 26.09. – 27.09.2026. The end is the last second or the next day."""
+    if begin is None:
+        return "—"
+    begin = _as_utc(begin)
+    end = _as_utc(end) if end is not None else begin
+    first = begin.date()
+    last = (end - timedelta(seconds=1)).date() if end > begin else first
+    return f"{first:%d.%m.%Y}" if last <= first else f"{first:%d.%m.} – {last:%d.%m.%Y}"
+
+
 def _format_number(value: int | float | None, decimals: int = 0) -> str:
     if value is None:
         return "—"
@@ -193,6 +216,17 @@ def _interval(seconds: int | None) -> str:
             count = seconds // size
             return one if count == 1 else f"alle {_format_number(count)} {many}"
     return f"alle {_format_number(seconds)} Sekunden"
+
+
+def _tls_rate_state(rate: float | None) -> str:
+    """State pill modifier for the share of failed TLS sessions."""
+    if rate is None:
+        return ""
+    if rate == 0:
+        return "bc-state--on"
+    if rate < settings.ALERT_DEFAULT_TLS_FAIL_RATE:
+        return "bc-state--warn"
+    return "bc-state--bad"
 
 
 def _rate_state(rate: float | None) -> str:
@@ -279,11 +313,7 @@ def report_file_parts(name: str | None) -> dict | None:
     match = REPORT_FILE_NAME.match(name or "")
     if not match:
         return None
-    begin = datetime.fromtimestamp(int(match["begin"]), UTC)
-    end = datetime.fromtimestamp(int(match["end"]), UTC)
-    first = begin.date()
-    last = (end - timedelta(seconds=1)).date() if end > begin else first
-    period = f"{first:%d.%m.%Y}" if last <= first else f"{first:%d.%m.} – {last:%d.%m.%Y}"
+    period = _day_span(datetime.fromtimestamp(int(match["begin"]), UTC), datetime.fromtimestamp(int(match["end"]), UTC))
     return {"host": match["host"], "domain": match["domain"], "period": period}
 
 
@@ -382,6 +412,13 @@ env.filters["source_text"] = _lookup(SOURCE_TEXT, keep_unknown=True)
 env.filters["delivery_text"] = _lookup(DELIVERY_TEXT, keep_unknown=True)
 env.filters["delivery_state"] = _lookup(DELIVERY_STATE)
 env.filters["alignment_text"] = _alignment_text
+env.filters["utc"] = _format_utc
+env.filters["day_span"] = _day_span
+env.filters["tls_rate_state"] = _tls_rate_state
+env.filters["tls_policy_text"] = _lookup(tls_reports.POLICY_TEXT, keep_unknown=True)
+env.filters["tls_policy_hint"] = _lookup(tls_reports.POLICY_HINT)
+env.filters["tls_result_text"] = _lookup(tls_reports.RESULT_TEXT, keep_unknown=True)
+env.filters["tls_result_hint"] = _lookup(tls_reports.RESULT_HINT)
 env.filters["role_text"] = _lookup(ROLE_TEXT, keep_unknown=True)
 env.filters["tojson"] = _tojson
 env.globals["page_url"] = page_url

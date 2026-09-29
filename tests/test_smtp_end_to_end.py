@@ -1,7 +1,10 @@
 """The mail reception from RCPT TO to the stored report, over a real SMTP connection."""
 import gzip
+import logging
 import smtplib
+import ssl
 from email.message import EmailMessage
+from pathlib import Path
 
 import pytest
 from aiosmtpd.controller import Controller
@@ -16,14 +19,17 @@ from app.models import (
     InboundMailAddress,
     Organization,
     SmtpInboundMessage,
+    TlsReport,
 )
-from app.services.inbound_address import create_domain_address
 from app.services.import_service import get_or_create_domain
+from app.services.inbound_address import create_domain_address
 from smtp_inbound import handler as handler_module
 from smtp_inbound.handler import TEMPORARY_FAILURE, DmarcSmtpHandler
+from smtp_inbound.server import tls_context
 from tests.conftest import SAMPLE_DMARC_XML
 from tests.helpers import _free_port
 from tests.test_failure_reports import ORIGINAL_WITH_REPORT, arf_mail
+from tests.test_tls_reports import tls_mail
 
 
 @pytest.fixture
@@ -139,3 +145,107 @@ def test_failure_reports_can_be_switched_off(reception, session, monkeypatch):
     session.expire_all()
     assert session.query(DmarcFailureReport).count() == 0
     assert session.query(SmtpInboundMessage).one().error_message == "Die Mail enthielt keinen DMARC-Bericht als Anhang."
+
+
+# TLS reports ---------------------------------------------------------------------------------
+
+def test_tls_report_arrives(reception, session):
+    port, address = reception
+    _send_raw(port, address, tls_mail(address))
+    session.expire_all()
+    report = session.query(TlsReport).one()
+    message = session.query(SmtpInboundMessage).one()
+    assert report.smtp_message_id == message.id
+    assert report.domain_id == session.query(Domain).filter_by(name="example.com").one().id
+    assert (report.successful_sessions, report.failed_sessions) == (5326, 303)
+    assert (message.import_status, message.error_message, message.attachment_count) == ("completed", None, 1)
+    assert session.query(ImportJob).count() == 0
+
+
+def test_tls_report_delivered_twice_is_stored_once(reception, session):
+    port, address = reception
+    _send_raw(port, address, tls_mail(address))
+    _send_raw(port, address, tls_mail(address))
+    session.expire_all()
+    assert session.query(TlsReport).count() == 1
+    notes = sorted(m.error_message or "" for m in session.query(SmtpInboundMessage))
+    assert notes == ["", "Diesen TLS-Bericht gab es schon; die Anwendung hat ihn einmal gespeichert."]
+
+
+def test_unreadable_tls_report_is_noted(reception, session):
+    port, address = reception
+    _send_raw(port, address, tls_mail(address, data=b"{kaputt"))
+    session.expire_all()
+    message = session.query(SmtpInboundMessage).one()
+    assert message.import_status == "failed"
+    assert message.error_message.startswith("Der TLS-Bericht ließ sich nicht lesen und bleibt unberücksichtigt.")
+    assert session.query(ImportJob).count() == 0
+
+
+def test_tls_reports_can_be_switched_off(reception, session, monkeypatch):
+    monkeypatch.setattr(settings, "TLS_REPORTS_ENABLED", False)
+    port, address = reception
+    _send_raw(port, address, tls_mail(address))
+    session.expire_all()
+    assert session.query(TlsReport).count() == 0
+    assert session.query(SmtpInboundMessage).one().import_status == "failed"
+
+
+# STARTTLS ------------------------------------------------------------------------------------
+
+TLS_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "tls"
+
+
+@pytest.fixture
+def tls_on(monkeypatch):
+    monkeypatch.setattr(settings, "SMTP_INBOUND_TLS_ENABLED", True)
+    monkeypatch.setattr(settings, "SMTP_INBOUND_TLS_CERT_PATH", str(TLS_FIXTURES / "localhost.crt"))
+    monkeypatch.setattr(settings, "SMTP_INBOUND_TLS_KEY_PATH", str(TLS_FIXTURES / "localhost.key"))
+
+
+def test_report_arrives_over_starttls(session, tmp_path, monkeypatch, tls_on):
+    monkeypatch.setattr(app.database, "SessionLocal", session.info["factory"])
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path / "uploads"))
+    org = Organization(name="Muster Farben", slug="muster-farben", is_active=True)
+    session.add(org)
+    session.flush()
+    domain = get_or_create_domain(session, org.id, "example.com")
+    address = create_domain_address(session, org, domain).address
+    session.commit()
+    port = _free_port()
+    controller = Controller(DmarcSmtpHandler(), hostname="127.0.0.1", port=port, server_hostname="reports.example.test",
+                            tls_context=tls_context(), require_starttls=False)
+    controller.start()
+    try:
+        with smtplib.SMTP("127.0.0.1", port, timeout=10) as smtp:
+            smtp.ehlo()
+            assert smtp.has_extn("starttls")
+            client = ssl.create_default_context(cafile=str(TLS_FIXTURES / "localhost.crt"))
+            client.check_hostname = False
+            smtp.starttls(context=client)
+            assert smtp.sock.version() in ("TLSv1.2", "TLSv1.3")
+            smtp.send_message(_report_mail(address))
+    finally:
+        controller.stop()
+    session.expire_all()
+    assert session.query(DmarcReport).one().report_id == "test-report-001"
+
+
+def test_minimum_version_comes_from_the_settings(tls_on, monkeypatch):
+    monkeypatch.setattr(settings, "SMTP_INBOUND_TLS_MIN_VERSION", "TLSv1.3")
+    assert tls_context().minimum_version == ssl.TLSVersion.TLSv1_3
+
+
+def test_tls_off_offers_no_starttls():
+    assert tls_context() is None
+
+
+@pytest.mark.parametrize("problem", ["missing path", "unreadable file"])
+def test_broken_certificate_keeps_reception_running(tls_on, monkeypatch, caplog, problem):
+    if problem == "missing path":
+        monkeypatch.setattr(settings, "SMTP_INBOUND_TLS_KEY_PATH", None)
+    else:
+        monkeypatch.setattr(settings, "SMTP_INBOUND_TLS_KEY_PATH", str(TLS_FIXTURES / "gibt-es-nicht.key"))
+    with caplog.at_level(logging.ERROR, logger="smtp_inbound.server"):
+        assert tls_context() is None
+    assert "Der Empfang läuft ohne Verschlüsselung weiter" in caplog.text

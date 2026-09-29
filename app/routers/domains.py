@@ -18,6 +18,7 @@ from app.services.inbound_address import create_domain_address
 from app.services.mailer import mail_configured
 from app.services.recommendation import get_recommendations_for_domain
 from app.services.report_formats import reporter_formats
+from app.services.tls_reports import DNS_PREFIX, recent_summary, suggest_tls_record
 from app.templates_config import flash, templates
 
 router = APIRouter(prefix="/domains", tags=["domains"])
@@ -152,6 +153,7 @@ def domain_detail(
         if rua_domain != domain.name:
             ext_verify_record = f"{domain.name}._report._dmarc.{rua_domain}"
 
+    tls_on = settings.TLS_REPORTS_ENABLED
     return templates.TemplateResponse(request, "domains/detail.html", {
         "user": user, "org": org, "domain": domain,
         "addresses": addresses, "recommendations": recs,
@@ -163,6 +165,9 @@ def domain_detail(
         "rua_domain": rua_addr.split("@")[1] if rua_addr and "@" in rua_addr else None,
         "recipients": recipients_for(db, domain), "recipients_max": settings.DOMAIN_RECIPIENTS_MAX,
         "mail_ready": mail_configured(),
+        "tls_summary": recent_summary(db, org.id, domain_id, days) if tls_on else None,
+        "tls_record": suggest_tls_record(rua_addr) if tls_on and rua_addr else None,
+        "tls_dns_name": f"{DNS_PREFIX}.{domain.name}",
         "page_title": domain.name,
     })
 

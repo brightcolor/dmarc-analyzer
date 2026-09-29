@@ -3,10 +3,12 @@ Fill a local SQLite database with invented demo data for previews and screenshot
 
     DATABASE_URL=sqlite:///./demo.db python scripts/demo_data.py
 
-Creates an organisation, an administrator, three domains and about a month of reports in
-both formats (RFC 7489 and RFC 9990). The administrator's login goes to demo-login.txt
-(ignored by git). Refuses to run against anything other than SQLite.
+Creates an organisation, an administrator, three domains, about a month of reports in
+both formats (RFC 7489 and RFC 9990), failure reports and two weeks of TLS reports. The
+administrator's login goes to demo-login.txt (ignored by git). Refuses to run against
+anything other than SQLite.
 """
+import json
 import os
 import random
 import secrets
@@ -38,6 +40,7 @@ from app.services.import_service import store_parsed_report  # noqa: E402
 from app.services.inbound_address import create_domain_address, create_org_address  # noqa: E402
 from app.services.senders import refresh_sources  # noqa: E402
 from app.services.setup import clear_setup_code  # noqa: E402
+from app.services.tls_reports import parse_tls_report, store_tls_report  # noqa: E402
 
 LOGIN_FILE = Path(__file__).resolve().parent.parent / "demo-login.txt"
 DOMAINS = [("example.com", "reject", "quarantine", 100), ("example.org", "quarantine", None, 0),
@@ -59,6 +62,46 @@ FAILURE_REPORTS = [
     ("example.com", "192.0.2.11", "dkim", "spf", "delivered", "Max Mustermann <max@example.com>",
      "Angebot Wandgestaltung", "dmarc-noreply@post.example"),
 ]
+
+# TLS reports: (domain, policy type, mail server, daily sessions, failure reason, days with failures, share failed)
+TLS_DOMAINS = [
+    ("example.com", "sts", "mx.example.com", (400, 900), "certificate-expired", 3, 0.08),
+    ("example.org", "no-policy-found", "mail.example.org", (60, 180), "starttls-not-supported", 14, 0.12),
+    ("example.net", "no-policy-found", "mx.example.net", (20, 60), None, 0, 0.0),
+]
+TLS_REPORTERS = [("Beispiel Mail AG", "tls-reports@mail.example", "192.0.2.200"),
+                 ("Nordlicht Post", "tlsrpt@post.example", "198.51.100.200")]
+
+
+def _tls_report(reporter: str, contact: str, sender_ip: str, domain: str, policy_type: str, mx: str, day: datetime,
+                successful: int, reason: str | None, failed: int) -> bytes:
+    policy = {"policy-type": policy_type, "policy-domain": domain, "mx-host": [mx]}
+    if policy_type == "sts":
+        policy["policy-string"] = ["version: STSv1", "mode: enforce", f"mx: {mx}", "max_age: 604800"]
+    details = [{"result-type": reason, "sending-mta-ip": sender_ip, "receiving-mx-hostname": mx,
+                "receiving-ip": "203.0.113.25", "failed-session-count": failed}] if failed else []
+    return json.dumps({
+        "organization-name": reporter, "contact-info": contact,
+        "report-id": f"{day:%Y-%m-%d}T00:00:00Z_{domain}_{contact.split('@')[1]}",
+        "date-range": {"start-datetime": f"{day:%Y-%m-%d}T00:00:00Z", "end-datetime": f"{day:%Y-%m-%d}T23:59:59Z"},
+        "policies": [{"policy": policy, "summary": {"total-successful-session-count": successful,
+                                                    "total-failure-session-count": failed},
+                      "failure-details": details}],
+    }).encode()
+
+
+def add_tls_reports(db, org: Organization, today: datetime, rng: random.Random) -> None:
+    for domain, policy_type, mx, sessions, reason, failing_days, share in TLS_DOMAINS:
+        for offset in range(1, 15):
+            day = today - timedelta(days=offset)
+            for reporter, contact, sender_ip in TLS_REPORTERS:
+                successful = rng.randint(*sessions)
+                failed = round(successful * share * rng.uniform(0.5, 1.5)) if reason and offset <= failing_days else 0
+                data = _tls_report(reporter, contact, sender_ip, domain, policy_type, mx, day, successful, reason,
+                                   failed)
+                record = store_tls_report(db, parse_tls_report(data), organization_id=org.id)
+                if record is not None:
+                    record.created_at = day + timedelta(days=1, hours=6, minutes=rng.randint(0, 50))
 
 
 def _record(ip: str, count: int, passed: bool, domain: str, dmarcbis: bool, testing: bool) -> str:
@@ -183,6 +226,7 @@ def main() -> None:
                                        f"spf={'pass' if aligned == 'spf' else 'fail'} smtp.mailfrom={name}",
                 header_from=sender, subject=subject, message_id=f"<{index}.demo@{name}>", original_headers=headers,
             ), organization_id=org.id, reporter=reporter)
+        add_tls_reports(db, org, today, rng)
         db.flush()
         refresh_sources(db, everything=True)
         db.commit()

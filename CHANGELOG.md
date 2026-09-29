@@ -7,6 +7,33 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.10.0] – 2026-09-29
+
+### Neu
+
+- TLS-Berichte (TLS-RPT, RFC 8460): Mailserver wie Google und Microsoft melden einmal am Tag, wie viele
+  Verbindungen zu den Mailservern einer Domain verschlüsselt zustande kamen und woran die übrigen
+  scheiterten. Die Anwendung erkennt die Berichte im Mailempfang und zeigt sie unter
+  **Berichte → TLS-Berichte**, mit Filter nach Domain, Absender und Ergebnis. Die Einzelansicht nennt je
+  Richtlinie (MTA-STS, DANE, ohne Richtlinie) die Gründe mit einem Hinweis, was zu tun ist.
+- Die Domainseite zeigt den TXT-Eintrag `_smtp._tls` mit `v=TLSRPTv1; rua=mailto:<Empfangsadresse>`
+  zum Kopieren und fasst die TLS-Berichte der letzten Tage mit dem häufigsten Grund zusammen.
+- Neue Alarmart „TLS-Verbindungen scheitern“ mit der Vorgabe `ALERT_DEFAULT_TLS_FAIL_RATE` (5 %); eine
+  Regel für alle Domains prüft jede Domain einzeln.
+- `GET /api/v1/tls-reports` liefert die Berichte mit Richtlinien und Fehlerangaben.
+- Einstellungen `TLS_REPORTS_ENABLED`, `TLS_REPORT_MAX_POLICIES` und `TLS_REPORT_MAX_FAILURE_DETAILS`;
+  `SMTP_INBOUND_TLS_MIN_VERSION` legt die älteste TLS-Version des Mailempfangs fest.
+- Eingegangene Mails verlinken ihren TLS-Bericht. Das Aufräumen löscht TLS-Berichte mit der Aufbewahrung
+  der Organisation.
+
+### Behoben
+
+- STARTTLS im Mailempfang: Mit `SMTP_INBOUND_TLS_ENABLED=true` verlangte der Empfang bisher TLS ab dem
+  ersten Byte, wie auf Port 465. Mailserver sprechen auf Port 25 erst unverschlüsselt und wechseln mit
+  STARTTLS; sie erreichten den Empfang damit nicht. Jetzt bietet er STARTTLS nach dem `EHLO` an, und
+  Absender ohne TLS liefern weiter. Ein Zertifikat, das sich nicht laden lässt, schaltet nur STARTTLS
+  ab; das Log nennt Pfad und Grund.
+
 ## [0.9.2] – 2026-09-29
 
 ### Geändert

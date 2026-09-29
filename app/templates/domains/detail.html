@@ -97,6 +97,23 @@
 </section>
 {% endif %}
 
+{% if tls_summary is not none %}
+<section class="bc-panel" id="tls" aria-labelledby="tls-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="tls-titel">TLS-Berichte</h2>{% if tls_summary.reports %}<a class="bc-button bc-button--secondary" href="/tls-reports?domain_id={{ domain.id }}">Berichte ansehen</a>{% endif %}</div>
+  <div class="bc-panel__body">
+    {% if tls_summary.reports %}
+    <p style="margin-top:0">Letzte {{ chart_days | num }} Tage: {{ tls_summary.reports | plural('Bericht', 'Berichte') }} über {{ tls_summary.total | plural('Verbindung', 'Verbindungen') }} zu den Mailservern von {{ domain.name }}. {% if tls_summary.failed %}{{ ui.state(tls_summary.failed | num ~ ' gescheitert · ' ~ (tls_summary.failure_rate | percent), tls_summary.failure_rate | tls_rate_state) }}{% if tls_summary.top_result is not none %} Häufigster Grund: {{ tls_summary.top_result | tls_result_text }}.{% endif %}{% else %}{{ ui.state('alle mit TLS', 'bc-state--on') }}{% endif %}</p>
+    {% else %}
+    <p style="margin-top:0">Noch keine TLS-Berichte für {{ domain.name }}. Mit diesem TXT-Eintrag melden Mailserver wie Google und Microsoft einmal am Tag, ob sie Mails an {{ domain.name }} verschlüsselt zustellen konnten. Das lohnt sich für jede Domain, die selbst Mails empfängt.</p>
+    {% endif %}
+    {% if tls_record %}
+    {{ ui.copy_code("tls-name", tls_dns_name, "Name") }}
+    {{ ui.copy_code("tls-value", tls_record, "Wert") }}
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 <section class="bc-panel" id="empfaenger" aria-labelledby="empfaenger-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="empfaenger-titel">Weitere Empfänger</h2><span class="app-quiet app-small">{{ recipients | length }} von {{ recipients_max }}</span></div>
   <div class="bc-panel__body">

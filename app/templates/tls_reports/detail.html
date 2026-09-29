@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block lede %}<p>Bericht von {{ report.organization_name or 'einem unbekannten Absender' }} über den {{ report.period_begin | day_span(report.period_end) }} (UTC){% if report.domain %} für <a href="/domains/{{ report.domain.id }}">{{ report.domain.name }}</a>{% endif %}. Eingegangen am {{ report.created_at | datetime }}; die Anwendung löscht ihn nach {{ retention_days | num }} Tagen.</p>{% endblock %}
+{% block actions %}<a class="bc-button bc-button--secondary" href="/tls-reports">Alle TLS-Berichte</a>{% endblock %}
+
+{% block content %}
+<div class="app-grid app-grid--2">
+  <section class="bc-panel" aria-labelledby="ergebnis-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="ergebnis-titel">Ergebnis</h2>{% if report.failed_sessions %}{{ ui.state((report.failure_rate | percent) ~ ' gescheitert', report.failure_rate | tls_rate_state) }}{% else %}{{ ui.state('alle mit TLS', 'bc-state--on') }}{% endif %}</div>
+    <div class="bc-panel__body">
+      <dl class="app-dl">
+        <dt>Verbindungen</dt><dd>{{ report.total_sessions | num }}</dd>
+        <dt>Mit TLS</dt><dd>{{ report.successful_sessions | num }}</dd>
+        <dt>Gescheitert</dt><dd>{{ report.failed_sessions | num }}</dd>
+        <dt>Geprüft nach</dt><dd>{{ (report.policies | map(attribute='policy_type') | map('tls_policy_text') | unique | join(', ')) or '—' }}</dd>
+      </dl>
+      {% if report.total_sessions and not report.failed_sessions %}<p class="app-small app-quiet" style="margin:12px 0 0">Alle gemeldeten Verbindungen zu deinen Mailservern kamen verschlüsselt zustande.</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="bc-panel" aria-labelledby="angaben-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="angaben-titel">Angaben zum Bericht</h2></div>
+    <div class="bc-panel__body">
+      <dl class="app-dl">
+        <dt>Berichtet von</dt><dd class="app-break">{{ report.organization_name or '—' }}</dd>
+        <dt>Kontakt</dt><dd class="app-break">{{ report.contact_info or '—' }}</dd>
+        <dt>Zeitraum</dt><dd>{{ report.period_begin | utc }} bis {{ report.period_end | utc }}</dd>
+        <dt>Kennung</dt><dd class="app-mono app-break">{{ report.report_id }}</dd>
+        <dt>Herkunft</dt><dd>{{ report.import_source | source_text }}</dd>
+      </dl>
+      {% if can.manager %}
+      <form method="post" action="/tls-reports/{{ report.id }}/delete" style="margin-top:16px" data-confirm="Diesen TLS-Bericht mit seinen Fehlerangaben löschen?">
+        <button class="bc-button bc-button--danger" type="submit">TLS-Bericht löschen</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+{% for policy in report.policies %}
+<section class="bc-panel" aria-labelledby="richtlinie-{{ loop.index }}">
+  <div class="bc-panel__head">
+    <h2 class="bc-panel__title" id="richtlinie-{{ loop.index }}">{{ policy.policy_type | tls_policy_text }}{% if policy.policy_domain %} für {{ policy.policy_domain }}{% endif %}</h2>
+    {% if policy.failed_sessions %}{{ ui.state(policy.failed_sessions | num ~ ' gescheitert', policy.failure_rate | tls_rate_state) }}{% else %}{{ ui.state(policy.successful_sessions | num ~ ' mit TLS', 'bc-state--on') }}{% endif %}
+  </div>
+  <div class="bc-panel__body">
+    {% if policy.policy_type | tls_policy_hint %}<p style="margin-top:0">{{ policy.policy_type | tls_policy_hint }}</p>{% endif %}
+    <dl class="app-dl">
+      <dt>Mit TLS</dt><dd>{{ policy.successful_sessions | num }}</dd>
+      <dt>Gescheitert</dt><dd>{{ policy.failed_sessions | num }}</dd>
+      {% if policy.mx_host_list %}<dt>Mailserver laut Richtlinie</dt><dd class="app-mono app-break">{{ policy.mx_host_list | join(', ') }}</dd>{% endif %}
+    </dl>
+    {% if policy.policy_lines %}
+    <details class="app-details">
+      <summary>Richtlinie zeigen</summary>
+      <pre class="app-pre">{{ policy.policy_lines | join('\n') }}</pre>
+    </details>
+    {% endif %}
+  </div>
+  {% if policy.failures %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Grund</th><th class="bc-hide-narrow">Absender</th><th class="bc-hide-narrow">Dein Mailserver</th><th class="bc-num bc-hide-narrow">Verbindungen</th></tr></thead>
+      <tbody>
+        {% for f in policy.failures %}
+        <tr>
+          <td><span class="bc-row-title">{{ f.result_type | tls_result_text }}</span><span class="bc-row-sub">{{ (f.result_type | tls_result_hint).replace('<domain>', policy.policy_domain or 'deine-domain') }}{% if f.failure_reason_code %} Fehlercode <code class="app-break">{{ f.failure_reason_code }}</code>.{% endif %}{% if f.additional_information %} <span class="app-break">{{ f.additional_information }}</span>{% endif %}<span class="bc-only-narrow"> · {{ f.failed_sessions | plural('Verbindung', 'Verbindungen') }}{% if f.sending_mta_ip %} · von <span class="app-mono">{{ f.sending_mta_ip }}</span>{% endif %}{% if f.receiving_mx_hostname or f.receiving_ip %} · an <span class="app-mono app-break">{{ f.receiving_mx_hostname or f.receiving_ip }}</span>{% endif %}</span></span></td>
+          <td class="app-mono bc-hide-narrow">{{ f.sending_mta_ip or '—' }}</td>
+          <td class="app-break bc-hide-narrow"><span class="app-mono">{{ f.receiving_mx_hostname or '—' }}</span>{% if f.receiving_ip %}<br><span class="app-small app-quiet app-mono">{{ f.receiving_ip }}</span>{% endif %}{% if f.receiving_mx_helo and f.receiving_mx_helo != f.receiving_mx_hostname %}<br><span class="app-small app-quiet">meldet sich als {{ f.receiving_mx_helo }}</span>{% endif %}</td>
+          <td class="bc-num bc-hide-narrow">{{ f.failed_sessions | num }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif policy.failed_sessions %}
+  <div class="bc-panel__body"><p class="app-small app-quiet" style="margin:0">Der Bericht nennt für diese Richtlinie keine Gründe.</p></div>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% if report.failure_details_omitted %}
+<p class="app-small app-quiet">Der Bericht nannte {{ report.failure_details_omitted | plural('weitere Fehlerangabe', 'weitere Fehlerangaben') }} mit weniger Verbindungen. Die Anwendung speichert je Bericht die mit den meisten (<code>TLS_REPORT_MAX_FAILURE_DETAILS</code>); die Summen oben zählen alle.</p>
+{% endif %}
+{% endblock %}

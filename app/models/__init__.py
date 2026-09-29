@@ -27,6 +27,7 @@ from app.models.smtp_inbound import (  # noqa: F401
     SmtpInboundRejection,
 )
 from app.models.source_ip import SourceIp  # noqa: F401
+from app.models.tls_report import TlsReport, TlsReportFailure, TlsReportPolicy  # noqa: F401
 from app.models.user import User  # noqa: F401
 
 # Wire up back-references that require all models to be loaded

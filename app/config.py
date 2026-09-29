@@ -86,9 +86,16 @@ class Settings(BaseSettings):
     )
     SMTP_INBOUND_RATE_LIMIT_PER_IP: int = 60       # per hour
     SMTP_INBOUND_RATE_LIMIT_PER_RECIPIENT: int = 120  # per hour
-    SMTP_INBOUND_TLS_ENABLED: bool = False
-    SMTP_INBOUND_TLS_CERT_PATH: str | None = None
-    SMTP_INBOUND_TLS_KEY_PATH: str | None = None
+    SMTP_INBOUND_TLS_ENABLED: bool = Field(
+        False, description="STARTTLS für den Mailempfang anbieten. Mailserver ohne TLS liefern weiter unverschlüsselt.",
+    )
+    SMTP_INBOUND_TLS_CERT_PATH: str | None = Field(
+        None, description="Zertifikat mit Kette für STARTTLS (PEM), etwa das Wildcard-Zertifikat der Empfangsdomain.",
+    )
+    SMTP_INBOUND_TLS_KEY_PATH: str | None = Field(None, description="Privater Schlüssel zum Zertifikat (PEM).")
+    SMTP_INBOUND_TLS_MIN_VERSION: Literal["TLSv1.2", "TLSv1.3"] = Field(
+        "TLSv1.2", description="Älteste TLS-Version, die der Mailempfang annimmt.",
+    )
 
     # Raw mail storage (when STORE_RAW=true)
     RAW_MAIL_DIR: str = "./raw_mail"
@@ -117,6 +124,21 @@ class Settings(BaseSettings):
     FAILURE_REPORT_MAX_HEADER_BYTES: int = Field(
         65_536, ge=1024, le=1_048_576,
         description="Höchstgröße der gespeicherten Kopfzeilen in Bytes; was darüber hinausgeht, wird abgeschnitten.",
+    )
+
+    # TLS reports (TLS-RPT, RFC 8460): how often senders reached the mail servers of a domain with TLS
+    TLS_REPORTS_ENABLED: bool = Field(
+        True, description="TLS-Berichte (TLS-RPT) erkennen und speichern. Aus: Die Anwendung versucht die Datei "
+                          "als DMARC-Bericht zu lesen und vermerkt den Fehlschlag unter „Eingegangene Mails“.",
+    )
+    TLS_REPORT_MAX_POLICIES: int = Field(
+        100, ge=1, le=10_000,
+        description="Höchstzahl Richtlinien in einem TLS-Bericht; einen Bericht mit mehr lehnt die Anwendung ab.",
+    )
+    TLS_REPORT_MAX_FAILURE_DETAILS: int = Field(
+        1000, ge=1, le=100_000,
+        description="Fehlerangaben, die die Anwendung je TLS-Bericht speichert. Sie behält die mit den meisten "
+                    "gescheiterten Verbindungen; die Summen des Berichts bleiben vollständig.",
     )
 
     # Scheduler in the web process
@@ -178,6 +200,10 @@ class Settings(BaseSettings):
     ALERT_DEFAULT_AUTH_FAIL_RATE: float = Field(
         20.0, ge=0.0, le=100.0,
         description="Anteil in Prozent ohne passendes SPF bzw. DKIM, ab dem eine Regel ohne Schwelle auslöst.",
+    )
+    ALERT_DEFAULT_TLS_FAIL_RATE: float = Field(
+        5.0, ge=0.0, le=100.0,
+        description="Anteil gescheiterter TLS-Verbindungen in Prozent, ab dem eine Regel ohne Schwelle auslöst.",
     )
     ALERT_DEFAULT_HIGH_VOLUME: int = Field(
         500, ge=1, le=100_000_000, description="Nachrichten, ab denen eine neue Quelle als groß gilt.",

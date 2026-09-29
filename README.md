@@ -12,22 +12,27 @@ RFC 9990). Jeder Bericht zeigt, in welchem Format er ankam und woran das erkannt
 ## Funktionen
 
 - **Eigener Mailempfang** mit aiosmtpd: nimmt nur Mails an die Empfangsadressen der Organisationen
-  an, lehnt Unbekannte schon bei `RCPT TO` ab und leitet nichts weiter.
+  an, lehnt Unbekannte schon bei `RCPT TO` ab und leitet nichts weiter. Mit eigenem Zertifikat bietet
+  er STARTTLS an.
 - **Beide Berichtsformate**: RFC 7489 und RFC 9990, mit und ohne Namespace. Die Auswertung kennt
   den Testmodus `t`, die Policy `np` für nicht existierende Subdomains, `pct` und die Behandlung
   `pass`.
 - **Fehlerberichte (`ruf`)** im Abuse Reporting Format: Quelle, gescheiterte Prüfung, Zustellung und
   die Kopfzeilen der gemeldeten Mail. Den Inhalt der Mail speichert die Anwendung nie, die Berichte
   verschwinden nach einer eigenen, kurzen Frist.
+- **TLS-Berichte (TLS-RPT, RFC 8460)**: Mailserver wie Google und Microsoft melden einmal am Tag, wie
+  viele Verbindungen zu deinen Mailservern verschlüsselt zustande kamen und woran die übrigen
+  scheiterten, etwa an einem abgelaufenen Zertifikat oder einer MTA-STS-Richtlinie, die sich nicht
+  abrufen ließ.
 - **Empfehlungen je Domain**, etwa bereit für `p=quarantine` oder `p=reject`, `pct=0` ohne `t=y`,
   unbekannte Quellen und fehlende Berichte. Alle Schwellen sind einstellbar.
-- **DNS-Vorschlag** für den DMARC-Eintrag, der für Empfänger beider Standards passt, und für den
-  Zustimmungseintrag unter `_report._dmarc`.
+- **DNS-Vorschlag** für den DMARC-Eintrag, der für Empfänger beider Standards passt, für den
+  Zustimmungseintrag unter `_report._dmarc` und für den TLS-Berichtseintrag unter `_smtp._tls`.
 - **Absender mit Namen**: Jede IP-Adresse wird einem Dienst zugeordnet, etwa Google, Microsoft 365,
   Amazon SES, Mailchimp oder IONOS. Ein Klick gibt einen Dienst mit allen seinen Adressen frei, auch mit
   künftigen.
-- **Alarme** für 13 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten bis zu
-  ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
+- **Alarme** für 14 Auffälligkeiten, von neuen unbekannten Quellen über steigende Fehlerquoten und
+  scheiternde TLS-Verbindungen bis zu ausbleibenden Berichten. Benachrichtigung per E-Mail, Webhook, ntfy oder Slack und Mattermost.
 - **Mailversand** über einen SMTP-Server oder die HTTP-API von Postal, auch von Hosts, deren Anbieter
   ausgehenden Port 25 sperrt.
 - **Weitere Empfänger je Domain** für ihre Alarme und einen eigenen Wochenbericht, der nur diese
@@ -113,6 +118,51 @@ docker compose exec web python -m app.org_limits <kennung> --max-domains 500
 
    Ein Platzhaltereintrag `*._report._dmarc.reports.example.com` stimmt für alle Domains zu.
 
+4. **TLS-Berichte je Domain**, für Domains, die selbst Mails empfangen. Dieselbe Empfangsadresse
+   kommt in einen TXT-Eintrag unter `_smtp._tls`; die Domainseite zeigt ihn zum Kopieren:
+
+   ```
+   _smtp._tls.example.com.  TXT  "v=TLSRPTv1; rua=mailto:dom-example-com-abc123@reports.example.com"
+   ```
+
+   Eine Zustimmung der Empfangsdomain wie bei DMARC braucht dieser Eintrag nicht.
+
+---
+
+## Verschlüsselter Mailempfang (STARTTLS)
+
+Mit einem Zertifikat für die Empfangsdomain bietet der Mailempfang STARTTLS an, so wie Mailserver es
+auf Port 25 erwarten: Die Verbindung beginnt unverschlüsselt und wechselt nach dem `EHLO`. Absender
+ohne TLS liefern weiter.
+
+```
+SMTP_INBOUND_TLS_ENABLED=true
+SMTP_INBOUND_TLS_CERT_PATH=/certs/reports.example.com.crt
+SMTP_INBOUND_TLS_KEY_PATH=/certs/reports.example.com.key
+SMTP_INBOUND_TLS_MIN_VERSION=TLSv1.2
+```
+
+Die Pfade gelten im Container. Das Verzeichnis kommt schreibgeschützt in den Dienst `smtp`, etwa in
+einer `compose.override.yaml`:
+
+```yaml
+services:
+  smtp:
+    volumes:
+      - /pfad/zu/den/zertifikaten:/certs:ro
+    group_add:
+      - "1000"   # Gruppe, die den Schlüssel lesen darf
+```
+
+Der Container läuft als Benutzer `1001`; er braucht Leserecht auf Zertifikat und Schlüssel. Lässt sich
+das Zertifikat nicht laden, läuft der Empfang ohne STARTTLS weiter und das Log nennt Pfad und Grund.
+Ein erneuertes Zertifikat gilt nach einem Neustart des Dienstes (`docker compose restart smtp`); dieser
+Befehl gehört in den Ablauf, der das Zertifikat erneuert. Prüfen lässt sich der Empfang so:
+
+```bash
+openssl s_client -starttls smtp -connect reports.example.com:25 -servername reports.example.com
+```
+
 ---
 
 ## DMARC 2015 und DMARCbis
@@ -154,6 +204,35 @@ Fehlerberichte enthalten personenbezogene Daten, etwa Empfänger und Betreff. De
 
 Viele große Anbieter verschicken keine Fehlerberichte. Mit `FAILURE_REPORTS_ENABLED=false` vermerkt die
 Anwendung solche Mails nur unter **Empfang → Eingegangene Mails**.
+
+---
+
+## TLS-Berichte
+
+TLS-Berichte (SMTP TLS Reporting, RFC 8460) kommen von den Mailservern, die Mails an deine Domains
+zustellen. Einmal am Tag melden sie, wie viele Verbindungen zu deinen Mailservern mit TLS zustande
+kamen, nach welcher Richtlinie sie geprüft haben (MTA-STS, DANE oder ohne Richtlinie) und woran
+gescheiterte Verbindungen lagen. Die Berichte kommen als JSON-Datei an die Adresse im Eintrag
+`_smtp._tls`; die Anwendung erkennt sie am Berichtstyp `tlsrpt`, an den Medientypen
+`application/tlsrpt+gzip` und `application/tlsrpt+json` oder an einer lesbaren `.json`-Datei.
+
+- **Berichte → TLS-Berichte** listet alle Berichte mit Domain, Absender, Verbindungen und Anteil der
+  gescheiterten; ein Filter zeigt nur Berichte mit Fehlern.
+- Die Einzelansicht zeigt je Richtlinie die Gründe, etwa „Zertifikat abgelaufen“, „STARTTLS fehlt“ oder
+  „MTA-STS-Richtlinie nicht abrufbar“, mit einem Hinweis, was zu tun ist, dazu Absender-IP, Mailserver
+  und Fehlercode.
+- Die Domainseite fasst die Berichte der letzten `UI_CHART_DAYS` Tage zusammen und nennt den häufigsten
+  Grund.
+- Die Alarmart „TLS-Verbindungen scheitern“ schlägt an, wenn der Anteil gescheiterter Verbindungen die
+  Schwelle erreicht (Vorgabe `ALERT_DEFAULT_TLS_FAIL_RATE`, 5 %). Weil Absender einmal am Tag berichten,
+  passt ein Zeitraum ab 1440 Minuten.
+- Ein Bericht, der doppelt ankommt, bleibt einmal gespeichert. Mehr als `TLS_REPORT_MAX_POLICIES`
+  Richtlinien lehnt die Anwendung ab; von den Fehlerangaben behält sie die
+  `TLS_REPORT_MAX_FAILURE_DETAILS` mit den meisten Verbindungen, die Summen bleiben vollständig.
+- TLS-Berichte folgen der Aufbewahrung der Organisation wie die DMARC-Berichte.
+
+Mit `TLS_REPORTS_ENABLED=false` behandelt die Anwendung solche Mails wie jede andere und vermerkt unter
+**Empfang → Eingegangene Mails**, dass sich der Anhang nicht importieren ließ.
 
 ---
 
@@ -207,6 +286,7 @@ alle Regeln direkt nach jedem Import und zusätzlich im Takt von `ALERT_EVAL_INT
 | Neue Quelle mit DMARC-Fehlern | eine neue Quelle Nachrichten ohne DMARC-Erfolg verschickt | `ALERT_DEFAULT_NEW_SOURCE_FAILURES` |
 | DMARC-Fehlerquote über der Schwelle | der Anteil ohne DMARC-Erfolg die Schwelle erreicht | `ALERT_DEFAULT_FAIL_RATE` |
 | Viele Nachrichten ohne passendes SPF oder DKIM | der Anteil ohne passendes SPF bzw. DKIM die Schwelle erreicht | `ALERT_DEFAULT_AUTH_FAIL_RATE` |
+| TLS-Verbindungen scheitern | der Anteil gescheiterter TLS-Verbindungen laut TLS-Berichten die Schwelle erreicht | `ALERT_DEFAULT_TLS_FAIL_RATE` |
 | Versandmenge steigt oder fällt plötzlich | die Menge vom Durchschnitt der Zeiträume davor abweicht | `ALERT_DEFAULT_VOLUME_SPIKE`, `ALERT_DEFAULT_VOLUME_DROP` |
 | Berichte bleiben aus | im Zeitraum kein Bericht ankam | – |
 | Import fehlgeschlagen | Dateien sich nicht importieren ließen | `ALERT_DEFAULT_IMPORT_FAILURES` |
@@ -322,8 +402,8 @@ Der Zeitplaner läuft im Web-Container. Er prüft Regeln, verschickt Benachricht
 Wochenberichte und räumt auf. Jede Aufgabe läuft pro Takt genau einmal, auch mit mehreren
 Web-Containern. Letzten Lauf und Ergebnis jeder Aufgabe zeigt **Empfang → Status** dem Betreiber.
 
-Beim Aufräumen löscht die Anwendung Berichte, Importe samt Dateien und empfangene Mails, die älter
-sind als die Aufbewahrung der Organisation (`report_retention_days`, Vorgabe 365 Tage). Rohmails gehen
+Beim Aufräumen löscht die Anwendung Berichte, TLS-Berichte, Importe samt Dateien und empfangene Mails,
+die älter sind als die Aufbewahrung der Organisation (`report_retention_days`, Vorgabe 365 Tage). Rohmails gehen
 nach `SMTP_INBOUND_RAW_RETENTION_DAYS`, abgelehnte Zustellversuche nach
 `SMTP_REJECTION_RETENTION_DAYS`, Fehlerberichte nach `FAILURE_REPORT_RETENTION_DAYS`. Ein Lauf löscht höchstens `RETENTION_BATCH_SIZE` Einträge je Art.
 
@@ -342,6 +422,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `APP_URL` | `http://localhost:8000` | öffentliche Adresse für Einrichtungshinweis und Links in Mails |
 | `SESSION_HTTPS_ONLY` | `false` | Sitzungscookie nur über HTTPS |
 | `SMTP_INBOUND_DOMAIN` | `reports.example.org` | Domain der Empfangsadressen |
+| `SMTP_INBOUND_TLS_*` | aus, TLS 1.2 | STARTTLS für den Mailempfang mit Zertifikat und Schlüssel |
 | `DISPLAY_TIMEZONE` | `Europe/Berlin` | Zeitzone der Oberfläche |
 | `UI_CHART_DAYS` | `30` | Tage im Verlaufsdiagramm |
 | `RECOMMENDATION_*` | siehe `.env.example` | Schwellen der Empfehlungen |
@@ -352,6 +433,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `POSTAL_API_URL`, `POSTAL_API_KEY`, `POSTAL_MESSAGE_TAG` | leer, leer, `dmarc-analyzer` | Versand über die Postal-API |
 | `FAILURE_REPORTS_ENABLED`, `FAILURE_REPORT_*` | an, 30 Tage, Kopfzeilen bis 64 KB | Fehlerberichte |
 | `DMARC_SUGGEST_FAILURE_REPORTS` | an | DNS-Vorschlag mit `ruf` und `fo=1` |
+| `TLS_REPORTS_ENABLED`, `TLS_REPORT_*` | an, 100 Richtlinien, 1000 Fehlerangaben | TLS-Berichte |
 | `DOMAIN_RECIPIENTS_MAX` | 20 | weitere Empfänger je Domain |
 | `DIGEST_*` | montags, 8 Uhr, 7 Tage | Termin und Inhalt des Wochenberichts |
 | `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
@@ -427,6 +509,7 @@ curl -H "Authorization: Bearer <token>" https://dmarc.example.com/api/v1/reports
 | GET | `/api/v1/domains/{id}/stats` | Kennzahlen einer Domain |
 | GET | `/api/v1/reports` | Berichte mit Format (`report_format`, `format_evidence`) und Policy |
 | GET | `/api/v1/failure-reports` | Fehlerberichte ohne die Kopfzeilen der gemeldeten Mail |
+| GET | `/api/v1/tls-reports` | TLS-Berichte mit Richtlinien und Fehlerangaben |
 | GET | `/api/v1/source-ips` | Versandquellen |
 | GET | `/api/v1/alerts/events` | Alarme |
 | POST | `/api/v1/alerts/events/{id}/acknowledge` | Alarm bestätigen |

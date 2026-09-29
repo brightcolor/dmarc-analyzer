@@ -12,6 +12,7 @@ from app.models import (
     SchedulerRun,
     SmtpInboundMessage,
     SmtpInboundRejection,
+    TlsReport,
     User,
 )
 from app.scheduler import JOBS
@@ -23,15 +24,19 @@ router = APIRouter(prefix="/smtp", tags=["smtp"])
 MESSAGE_STATUSES = ("completed", "processing", "quarantine", "failed")
 
 
-def _failure_links(db: Session, org: Organization, messages: list[SmtpInboundMessage]) -> dict[str, str]:
-    """Failure report of each received mail that carried one, for a link in the table."""
+def _report_links(db: Session, org: Organization, messages: list[SmtpInboundMessage]) -> dict[str, tuple[str, str]]:
+    """Failure or TLS report of each received mail that carried one, as address and text for a link."""
     ids = [message.id for message in messages]
     if not ids:
         return {}
-    rows = db.query(DmarcFailureReport.smtp_message_id, DmarcFailureReport.id).filter(
-        DmarcFailureReport.organization_id == org.id, DmarcFailureReport.smtp_message_id.in_(ids),
-    ).all()
-    return {message_id: report_id for message_id, report_id in rows}
+    links = {}
+    for model, path, label in ((TlsReport, "/tls-reports", "TLS-Bericht ansehen"),
+                               (DmarcFailureReport, "/failure-reports", "Fehlerbericht ansehen")):
+        rows = db.query(model.smtp_message_id, model.id).filter(
+            model.organization_id == org.id, model.smtp_message_id.in_(ids),
+        ).all()
+        links.update({message_id: (f"{path}/{report_id}", label) for message_id, report_id in rows})
+    return links
 
 
 @router.get("/status", response_class=HTMLResponse)
@@ -71,7 +76,7 @@ def smtp_status(
     return templates.TemplateResponse(request, "smtp/status.html", {
         "user": user, "org": org,
         "addresses": addresses, "recent_messages": recent_messages, "smtp_config": smtp_config,
-        "failure_links": _failure_links(db, org, recent_messages),
+        "report_links": _report_links(db, org, recent_messages),
         "jobs": jobs, "scheduler_enabled": settings.SCHEDULER_ENABLED, "mail": mail,
         "page_title": "Empfang",
     })
@@ -99,7 +104,7 @@ def smtp_messages(
     return templates.TemplateResponse(request, "smtp/messages.html", {
         "user": user, "org": org,
         "messages": messages, "total": total, "page": page, "pages": pages,
-        "failure_links": _failure_links(db, org, messages),
+        "report_links": _report_links(db, org, messages),
         "status_filter": import_status if import_status in MESSAGE_STATUSES else "",
         "statuses": MESSAGE_STATUSES, "page_title": "Eingegangene Mails",
     })

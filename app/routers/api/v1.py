@@ -4,7 +4,7 @@ REST API v1 — authenticated with Bearer API tokens.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.dependencies import get_api_auth, get_client_ip
@@ -16,6 +16,8 @@ from app.models import (
     InboundMailAddress,
     Organization,
     SourceIp,
+    TlsReport,
+    TlsReportPolicy,
 )
 from app.services.audit import log_action
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
@@ -221,6 +223,71 @@ def list_failure_reports(
                 "dkim_domain": r.dkim_domain,
                 "dkim_selector": r.dkim_selector,
                 "reporter": r.reporter,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in reports
+        ],
+    }
+
+
+@router.get("/tls-reports")
+def list_tls_reports(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=1, le=100),
+    domain_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    api_auth=Depends(get_api_auth),
+):
+    """TLS reports (TLS-RPT, RFC 8460), newest first, with their policies and failure details."""
+    org = _org_or_403(api_auth)
+    q = (db.query(TlsReport).options(selectinload(TlsReport.policies).selectinload(TlsReportPolicy.failures))
+         .filter_by(organization_id=org.id).order_by(TlsReport.created_at.desc()))
+    if domain_id:
+        q = q.filter_by(domain_id=domain_id)
+
+    total = q.count()
+    reports = q.offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "results": [
+            {
+                "id": r.id,
+                "report_id": r.report_id,
+                "domain": r.policy_domain,
+                "domain_id": r.domain_id,
+                "organization_name": r.organization_name,
+                "contact_info": r.contact_info,
+                "period_begin": r.period_begin.isoformat() if r.period_begin else None,
+                "period_end": r.period_end.isoformat() if r.period_end else None,
+                "successful_sessions": r.successful_sessions,
+                "failed_sessions": r.failed_sessions,
+                "failure_details_omitted": r.failure_details_omitted,
+                "policies": [
+                    {
+                        "policy_type": p.policy_type,
+                        "policy_domain": p.policy_domain,
+                        "policy_string": p.policy_lines,
+                        "mx_host": p.mx_host_list,
+                        "successful_sessions": p.successful_sessions,
+                        "failed_sessions": p.failed_sessions,
+                        "failure_details": [
+                            {
+                                "result_type": f.result_type,
+                                "sending_mta_ip": f.sending_mta_ip,
+                                "receiving_mx_hostname": f.receiving_mx_hostname,
+                                "receiving_mx_helo": f.receiving_mx_helo,
+                                "receiving_ip": f.receiving_ip,
+                                "failed_sessions": f.failed_sessions,
+                                "failure_reason_code": f.failure_reason_code,
+                                "additional_information": f.additional_information,
+                            }
+                            for f in p.failures
+                        ],
+                    }
+                    for p in r.policies
+                ],
                 "created_at": r.created_at.isoformat(),
             }
             for r in reports
