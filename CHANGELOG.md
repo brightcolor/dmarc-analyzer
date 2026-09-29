@@ -7,6 +7,17 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.6.1] – 2026-09-29
+
+### Behoben
+
+- Der Mailempfang nimmt Berichte an gültige Empfangsadressen wieder an. Die Prüfung bei `RCPT TO`
+  griff nach dem Schließen der Datenbanksitzung auf die Adresse zu und scheiterte bei jeder gültigen
+  Adresse.
+- Unerwartete Fehler im Mailempfang beantwortet der Server mit `451`, der absendende Mailserver
+  versucht es dann später erneut. Kann eine Mail nicht gespeichert werden, gilt dasselbe. Details
+  stehen nur im Log.
+
 ## [0.6.0] – 2026-09-29
 
 ### Neu
@@ -275,7 +286,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 - `test_import_service.py`: full import pipeline, deduplication, source IP tracking
 - `test_tenant_isolation.py`: cross-tenant isolation for reports, records, domains, IPs
 
-[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/brightcolor/dmarc-analyzer/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.6.1
 [0.6.0]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.6.0
 [0.5.2]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.2
 [0.5.1]: https://github.com/brightcolor/dmarc-analyzer/releases/tag/v0.5.1

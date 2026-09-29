@@ -27,6 +27,10 @@ from smtp_inbound.validator import validate_recipient
 
 logger = logging.getLogger(__name__)
 
+# Answer to an unexpected error: a temporary failure, so the sending server tries again later.
+# SMTP replies stay ASCII; details go to the log only.
+TEMPORARY_FAILURE = "451 4.3.0 Temporary local problem, please try again later"
+
 
 class DmarcSmtpHandler:
     """
@@ -41,6 +45,11 @@ class DmarcSmtpHandler:
         self.rcpt_rate_limit = settings.SMTP_INBOUND_RATE_LIMIT_PER_RECIPIENT
         self.store_raw = settings.SMTP_INBOUND_STORE_RAW
         self.reject_unknown = settings.SMTP_INBOUND_REJECT_UNKNOWN
+
+    async def handle_exception(self, error: Exception) -> str:
+        """aiosmtpd calls this for errors in the other handlers; its default reply shows the exception text."""
+        logger.error("SMTP session error: %s", error, exc_info=error)
+        return TEMPORARY_FAILURE
 
     # ── RCPT TO handler ───────────────────────────────────────────────────────
 
@@ -109,7 +118,7 @@ class DmarcSmtpHandler:
                 logger.warning("No validation result for accepted recipient %s, skipping", rcpt)
                 continue
 
-            await asyncio.to_thread(
+            stored = await asyncio.to_thread(
                 self._persist_and_process,
                 raw=raw,
                 envelope_sender=envelope.mail_from or "",
@@ -120,6 +129,9 @@ class DmarcSmtpHandler:
                 organization_id=vr.organization_id,
                 domain_id=vr.domain_id,
             )
+            if not stored:
+                # Nothing was saved; the sender keeps the mail and delivers it again (imports skip duplicates)
+                return TEMPORARY_FAILURE
 
         return "250 2.0.0 OK"
 
@@ -136,7 +148,7 @@ class DmarcSmtpHandler:
         address_id: str | None,
         organization_id: str,
         domain_id: str | None,
-    ) -> None:
+    ) -> bool:
         """Synchronous persistence and processing (called via asyncio.to_thread)."""
         raw_path = None
         if self.store_raw:
@@ -188,18 +200,18 @@ class DmarcSmtpHandler:
                                     f"erlaubte Größe hinaus entpackt. Die Mail wurde zurückgehalten ({exc}).",
                         smtp_message_id=msg.id,
                     )
-                    return
+                    return True
                 except MimeParseError as exc:
                     logger.warning("MIME parse error from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
                     msg.error_message = f"Die Mail ließ sich nicht lesen: {exc}"
-                    return
+                    return True
 
                 if not attachments:
                     logger.info("No DMARC attachments found in mail from %s to %s", remote_ip, envelope_recipient)
                     msg.import_status = "completed"
                     msg.error_message = "Die Mail enthielt keinen DMARC-Bericht als Anhang."
-                    return
+                    return True
 
                 msg.attachment_count = len(attachments)
                 imported_count = 0
@@ -267,6 +279,8 @@ class DmarcSmtpHandler:
 
         except Exception as exc:
             logger.exception("Error processing mail from %s to %s: %s", remote_ip, envelope_recipient, exc)
+            return False
+        return True
 
     @staticmethod
     def _save_raw_mail(organization_id: str, raw: bytes) -> str | None:

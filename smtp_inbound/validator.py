@@ -93,9 +93,12 @@ def validate_recipient(
             smtp_message="4.7.0 Too many connections from your IP, try later",
         )
 
-    # DB validation
+    # DB validation; the ids are read inside the session, the commit on leaving expires the object
     with get_db_context() as db:
         accepted, reason, addr = validate_for_smtp(db, address)
+        address_id, organization_id, domain_id = (
+            (addr.id, addr.organization_id, addr.domain_id) if addr else (None, None, None)
+        )
 
     if not accepted:
         code_str, _, message = reason.partition(" ")
@@ -121,7 +124,7 @@ def validate_recipient(
         accepted=True,
         smtp_code=250,
         smtp_message="2.1.5 Recipient OK",
-        address_id=addr.id if addr else None,
-        organization_id=addr.organization_id if addr else None,
-        domain_id=addr.domain_id if addr else None,
+        address_id=address_id,
+        organization_id=organization_id,
+        domain_id=domain_id,
     )
