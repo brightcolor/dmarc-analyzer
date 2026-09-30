@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import DmarcFailureReport, Domain
+from app.services.text import clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -186,8 +187,8 @@ def parse_failure_report(raw: bytes) -> ParsedFailureReport | None:
     return report
 
 
-def _cut(value: str | None, size: int) -> str | None:
-    return value[:size] if value else None
+def _cut(value: str | None, size: int | None) -> str | None:
+    return clean_text(value, size) or None if value else None
 
 
 def _find_domain(db: Session, organization_id: str, report: ParsedFailureReport) -> str | None:
@@ -226,11 +227,11 @@ def store_failure_report(db: Session, report: ParsedFailureReport, *, organizati
         dkim_identity=_cut(report.dkim_identity, 320),
         dkim_selector=_cut(report.dkim_selector, 255),
         spf_dns=_cut(report.spf_dns, 500),
-        authentication_results=report.authentication_results,
+        authentication_results=_cut(report.authentication_results, None),
         header_from=_cut(report.header_from, 500),
         subject=_cut(report.subject, 500),
         message_id=_cut(report.message_id, 500),
-        original_headers=report.original_headers,
+        original_headers=_cut(report.original_headers, None),
     )
     db.add(record)
     db.flush()

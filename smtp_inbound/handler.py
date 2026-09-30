@@ -24,6 +24,7 @@ from app.services.mime_parser import (
     parse_mail_headers,
     sha256_hex,
 )
+from app.services.text import clean_text
 from app.services.tls_reports import TlsReportMail, find_tls_reports, mail_outcome, store_tls_report
 from smtp_inbound.validator import validate_recipient
 
@@ -163,8 +164,8 @@ class DmarcSmtpHandler:
                     inbound_address_id=address_id,
                     organization_id=organization_id,
                     domain_id=domain_id,
-                    envelope_sender=envelope_sender[:320] if envelope_sender else None,
-                    envelope_recipient=envelope_recipient[:320],
+                    envelope_sender=clean_text(envelope_sender, 320) or None,
+                    envelope_recipient=clean_text(envelope_recipient, 320),
                     remote_ip=remote_ip[:45],
                     header_from=headers.get("from", "")[:500] or None,
                     header_to=headers.get("to", "")[:1000] or None,
@@ -201,7 +202,7 @@ class DmarcSmtpHandler:
                 except ZipBombError as exc:
                     logger.warning("ZIP bomb detected from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
-                    msg.error_message = f"Archivbombe abgewehrt: {exc}"
+                    msg.error_message = clean_text(f"Archivbombe abgewehrt: {exc}")
                     create_system_alert(
                         db,
                         org_id=organization_id,
@@ -216,7 +217,7 @@ class DmarcSmtpHandler:
                 except MimeParseError as exc:
                     logger.warning("MIME parse error from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
-                    msg.error_message = f"Die Mail ließ sich nicht lesen: {exc}"
+                    msg.error_message = clean_text(f"Die Mail ließ sich nicht lesen: {exc}")
                     return True
 
                 if tls is not None:
@@ -233,6 +234,8 @@ class DmarcSmtpHandler:
                 imported_count = 0
 
                 for att in attachments:
+                    att.filename = clean_text(att.filename, 500)
+                    att.content_type = clean_text(att.content_type, 200)
                     # Record attachment
                     att_record = InboundMailAttachment(
                         message_id=msg.id,

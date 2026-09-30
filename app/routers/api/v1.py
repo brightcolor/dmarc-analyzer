@@ -21,7 +21,7 @@ from app.models import (
     TlsReportPolicy,
 )
 from app.services.audit import log_action
-from app.services.dns_check import cooldown_left, run_check, stored_result
+from app.services.dns_check import CheckRefused, run_manual_check, stored_result
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.senders import load_catalog
 from app.version import APP_NAME, VERSION
@@ -184,12 +184,11 @@ def run_domain_dns_check(
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
     if not domain:
         raise HTTPException(status_code=404)
-    wait = cooldown_left(domain)
-    if wait:
-        raise HTTPException(status_code=429, headers={"Retry-After": str(wait)},
-                            detail=f"{domain.name} wurde gerade geprüft. Das Ergebnis liefert GET auf dieselbe "
-                                   f"Adresse; eine neue Prüfung ist in {wait} Sekunden möglich.")
-    run_check(db, domain)
+    try:
+        run_manual_check(db, domain)
+    except CheckRefused as refused:
+        raise HTTPException(status_code=429, headers={"Retry-After": str(refused.retry_after)},
+                            detail=f"{refused} Das letzte Ergebnis liefert GET auf dieselbe Adresse.") from None
     db.commit()
     return _dns_check_json(domain)
 

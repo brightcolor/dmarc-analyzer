@@ -161,7 +161,9 @@ stehen.
 - Der Zeitplaner prüft jede aktive Domain nach `DNS_CHECK_MAX_AGE_SECONDS` (Vorgabe ein Tag) erneut,
   neue Domains zuerst, je Lauf höchstens `DNS_CHECK_BATCH_SIZE` Domains, `DNS_CHECK_WORKERS` gleichzeitig.
 - **Jetzt prüfen** auf der Domainseite prüft sofort, ab der Rolle Analyst; danach sperrt
-  `DNS_CHECK_MANUAL_COOLDOWN_SECONDS` (Vorgabe 30) die nächste Prüfung derselben Domain.
+  `DNS_CHECK_MANUAL_COOLDOWN_SECONDS` (Vorgabe 30) die nächste Prüfung derselben Domain, auch bei
+  gleichzeitigen Klicks. Mehr als `DNS_CHECK_MANUAL_PARALLEL` (Vorgabe 4) Prüfungen auf Knopfdruck laufen
+  in einem Web-Prozess nicht gleichzeitig.
 - Alle Abfragen einer Domain zusammen dürfen `DNS_CHECK_DOMAIN_BUDGET_SECONDS` dauern, ein Lauf des
   Zeitplaners beginnt nach `DNS_CHECK_JOB_BUDGET_SECONDS` keine neue Domain mehr. Bricht eine Prüfung mit
   einem internen Fehler ab, bleibt nur sie offen; die übrigen Prüfungen und Domains laufen weiter.
@@ -275,6 +277,9 @@ gescheiterte Verbindungen lagen. Die Berichte kommen als JSON-Datei an die Adres
 - Die Alarmart „TLS-Verbindungen scheitern“ schlägt an, wenn der Anteil gescheiterter Verbindungen die
   Schwelle erreicht (Vorgabe `ALERT_DEFAULT_TLS_FAIL_RATE`, 5 %). Weil Absender einmal am Tag berichten,
   passt ein Zeitraum ab 1440 Minuten.
+- Der Zeitraum eines Berichts muss zwischen `TLS_REPORT_MAX_AGE_DAYS` Tagen zurück (Vorgabe 400) und
+  `TLS_REPORT_FUTURE_TOLERANCE_HOURS` Stunden voraus (Vorgabe 48) liegen; andere Berichte stehen mit Grund
+  unter **Empfang → Eingegangene Mails**.
 - Ein Bericht, der doppelt ankommt, bleibt einmal gespeichert. Mehr als `TLS_REPORT_MAX_POLICIES`
   Richtlinien lehnt die Anwendung ab; von den Fehlerangaben behält sie die
   `TLS_REPORT_MAX_FAILURE_DETAILS` mit den meisten Verbindungen, die Summen bleiben vollständig.

@@ -135,6 +135,16 @@ class Settings(BaseSettings):
         100, ge=1, le=10_000,
         description="Höchstzahl Richtlinien in einem TLS-Bericht; einen Bericht mit mehr lehnt die Anwendung ab.",
     )
+    TLS_REPORT_MAX_AGE_DAYS: int = Field(
+        400, ge=1, le=3650,
+        description="Ältester Zeitraum in Tagen, den ein TLS-Bericht nennen darf; ältere Berichte lehnt die Anwendung "
+                    "mit Grund ab.",
+    )
+    TLS_REPORT_FUTURE_TOLERANCE_HOURS: int = Field(
+        48, ge=0, le=720,
+        description="So viele Stunden darf der Zeitraum eines TLS-Berichts in der Zukunft liegen, etwa wegen "
+                    "falsch gehender Uhren beim Absender.",
+    )
     TLS_REPORT_MAX_FAILURE_DETAILS: int = Field(
         1000, ge=1, le=100_000,
         description="Fehlerangaben, die die Anwendung je TLS-Bericht speichert. Sie behält die mit den meisten "
@@ -170,6 +180,11 @@ class Settings(BaseSettings):
         120, ge=10, le=3600,
         description="Nach so vielen Sekunden beginnt ein Lauf des Zeitplaners keine weitere Domain; sie kommen im "
                     "nächsten Lauf dran.",
+    )
+    DNS_CHECK_MANUAL_PARALLEL: int = Field(
+        4, ge=1, le=64,
+        description="Prüfungen auf Knopfdruck (Oberfläche und API), die ein Web-Prozess gleichzeitig ausführt; "
+                    "weitere bekommen die Bitte, es gleich noch einmal zu versuchen.",
     )
     DNS_CHECK_MANUAL_COOLDOWN_SECONDS: int = Field(
         30, ge=0, le=3600,
@@ -586,6 +601,9 @@ class Settings(BaseSettings):
     def _rate_order(self):
         if self.UI_PASS_RATE_WARN > self.UI_PASS_RATE_GOOD:
             raise ValueError("UI_PASS_RATE_WARN darf nicht über UI_PASS_RATE_GOOD liegen")
+        if self.DNS_CHECK_DKIM_ACTIVE_DAYS > self.DNS_CHECK_DKIM_DAYS:
+            raise ValueError("DNS_CHECK_DKIM_ACTIVE_DAYS darf nicht über DNS_CHECK_DKIM_DAYS liegen, sonst gelten "
+                             "Selektoren als in Gebrauch, die die Prüfung gar nicht mehr liest")
         return self
 
     @property

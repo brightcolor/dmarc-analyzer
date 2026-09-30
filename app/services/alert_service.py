@@ -30,6 +30,7 @@ from app.models import (
 from app.security import utcnow
 from app.services.dns_check import stored_result
 from app.services.domain_recipients import alert_addresses
+from app.services.text import clean_text
 from app.services.tls_reports import RESULT_TEXT, summarize
 
 logger = logging.getLogger(__name__)
@@ -536,23 +537,26 @@ def evaluate_rules_for_org(db: Session, org_id: str, now: datetime | None = None
             logger.warning("Rule %s has unknown alert type %s", rule.id, rule.alert_type)
             continue
         try:
-            findings = _findings(db, rule, evaluator, now)
+            # One rule that breaks, while checking or while storing, leaves the other rules untouched
+            with db.begin_nested():
+                findings = _findings(db, rule, evaluator, now)
+                events = [
+                    raise_event(
+                        db, org_id=org_id, rule=rule, alert_type=rule.alert_type, severity=rule.severity,
+                        title=f.title, description=f.description, domain_id=f.domain_id, source_ip=f.source_ip,
+                        metrics=f.metrics, now=now,
+                    )
+                    for f in findings
+                    if not _is_duplicate(db, rule, f) and not _in_pause(db, rule, f, now)
+                ]
+                if events:
+                    rule.last_triggered_at = now
+                    rule.next_allowed_at = now + timedelta(minutes=rule.cooldown_minutes)
+                db.flush()
         except Exception:
             logger.exception("Error evaluating rule %s", rule.id)
             continue
-        events = [
-            raise_event(
-                db, org_id=org_id, rule=rule, alert_type=rule.alert_type, severity=rule.severity,
-                title=f.title, description=f.description, domain_id=f.domain_id, source_ip=f.source_ip,
-                metrics=f.metrics, now=now,
-            )
-            for f in findings
-            if not _is_duplicate(db, rule, f) and not _in_pause(db, rule, f, now)
-        ]
-        if events:
-            rule.last_triggered_at = now
-            rule.next_allowed_at = now + timedelta(minutes=rule.cooldown_minutes)
-            fired.extend(events)
+        fired.extend(events)
     db.flush()
     return fired
 
@@ -603,10 +607,10 @@ def raise_event(
         rule_id=rule.id if rule else None,
         alert_type=alert_type,
         severity=severity,
-        title=title[:500],
-        description=description,
+        title=clean_text(title, 500),
+        description=clean_text(description),
         metrics=json.dumps(metrics or {}),
-        source_ip=source_ip,
+        source_ip=clean_text(source_ip, 45) or None,
         report_id=report_id,
         smtp_message_id=smtp_message_id,
         status="open",

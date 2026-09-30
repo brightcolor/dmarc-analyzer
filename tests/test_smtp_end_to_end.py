@@ -1,4 +1,5 @@
 """The mail reception from RCPT TO to the stored report, over a real SMTP connection."""
+import email.policy
 import gzip
 import logging
 import smtplib
@@ -190,6 +191,30 @@ def test_odd_tls_report_is_noted_once(reception, session):
     message = session.query(SmtpInboundMessage).one()
     assert (message.import_status, message.attachment_count) == ("failed", 1)
     assert "außerhalb des lesbaren Bereichs" in message.error_message
+
+
+def test_raw_utf8_headers_are_stored(reception, session):
+    """A report mail with raw UTF-8 bytes in its headers arrives; before, it ended in 451 on every attempt."""
+    port, address = reception
+    raw = _report_mail(address).as_bytes(policy=email.policy.SMTP)
+    raw = raw.replace(b"Subject: Report Domain: example.com", "Subject: Bericht für example.com".encode())
+    raw = raw.replace(b"From: noreply-dmarc@mail.example", "From: Grüße <noreply-dmarc@mail.example>".encode())
+    assert "für".encode() in raw
+    _send_raw(port, address, raw)
+    session.expire_all()
+    message = session.query(SmtpInboundMessage).one()
+    assert message.subject == "Bericht für example.com"
+    assert message.header_from == "Grüße <noreply-dmarc@mail.example>"
+    assert session.query(DmarcReport).count() == 1
+
+
+def test_announced_tls_report_without_file_counts_no_attachment(reception, session):
+    port, address = reception
+    _send_raw(port, address, tls_mail(address, attach=False))
+    session.expire_all()
+    message = session.query(SmtpInboundMessage).one()
+    assert (message.import_status, message.attachment_count) == ("failed", 0)
+    assert "kündigt einen TLS-Bericht an" in message.error_message
 
 
 def test_tls_reports_can_be_switched_off(reception, session, monkeypatch):

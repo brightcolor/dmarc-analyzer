@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Domain, TlsReport, TlsReportFailure, TlsReportPolicy
 from app.services.mime_parser import GZIP_MAGIC, MimeParseError, _safe_gunzip
+from app.services.text import clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -137,15 +138,16 @@ class TlsReportMail:
 
 # Reading the JSON document ----------------------------------------------------------
 
-def _text(value, size: int) -> str | None:
+def _text(value, size: int, lower: bool = False) -> str | None:
+    """One line of clean text that fits its column; lowercasing happens before the cut."""
     if value is None or isinstance(value, dict | list | bool):
         return None
-    return " ".join(str(value).split())[:size] or None
+    return clean_text(value, size, lower=lower, single_line=True) or None
 
 
 def _host(value) -> str | None:
-    text = _text(value, 255)
-    return (text.lower().rstrip(".") or None) if text else None
+    text = _text(value, 256, lower=True)
+    return (text.rstrip(".")[:255] or None) if text else None
 
 
 def _strings(value) -> list[str]:
@@ -160,8 +162,8 @@ def _count(value, what: str) -> int:
         raise TlsReportError(f"{what} ist keine Zahl ({value!r}).")
     try:
         number = int(value)
-    except (TypeError, ValueError):
-        raise TlsReportError(f"{what} ist keine Zahl ({value!r}).") from None
+    except (TypeError, ValueError, OverflowError):
+        raise TlsReportError(f"{what} ist keine Zahl ({clean_text(value, 40)!r}).") from None
     if number < 0:
         raise TlsReportError(f"{what} ist negativ ({number}).")
     if number > MAX_SESSIONS:
@@ -169,21 +171,30 @@ def _count(value, what: str) -> int:
     return number
 
 
-def _moment(value, what: str) -> datetime | None:
+def _moment(value, what: str, now: datetime) -> datetime | None:
+    """A moment of the report period, in UTC and within the window a daily report can plausibly name."""
     if value is None or value == "":
         return None
+    shown = clean_text(value, 40)
     if not isinstance(value, str):
-        raise TlsReportError(f"{what} ist kein Zeitpunkt ({value!r}).")
+        raise TlsReportError(f"{what} ist kein Zeitpunkt ({shown!r}).")
     try:
         moment = datetime.fromisoformat(value.strip().upper())
-        return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+        moment = moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
     except (ValueError, OverflowError):
-        raise TlsReportError(f"{what} ist kein Zeitpunkt nach RFC 3339 ({value!r}).") from None
+        raise TlsReportError(f"{what} ist kein Zeitpunkt nach RFC 3339 ({shown!r}).") from None
+    earliest = now - timedelta(days=settings.TLS_REPORT_MAX_AGE_DAYS)
+    latest = now + timedelta(hours=settings.TLS_REPORT_FUTURE_TOLERANCE_HOURS)
+    if not earliest <= moment <= latest:
+        raise TlsReportError(f"{what} liegt außerhalb der Zeit, die ein Tagesbericht nennen kann ({shown}); "
+                             f"angenommen werden {settings.TLS_REPORT_MAX_AGE_DAYS} Tage zurück bis "
+                             f"{settings.TLS_REPORT_FUTURE_TOLERANCE_HOURS} Stunden voraus.")
+    return moment
 
 
 def _failure(entry: dict, where: str) -> ParsedFailure:
     return ParsedFailure(
-        result_type=(_text(entry.get("result-type"), 60) or "").lower(),
+        result_type=_text(entry.get("result-type"), 60, lower=True) or "",
         failed_sessions=_count(entry.get("failed-session-count"), f"Die Zahl gescheiterter Verbindungen in {where}"),
         sending_mta_ip=_text(entry.get("sending-mta-ip"), 45),
         receiving_mx_hostname=_host(entry.get("receiving-mx-hostname")),
@@ -204,7 +215,7 @@ def _policy(entry, number: int) -> ParsedPolicy:
     if not isinstance(details, list):
         raise TlsReportError(f"Die Fehlerangaben von {where} sind keine Liste.")
     return ParsedPolicy(
-        policy_type=(_text(policy_part.get("policy-type"), 30) or "no-policy-found").lower(),
+        policy_type=_text(policy_part.get("policy-type"), 30, lower=True) or "no-policy-found",
         policy_domain=_host(policy_part.get("policy-domain")),
         policy_strings=_strings(policy_part.get("policy-string")),
         mx_hosts=_strings(policy_part.get("mx-host")),
@@ -230,8 +241,9 @@ def _limit_failures(policies: list[ParsedPolicy]) -> int:
     return len(entries) - limit
 
 
-def parse_tls_report(data: bytes) -> ParsedTlsReport:
+def parse_tls_report(data: bytes, now: datetime | None = None) -> ParsedTlsReport:
     """Read the JSON document of a TLS report; raises TlsReportError with the reason."""
+    now = now or datetime.now(UTC)
     try:
         document = json.loads(data.decode("utf-8-sig"))
     except UnicodeDecodeError:
@@ -256,6 +268,10 @@ def parse_tls_report(data: bytes) -> ParsedTlsReport:
                              f"{settings.TLS_REPORT_MAX_POLICIES} (TLS_REPORT_MAX_POLICIES).")
     date_range = document.get("date-range") if isinstance(document.get("date-range"), dict) else {}
     parsed = [_policy(entry, number) for number, entry in enumerate(policies, 1)]
+    begin = _moment(date_range.get("start-datetime"), "Der Beginn des Zeitraums", now)
+    end = _moment(date_range.get("end-datetime"), "Das Ende des Zeitraums", now)
+    if begin and end and end < begin:
+        raise TlsReportError("Das Ende des Zeitraums liegt vor seinem Beginn.")
     for what, total in (("erfolgreicher", sum(p.successful_sessions for p in parsed)),
                         ("gescheiterter", sum(p.failed_sessions for p in parsed))):
         if total > MAX_SESSIONS:
@@ -264,8 +280,8 @@ def parse_tls_report(data: bytes) -> ParsedTlsReport:
         report_id=report_id,
         organization_name=_text(document.get("organization-name"), 500),
         contact_info=_text(document.get("contact-info"), 500),
-        period_begin=_moment(date_range.get("start-datetime"), "Der Beginn des Zeitraums"),
-        period_end=_moment(date_range.get("end-datetime"), "Das Ende des Zeitraums"),
+        period_begin=begin,
+        period_end=end,
         policies=parsed,
         failure_details_omitted=_limit_failures(parsed),
     )
@@ -293,7 +309,7 @@ def _report_files(message: Message) -> list[tuple[str, str, bytes]]:
             continue
         payload = part.get_payload(decode=True)
         if payload:
-            files.append((name or content_type, content_type, payload))
+            files.append((clean_text(name, 200, single_line=True) or content_type, content_type, payload))
     return files
 
 
@@ -331,7 +347,8 @@ def find_tls_reports(raw: bytes) -> TlsReportMail | None:
             raise  # an archive bomb holds the whole mail back
         except Exception as exc:  # a strange report must not make the sender deliver again and again
             logger.exception("TLS report %s could not be read", name)
-            found.errors.append(f"{name}: Der TLS-Bericht ließ sich nicht lesen ({exc.__class__.__name__}).")
+            found.errors.append(f"{name}: Der TLS-Bericht ließ sich nicht lesen ({exc.__class__.__name__}); "
+                                "der Betreiber findet den Grund im Log der Anwendung.")
     announced = declared or any(content_type in (GZIP_TYPE, JSON_TYPE) for _, content_type, _ in files)
     if not found.reports and not announced:
         # Some other JSON file: the search for DMARC reports decides

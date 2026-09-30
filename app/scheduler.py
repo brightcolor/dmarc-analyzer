@@ -32,39 +32,42 @@ class Job:
     run: Callable[[Session, datetime], object]
 
 
-def _run_alerts(db: Session, now: datetime) -> int:
+def _evaluate_each(db: Session, org_ids, now: datetime) -> int:
+    """Check the rules of each organisation on its own; one that breaks is logged and the next one goes on."""
     from app.services.alert_service import evaluate_rules_for_org
 
     fired = 0
-    for (org_id,) in db.query(Organization.id).filter_by(is_active=True).all():
-        fired += len(evaluate_rules_for_org(db, org_id, now))
-        db.commit()
+    for org_id in org_ids:
+        try:
+            fired += len(evaluate_rules_for_org(db, org_id, now))
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Alert rules of organisation %s failed", org_id)
     return fired
 
 
+def _run_alerts(db: Session, now: datetime) -> int:
+    return _evaluate_each(db, [org_id for (org_id,) in db.query(Organization.id).filter_by(is_active=True)], now)
+
+
 def _run_senders(db: Session, now: datetime) -> int:
-    from app.services.alert_service import evaluate_rules_for_org
     from app.services.senders import refresh_sources
 
     result = refresh_sources(db, now)
     db.commit()
     # Rules about new sources wait for the sender; check them as soon as it is known
-    for org_id in sorted(result.organizations):
-        evaluate_rules_for_org(db, org_id, now)
-        db.commit()
+    _evaluate_each(db, sorted(result.organizations), now)
     return result.checked
 
 
 def _run_dns(db: Session, now: datetime) -> int:
-    from app.services.alert_service import evaluate_rules_for_org
     from app.services.dns_check import run_due_checks
 
     organizations = run_due_checks(db, now)
     db.commit()
     # A domain that turned faulty raises its alert with the new result
-    for org_id in sorted(organizations):
-        evaluate_rules_for_org(db, org_id, now)
-        db.commit()
+    _evaluate_each(db, sorted(organizations), now)
     return len(organizations)
 
 

@@ -9,10 +9,11 @@ import logging
 import zipfile
 import zlib
 from dataclasses import dataclass
-from email import message_from_bytes
+from email import message_from_bytes, policy
 from email.message import Message
 
 from app.config import settings
+from app.services.text import clean_text
 
 logger = logging.getLogger(__name__)
 
@@ -226,16 +227,31 @@ def _process_attachment(
     return []
 
 
+HEADER_FIELDS = {"from": "From", "to": "To", "subject": "Subject", "message_id": "Message-ID", "date": "Date"}
+
+
+def _header(decoded: Message | None, plain: Message | None, name: str) -> str:
+    """A header as clean text; decoded where possible (raw UTF-8, encoded words), else as written."""
+    for message in (decoded, plain):
+        if message is None:
+            continue
+        try:
+            return clean_text(message.get(name, ""), single_line=True)
+        except Exception as exc:  # a header the parser cannot read
+            logger.debug("Header %s unreadable: %s", name, exc)
+    return ""
+
+
 def parse_mail_headers(raw_mail: bytes) -> dict:
-    """Extract relevant headers from a raw MIME message."""
+    """Relevant headers of a raw mail as clean text."""
     try:
-        msg = message_from_bytes(raw_mail)
+        decoded = message_from_bytes(raw_mail, policy=policy.default)
     except Exception:
+        decoded = None
+    try:
+        plain = message_from_bytes(raw_mail)
+    except Exception:
+        plain = None
+    if decoded is None and plain is None:
         return {}
-    return {
-        "from": msg.get("From", ""),
-        "to": msg.get("To", ""),
-        "subject": msg.get("Subject", ""),
-        "message_id": msg.get("Message-ID", ""),
-        "date": msg.get("Date", ""),
-    }
+    return {key: _header(decoded, plain, name) for key, name in HEADER_FIELDS.items()}

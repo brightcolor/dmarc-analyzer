@@ -16,6 +16,7 @@ import binascii
 import json
 import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -25,7 +26,7 @@ from urllib.parse import unquote
 import dns.exception
 import dns.name
 import dns.resolver
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -33,6 +34,7 @@ from app.models import DmarcAuthResult, DmarcRecord, DmarcReport, Domain, Organi
 from app.services.dmarc_evaluator import _organizational_domain
 from app.services.dmarc_record import suggest_dmarc_record
 from app.services.inbound_address import active_addresses, report_address
+from app.services.text import clean_text
 from app.services.tls_reports import suggest_tls_record
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ SPF_MAX_DEPTH = 10             # longest include chain the check follows
 DKIM_MIN_RSA_BITS = 1024       # RFC 8301, 3.2
 ED25519_KEY_BYTES = 32         # RFC 8463
 DER_MAX_DEPTH = 2              # SubjectPublicKeyInfo around an RSAPublicKey, nothing deeper
+DMARC_RI_MAX = 4_294_967_295   # RFC 7489, 6.3: ri is a 32-bit unsigned integer
 
 DMARC_POLICIES = ("none", "quarantine", "reject")
 DMARC_KNOWN_TAGS = ("v", "p", "sp", "np", "t", "pct", "rua", "ruf", "fo", "adkim", "aspf", "rf", "ri", "psd")
@@ -69,6 +72,7 @@ class Resolver:
         self._resolver.lifetime = settings.DNS_CHECK_TIMEOUT_SECONDS
         self._resolver.timeout = settings.DNS_CHECK_TIMEOUT_SECONDS
         self._deadline = deadline  # time.monotonic() value; after it no lookup starts
+        self._budget_logged = False
         self._cache: dict[tuple[str, str], list] = {}
 
     @classmethod
@@ -80,6 +84,10 @@ class Resolver:
         if self._deadline is not None:
             remaining = self._deadline - time.monotonic()
             if remaining <= 0:
+                if not self._budget_logged:
+                    self._budget_logged = True
+                    logger.warning("DNS check budget used up before %s %s (DNS_CHECK_DOMAIN_BUDGET_SECONDS=%s)",
+                                   rdtype, name, settings.DNS_CHECK_DOMAIN_BUDGET_SECONDS)
                 raise LookupFailed(f"{rdtype} {name}: Zeitbudget der Prüfung aufgebraucht")
             self._resolver.lifetime = min(settings.DNS_CHECK_TIMEOUT_SECONDS, remaining)
         try:
@@ -97,7 +105,7 @@ class Resolver:
         return self._cache[key]
 
     def txt(self, name: str) -> list[str]:
-        return self._cached(name, "TXT", lambda a: b"".join(a.strings).decode("utf-8", errors="replace"))
+        return self._cached(name, "TXT", lambda a: clean_text(b"".join(a.strings).decode("utf-8", errors="replace")))
 
     def mx(self, name: str) -> list[tuple[int, str]]:
         return self._cached(name, "MX", lambda a: (a.preference, a.exchange.to_text().rstrip(".").lower()))
@@ -191,7 +199,7 @@ def _mailto(uri: str) -> str | None:
     """Address of a mailto URI; the size limit after ! (RFC 7489, 6.2) is left out."""
     if not uri.lower().startswith("mailto:"):
         return None
-    address = unquote(uri[7:]).split("!", 1)[0].split("?", 1)[0].strip().lower()
+    address = clean_text(unquote(uri[7:]).split("!", 1)[0].split("?", 1)[0], 320, lower=True, single_line=True)
     return address or None
 
 
@@ -363,7 +371,7 @@ def _check_dmarc_syntax(found: _Dmarc, pairs: list[tuple[str, str | None]]) -> D
         "adkim": lambda v: v.lower() in ("r", "s"),
         "aspf": lambda v: v.lower() in ("r", "s"),
         "fo": lambda v: all(part.strip().lower() in ("0", "1", "d", "s") for part in v.split(":")),
-        "ri": lambda v: _number(v),
+        "ri": lambda v: _number(v) and int(v) <= DMARC_RI_MAX,
         "psd": lambda v: v.lower() in ("y", "n", "u"),
     }
     for key, valid in checks.items():
@@ -743,9 +751,11 @@ def check_tls_reporting(resolver: Resolver, target: CheckInput, receives_mail: b
     if not receives_mail:
         return DnsCheck("tlsrpt", title, INFO, "Ohne Mailempfang braucht die Domain keinen Eintrag.", record=name)
     try:
-        records = [text for text in resolver.txt(name) if text.strip().lower().startswith("v=tlsrptv1")]
+        candidates = [text for text in resolver.txt(name) if text.strip().lower().startswith("v=tlsrptv1")]
     except LookupFailed as exc:
         return _failed("tlsrpt", title, name, exc)
+    exact = [text for text in candidates if text.strip().startswith("v=TLSRPTv1")]
+    records = exact or candidates
     if not records:
         return DnsCheck("tlsrpt", title, WARNING, "Kein Eintrag; Absender melden dann nicht, ob sie deine Mailserver "
                         "verschlüsselt erreichen.", record=name, suggestion=target.tls_suggestion)
@@ -772,7 +782,7 @@ def check_tls_reporting(resolver: Resolver, target: CheckInput, receives_mail: b
 # One domain ---------------------------------------------------------------------------------
 
 INTERNAL_ERROR = ("Die Prüfung brach mit einem internen Fehler ab. Die nächste Prüfung versucht es erneut; bleibt "
-                  "es dabei, steht der Grund im Log der Anwendung.")
+                  "es dabei, wende dich an den Betreiber der Anwendung, der den Grund im Log findet.")
 
 
 def _broken(key: str, title: str, domain: str) -> DnsCheck:
@@ -814,11 +824,13 @@ def dkim_selectors(db: Session, domain: Domain, now: datetime) -> dict[str, date
     """Selectors of the domain that passed DKIM in the reports of the last DNS_CHECK_DKIM_DAYS days, most used first,
     with the arrival of the newest report that shows them passing."""
     since = now - timedelta(days=settings.DNS_CHECK_DKIM_DAYS)
+    # The day the mails were sent; an upload of old reports must not make old selectors look current
+    reported = func.coalesce(DmarcReport.period_end, DmarcReport.created_at)
     rows = (
-        db.query(DmarcAuthResult.selector, func.count(DmarcAuthResult.id), func.max(DmarcReport.created_at))
+        db.query(DmarcAuthResult.selector, func.count(DmarcAuthResult.id), func.max(reported))
         .join(DmarcRecord, DmarcAuthResult.record_id == DmarcRecord.id)
         .join(DmarcReport, DmarcRecord.report_id == DmarcReport.id)
-        .filter(DmarcReport.organization_id == domain.organization_id, DmarcReport.created_at >= since,
+        .filter(DmarcReport.organization_id == domain.organization_id, reported >= since,
                 DmarcAuthResult.auth_type == "dkim", DmarcAuthResult.result == "pass",
                 func.lower(DmarcAuthResult.domain) == domain.name.lower(), DmarcAuthResult.selector.isnot(None),
                 DmarcAuthResult.selector != "")
@@ -829,10 +841,20 @@ def dkim_selectors(db: Session, domain: Domain, now: datetime) -> dict[str, date
     )
     found: dict[str, datetime] = {}
     for selector, _, last_pass in rows:
-        name = (selector or "").strip().lower()
+        name = clean_text(selector, 255, lower=True, single_line=True)
         if name and name not in found:
-            found[name] = last_pass
+            found[name] = _as_datetime(last_pass)
     return found
+
+
+def _as_datetime(value) -> datetime | None:
+    """SQLite hands back the result of coalesce() as text; PostgreSQL as a datetime."""
+    if value is None or isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 
 
 def gather_input(db: Session, domain: Domain, now: datetime | None = None) -> CheckInput:
@@ -863,7 +885,9 @@ def run_check(db: Session, domain: Domain, resolver: Resolver | None = None,
               now: datetime | None = None) -> DnsCheckResult:
     """Check one domain now and keep the result on it."""
     now = now or datetime.now(UTC)
-    result = check_domain(gather_input(db, domain, now), resolver, now)
+    target = gather_input(db, domain, now)
+    db.commit()  # the lookups take a while; no transaction and no connection stay open meanwhile
+    result = check_domain(target, resolver, now)
     store_result(domain, result)
     db.flush()
     logger.info("DNS check %s: %s", domain.name, result.status)
@@ -920,6 +944,66 @@ def run_due_checks(db: Session, now: datetime, resolver_factory=None) -> set[str
                 f", {postponed} postponed after DNS_CHECK_JOB_BUDGET_SECONDS" if postponed else "",
                 ", ".join(f"{d.name}={r.status}" for d, r in done))
     return {domain.organization_id for domain, _ in done}
+
+
+class CheckRefused(Exception):
+    """A check on request that does not start now; the text says why, retry_after when to try again."""
+
+    def __init__(self, text: str, retry_after: int) -> None:
+        super().__init__(text)
+        self.retry_after = retry_after
+
+
+_manual_lock = threading.Lock()
+_manual_running = 0
+
+
+def _seconds(count: int) -> str:
+    return f"{count} Sekunde" if count == 1 else f"{count} Sekunden"
+
+
+def _claim(db: Session, domain: Domain, now: datetime) -> int:
+    """Mark the domain as checked now unless the cooldown still runs; 0 when claimed, else the seconds left.
+
+    A single UPDATE with the condition, so two requests at the same moment cannot both pass.
+    """
+    cooldown = settings.DNS_CHECK_MANUAL_COOLDOWN_SECONDS
+    if not cooldown:
+        return 0
+    cutoff = now - timedelta(seconds=cooldown)
+    claimed = db.execute(
+        update(Domain)
+        .where(Domain.id == domain.id, or_(Domain.dns_checked_at.is_(None), Domain.dns_checked_at <= cutoff))
+        .values(dns_checked_at=now)
+        .execution_options(synchronize_session=False)
+    ).rowcount == 1
+    db.commit()
+    if claimed:
+        return 0
+    db.refresh(domain)
+    return max(1, cooldown_left(domain, now))
+
+
+def run_manual_check(db: Session, domain: Domain, resolver: Resolver | None = None,
+                     now: datetime | None = None) -> DnsCheckResult:
+    """Check a domain on request: once per DNS_CHECK_MANUAL_COOLDOWN_SECONDS, at most DNS_CHECK_MANUAL_PARALLEL
+    checks at once in this process. Raises CheckRefused with a text for the person who asked."""
+    global _manual_running
+    now = now or datetime.now(UTC)
+    with _manual_lock:
+        if _manual_running >= settings.DNS_CHECK_MANUAL_PARALLEL:
+            raise CheckRefused(f"Gerade laufen schon {settings.DNS_CHECK_MANUAL_PARALLEL} Prüfungen auf Knopfdruck. "
+                               "Starte die Prüfung gleich noch einmal.", 10)
+        _manual_running += 1
+    try:
+        wait = _claim(db, domain, now)
+        if wait:
+            raise CheckRefused(f"{domain.name} wurde gerade geprüft. Das Ergebnis steht in der Liste; eine neue "
+                               f"Prüfung ist in {_seconds(wait)} möglich.", wait)
+        return run_check(db, domain, resolver, now)
+    finally:
+        with _manual_lock:
+            _manual_running -= 1
 
 
 def cooldown_left(domain: Domain, now: datetime | None = None) -> int:

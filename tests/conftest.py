@@ -29,6 +29,18 @@ from app.config import settings
 
 from tests.helpers import session, session_factory, smtp_server, web  # noqa: E402,F401 - shared fixtures
 
+
+@pytest.fixture(autouse=True)
+def no_real_dns(monkeypatch):
+    """Tests bring their own DNS answers; a lookup that reaches the network fails loudly."""
+    import dns.resolver
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("Echte DNS-Abfrage im Test: gib dem Test einen eigenen Resolver.")
+
+    monkeypatch.setattr(dns.resolver.Resolver, "resolve", refuse)
+    monkeypatch.setattr(dns.resolver, "resolve", refuse)
+
 # Force SQLite for tests
 TEST_DB_URL = "sqlite:///:memory:"
 

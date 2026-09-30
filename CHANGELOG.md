@@ -7,6 +7,35 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.3] – 2026-09-30
+
+### Behoben
+
+- Text von außen, aus Mails, Berichten und DNS-Antworten, geht bereinigt in die Datenbank: ohne
+  Null-Zeichen und andere Steuerzeichen, rohe Umlaute als UTF-8 gelesen und nach dem Kleinschreiben auf die
+  Spaltenlänge gekürzt. Vorher konnte ein Null-Zeichen in einem DNS-Eintrag die Alarmprüfung bei jedem Lauf
+  abbrechen, auch für andere Organisationen, und Werte wie „İ“ oder ein Null-Zeichen in TLS-Berichten
+  ließen PostgreSQL die Mail ablehnen; der Absender stellte dann immer wieder zu.
+- Mails mit rohen Umlauten in Betreff oder Absender führten zur endlosen Neuzustellung; jetzt stehen sie
+  mit richtig lesbarem Betreff unter „Eingegangene Mails“, kodierte Wörter (`=?utf-8?…?=`) ebenso.
+- Jede Alarmregel und jede Organisation läuft für sich: Bricht eine ab, prüft der Zeitplaner die übrigen.
+- „Jetzt prüfen“ belegt die Domain in einem Schritt, sodass auch gleichzeitige Klicks nur eine Prüfung
+  starten; während der DNS-Abfragen bleibt keine Datenbankverbindung offen.
+- TLS-Berichte mit einem Zeitraum am Rand des Kalenders legten die Seiten der TLS-Berichte lahm; solche
+  Berichte lehnt die Anwendung jetzt mit Grund ab, und die Anzeige verträgt auch alte Einträge.
+- DKIM: Ob ein Selektor in Gebrauch ist, zählt nach dem Berichtszeitraum. Ein Upload alter Berichte macht
+  alte Selektoren nicht mehr zu aktuellen.
+- Kleineres: Hinweise bei unvollständiger Prüfung und bei internen Fehlern nennen den nächsten Schritt;
+  „in 1 Sekunde“; `ri` bis 2^32−1; ein kleingeschriebener zweiter TLS-RPT-Eintrag zählt nicht mit; ein
+  aufgebrauchtes Zeitbudget steht im Log.
+
+### Neu
+
+- `DNS_CHECK_MANUAL_PARALLEL` (Vorgabe 4) begrenzt gleichzeitige Prüfungen auf Knopfdruck,
+  `TLS_REPORT_MAX_AGE_DAYS` (400) und `TLS_REPORT_FUTURE_TOLERANCE_HOURS` (48) den Zeitraum eines
+  TLS-Berichts. `DNS_CHECK_DKIM_ACTIVE_DAYS` darf nicht über `DNS_CHECK_DKIM_DAYS` liegen.
+- Tests lassen jede echte DNS-Abfrage scheitern und prüfen die Spaltenlängen gespeicherter Werte.
+
 ## [0.11.2] – 2026-09-30
 
 ### Behoben

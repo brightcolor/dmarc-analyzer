@@ -18,7 +18,7 @@ from app.services.audit import log_action
 from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
 from app.services.dmarc_record import suggest_dmarc_record
-from app.services.dns_check import cooldown_left, run_check, stored_result
+from app.services.dns_check import CheckRefused, run_manual_check, stored_result
 from app.services.domain_recipients import RecipientError, add_recipient, recipients_for, update_recipient
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.inbound_address import create_domain_address, report_address
@@ -210,13 +210,11 @@ def domain_dns_check(
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
     if not domain:
         raise HTTPException(status_code=404)
-    wait = cooldown_left(domain)
-    if wait:
-        flash(request, "warn", f"{domain.name} wurde gerade geprüft",
-              f"Die Liste zeigt das Ergebnis von eben. Eine neue Prüfung auf Knopfdruck ist in {wait} Sekunden "
-              "möglich.")
+    try:
+        result = run_manual_check(db, domain)
+    except CheckRefused as refused:
+        flash(request, "warn", f"{domain.name} jetzt nicht geprüft", str(refused))
         return RedirectResponse(url=f"/domains/{domain_id}#dns-pruefung", status_code=303)
-    result = run_check(db, domain)
     db.commit()
     errors, warnings = result.count("error"), result.count("warning")
     if errors:
@@ -227,7 +225,8 @@ def domain_dns_check(
               "Die Berichte kommen trotzdem an; die Hinweise stehen in der Liste.")
     elif result.status == "unknown":
         flash(request, "warn", f"{domain.name}: DNS-Prüfung unvollständig",
-              "Ein DNS-Server hat nicht geantwortet. Starte die Prüfung noch einmal.")
+              "Mindestens eine Prüfung blieb offen; warum, steht in der Liste. Die tägliche Prüfung versucht es "
+              "erneut, oder du startest sie nach der kurzen Sperre noch einmal.")
     else:
         flash(request, "ok", f"{domain.name}: DNS in Ordnung", "Alle Einträge, die die Anwendung braucht, stehen.")
     return RedirectResponse(url=f"/domains/{domain_id}#dns-pruefung", status_code=303)

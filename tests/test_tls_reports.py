@@ -228,7 +228,7 @@ class TestOddReports:
         monkeypatch.setattr(tls_reports, "parse_tls_report", broken)
         found = find_tls_reports(tls_mail())
         assert found.errors == ["mail.example!example.com!1790467200!1790553599!001.json.gz: Der TLS-Bericht ließ "
-                                "sich nicht lesen (RuntimeError)."]
+                                "sich nicht lesen (RuntimeError); der Betreiber findet den Grund im Log der Anwendung."]
 
     def test_files_are_counted(self):
         assert find_tls_reports(tls_mail()).files == 1

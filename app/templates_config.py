@@ -172,7 +172,10 @@ def _day_span(begin: datetime | None, end: datetime | None) -> str:
     begin = _as_utc(begin)
     end = _as_utc(end) if end is not None else begin
     first = begin.date()
-    last = (end - timedelta(seconds=1)).date() if end > begin else first
+    try:
+        last = (end - timedelta(seconds=1)).date() if end > begin else first
+    except OverflowError:  # a period at the very start of the calendar
+        last = end.date()
     return f"{first:%d.%m.%Y}" if last <= first else f"{first:%d.%m.} – {last:%d.%m.%Y}"
 
 
