@@ -196,6 +196,45 @@ class TestParser:
         assert report.failed_sessions == 303
 
 
+# A number with more digits than Python converts (limit 4300)
+HUGE_NUMBER = (b'{"report-id": "r1", "policies": [{"summary": {"total-successful-session-count": '
+               + b"9" * 5000 + b"}}]}")
+
+
+class TestOddReports:
+    """Findings of the review from 30.09.2026: every odd input ends as a readable error."""
+
+    @pytest.mark.parametrize(("data", "reason"), [
+        (HUGE_NUMBER, "einen Wert außerhalb des lesbaren Bereichs"),
+        (report_json(**{"date-range": {"start-datetime": "9999-12-31T23:59:59-01:00"}}),
+         "kein Zeitpunkt nach RFC 3339"),
+        (report_json(policies=[{"summary": {"total-failure-session-count": 3_000_000_000}}]), "unplausibel groß"),
+        (report_json(policies=[{"summary": {"total-successful-session-count": 2_000_000_000}}] * 2),
+         "Die Summe erfolgreicher Verbindungen ist unplausibel groß"),
+    ])
+    def test_rejected_with_a_reason(self, data, reason):
+        with pytest.raises(ValueError) as caught:
+            parse_tls_report(data)
+        assert reason in str(caught.value)
+        found = find_tls_reports(tls_mail(data=data))
+        assert found.reports == [] and reason in found.errors[0]
+
+    def test_unexpected_error_becomes_a_note(self, monkeypatch):
+        from app.services import tls_reports
+
+        def broken(data):
+            raise RuntimeError("kaputt")
+
+        monkeypatch.setattr(tls_reports, "parse_tls_report", broken)
+        found = find_tls_reports(tls_mail())
+        assert found.errors == ["mail.example!example.com!1790467200!1790553599!001.json.gz: Der TLS-Bericht ließ "
+                                "sich nicht lesen (RuntimeError)."]
+
+    def test_files_are_counted(self):
+        assert find_tls_reports(tls_mail()).files == 1
+        assert find_tls_reports(tls_mail(attach=False)).files == 0
+
+
 class TestFindingReports:
     def test_compressed_report(self):
         found = find_tls_reports(tls_mail())

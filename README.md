@@ -150,7 +150,7 @@ im Tooltip, in einer Zeile über der Liste und für Screenreader.
 | Fehlerberichte (`ruf`) | `ruf` die Empfangsadresse nennt, mit `fo=1` (Warnung, solange `DMARC_SUGGEST_FAILURE_REPORTS` an ist) |
 | Zustimmung der Empfangsdomain | `<domain>._report._dmarc.<Empfangsdomain>` mit `v=DMARC1` antwortet, wenn die Adresse unter einer anderen Domain liegt |
 | SPF | genau ein Eintrag steht, mit höchstens 10 DNS-Abfragen samt aller `include` (RFC 7208), ohne `+all`, ohne `ptr` |
-| DKIM | für jeden Selektor, der in den Berichten der letzten `DNS_CHECK_DKIM_DAYS` Tage bestanden hat, ein Schlüssel im DNS steht, RSA mit mindestens 1024 Bit (RFC 8301) |
+| DKIM | für jeden Selektor, der in den Berichten der letzten `DNS_CHECK_DKIM_DAYS` Tage bestanden hat, ein Schlüssel im DNS steht, RSA mit mindestens 1024 Bit (RFC 8301); fehlt der Schlüssel eines Selektors, der zuletzt vor mehr als `DNS_CHECK_DKIM_ACTIVE_DAYS` Tagen bestanden hat, ist das nach einem Schlüsselwechsel gewollt und nur eine Warnung |
 | Mailserver (MX) | jeder MX-Host eine IP-Adresse hat; ohne MX oder mit Null-MX gilt die Domain als ohne Mailempfang |
 | TLS-Berichte | eine Domain mit Mailempfang unter `_smtp._tls` genau einen Eintrag hat, dessen `rua` die Empfangsadresse nennt |
 
@@ -160,7 +160,11 @@ stehen.
 
 - Der Zeitplaner prüft jede aktive Domain nach `DNS_CHECK_MAX_AGE_SECONDS` (Vorgabe ein Tag) erneut,
   neue Domains zuerst, je Lauf höchstens `DNS_CHECK_BATCH_SIZE` Domains, `DNS_CHECK_WORKERS` gleichzeitig.
-- **Jetzt prüfen** auf der Domainseite prüft sofort, ab der Rolle Analyst.
+- **Jetzt prüfen** auf der Domainseite prüft sofort, ab der Rolle Analyst; danach sperrt
+  `DNS_CHECK_MANUAL_COOLDOWN_SECONDS` (Vorgabe 30) die nächste Prüfung derselben Domain.
+- Alle Abfragen einer Domain zusammen dürfen `DNS_CHECK_DOMAIN_BUDGET_SECONDS` dauern, ein Lauf des
+  Zeitplaners beginnt nach `DNS_CHECK_JOB_BUDGET_SECONDS` keine neue Domain mehr. Bricht eine Prüfung mit
+  einem internen Fehler ab, bleibt nur sie offen; die übrigen Prüfungen und Domains laufen weiter.
 - Die Domainliste zeigt den Stand jeder Domain und filtert nach „Fehler“, „Warnungen“ oder „noch nicht
   geprüft“; die Übersicht nennt die Zahl der Domains mit Fehlern.
 - Die Alarmart „DNS-Einträge fehlerhaft“ meldet jede Domain mit einem Fehler; Hinweise und Warnungen

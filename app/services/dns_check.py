@@ -16,6 +16,7 @@ import binascii
 import json
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -28,7 +29,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import DmarcAuthResult, DmarcRecord, DmarcReport, Domain
+from app.models import DmarcAuthResult, DmarcRecord, DmarcReport, Domain, Organization
 from app.services.dmarc_evaluator import _organizational_domain
 from app.services.dmarc_record import suggest_dmarc_record
 from app.services.inbound_address import active_addresses, report_address
@@ -44,6 +45,7 @@ SPF_LOOKUP_LIMIT = 10          # RFC 7208, 4.6.4
 SPF_MAX_DEPTH = 10             # longest include chain the check follows
 DKIM_MIN_RSA_BITS = 1024       # RFC 8301, 3.2
 ED25519_KEY_BYTES = 32         # RFC 8463
+DER_MAX_DEPTH = 2              # SubjectPublicKeyInfo around an RSAPublicKey, nothing deeper
 
 DMARC_POLICIES = ("none", "quarantine", "reject")
 DMARC_KNOWN_TAGS = ("v", "p", "sp", "np", "t", "pct", "rua", "ruf", "fo", "adkim", "aspf", "rf", "ri", "psd")
@@ -60,15 +62,26 @@ class LookupFailed(Exception):
 class Resolver:
     """TXT, MX and address lookups with the time limit of the check; answers are kept for one check."""
 
-    def __init__(self) -> None:
+    def __init__(self, deadline: float | None = None) -> None:
         self._resolver = dns.resolver.Resolver()
         if settings.dns_nameservers:
             self._resolver.nameservers = settings.dns_nameservers
         self._resolver.lifetime = settings.DNS_CHECK_TIMEOUT_SECONDS
         self._resolver.timeout = settings.DNS_CHECK_TIMEOUT_SECONDS
+        self._deadline = deadline  # time.monotonic() value; after it no lookup starts
         self._cache: dict[tuple[str, str], list] = {}
 
+    @classmethod
+    def for_one_domain(cls) -> "Resolver":
+        """Resolver whose lookups together stay within DNS_CHECK_DOMAIN_BUDGET_SECONDS."""
+        return cls(deadline=time.monotonic() + settings.DNS_CHECK_DOMAIN_BUDGET_SECONDS)
+
     def _answer(self, name: str, rdtype: str):
+        if self._deadline is not None:
+            remaining = self._deadline - time.monotonic()
+            if remaining <= 0:
+                raise LookupFailed(f"{rdtype} {name}: Zeitbudget der Prüfung aufgebraucht")
+            self._resolver.lifetime = min(settings.DNS_CHECK_TIMEOUT_SECONDS, remaining)
         try:
             return list(self._resolver.resolve(name, rdtype))
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.YXDOMAIN, dns.name.NameTooLong,
@@ -149,6 +162,7 @@ class CheckInput:
     dmarc_suggestion: str | None
     tls_suggestion: str | None
     dkim_selectors: list[str] = field(default_factory=list)
+    dkim_last_pass: dict[str, datetime] = field(default_factory=dict)  # selector -> newest report with pass
 
 
 def _failed(key: str, title: str, name: str, exc: LookupFailed) -> DnsCheck:
@@ -285,7 +299,7 @@ def _check_dmarc_record(target: CheckInput, found: _Dmarc, records: list[str]) -
                         "aus; lösche alle bis auf einen.", record=found.name, found="\n".join(records),
                         suggestion=target.dmarc_suggestion)
     text = records[0]
-    if not text.strip().startswith("v=DMARC1"):
+    if not re.match(r"^\s*[vV]\s*=\s*DMARC1\s*(;|$)", text):
         return DnsCheck("dmarc", title, ERROR, "Der Eintrag muss genau mit v=DMARC1 beginnen, in dieser "
                         "Schreibweise. Empfänger übergehen ihn sonst.", record=found.name, found=text,
                         suggestion=suggest_from_record(parse_tags(text), target))
@@ -304,7 +318,7 @@ def _check_dmarc_policy(found: _Dmarc) -> DnsCheck:
     if (tags.get("t") or "").lower() == "y":
         extras.append("t=y: Empfänger nach RFC 9989 wenden die Policy im Testmodus nicht an")
     pct = tags.get("pct")
-    if pct and pct.isdigit() and int(pct) < 100:
+    if pct and _number(pct) and int(pct) < 100:
         extras.append(f"pct={pct}: Empfänger nach RFC 7489 wenden sie nur auf {pct} % der Mails an")
     extra = (" " + "; ".join(extras) + ".") if extras else ""
     if "p" not in tags:
@@ -321,6 +335,11 @@ def _check_dmarc_policy(found: _Dmarc) -> DnsCheck:
                     f"{label}={policy}: Empfänger "
                     f"{'weisen Mails ab' if policy == 'reject' else 'legen Mails in den Spam'}, die DMARC nicht "
                     "bestehen." + extra, record=found.name, found=f"{label}={policy}")
+
+
+def _number(value: str) -> bool:
+    """ASCII digits only; str.isdigit also accepts characters like ² that int() refuses."""
+    return re.fullmatch(r"[0-9]{1,10}", value) is not None
 
 
 def _check_dmarc_syntax(found: _Dmarc, pairs: list[tuple[str, str | None]]) -> DnsCheck:
@@ -340,11 +359,11 @@ def _check_dmarc_syntax(found: _Dmarc, pairs: list[tuple[str, str | None]]) -> D
         "sp": lambda v: v.lower() in DMARC_POLICIES,
         "np": lambda v: v.lower() in DMARC_POLICIES,
         "t": lambda v: v.lower() in ("y", "n"),
-        "pct": lambda v: v.isdigit() and 0 <= int(v) <= 100,
+        "pct": lambda v: _number(v) and 0 <= int(v) <= 100,
         "adkim": lambda v: v.lower() in ("r", "s"),
         "aspf": lambda v: v.lower() in ("r", "s"),
         "fo": lambda v: all(part.strip().lower() in ("0", "1", "d", "s") for part in v.split(":")),
-        "ri": lambda v: v.isdigit(),
+        "ri": lambda v: _number(v),
         "psd": lambda v: v.lower() in ("y", "n", "u"),
     }
     for key, valid in checks.items():
@@ -483,7 +502,6 @@ def _walk_spf(resolver: Resolver, record: str, walk: _SpfWalk, path: tuple[str, 
         if "=" in lowered.split(":", 1)[0]:
             key, _, value = lowered.partition("=")
             if key == "redirect":
-                walk.lookups += 1
                 redirect = value
             continue
         name, _, argument = lowered.partition(":")
@@ -499,7 +517,8 @@ def _walk_spf(resolver: Resolver, record: str, walk: _SpfWalk, path: tuple[str, 
             walk.warnings.append("ptr ist langsam und laut RFC 7208 nicht mehr zu verwenden")
         if name == "include":
             _follow(resolver, argument.split("/", 1)[0], f"include:{argument}", walk, path)
-    if redirect and not has_all:
+    if redirect and not has_all:  # RFC 7208, 6.1: with all the redirect is never followed
+        walk.lookups += 1
         _follow(resolver, redirect, f"redirect={redirect}", walk, path)
 
 
@@ -590,8 +609,10 @@ def _tlv(data: bytes, pos: int) -> tuple[int, int, int]:
     return tag, pos, pos + length
 
 
-def rsa_key_bits(der: bytes) -> int | None:
+def rsa_key_bits(der: bytes, depth: int = 0) -> int | None:
     """Length of an RSA key, as SubjectPublicKeyInfo or as bare RSAPublicKey; None for anything else."""
+    if depth >= DER_MAX_DEPTH:
+        return None
     try:
         tag, start, end = _tlv(der, 0)
         if tag != 0x30:
@@ -599,7 +620,7 @@ def rsa_key_bits(der: bytes) -> int | None:
         tag, first_start, first_end = _tlv(der, start)
         if tag == 0x30:  # AlgorithmIdentifier, then the key as BIT STRING
             tag, bits_start, bits_end = _tlv(der, first_end)
-            return rsa_key_bits(der[bits_start + 1:bits_end]) if tag == 0x03 else None
+            return rsa_key_bits(der[bits_start + 1:bits_end], depth + 1) if tag == 0x03 else None
         if tag == 0x02:  # modulus of an RSAPublicKey
             return int.from_bytes(der[first_start:first_end], "big").bit_length() or None
     except ValueError:
@@ -615,7 +636,15 @@ def _decode_key(value: str) -> bytes | None:
         return None
 
 
-def _check_selector(resolver: Resolver, domain: str, selector: str) -> DnsCheck:
+def _in_use(last_pass: datetime | None, now: datetime) -> bool:
+    if last_pass is None:
+        return True
+    last_pass = last_pass.replace(tzinfo=UTC) if last_pass.tzinfo is None else last_pass
+    return now - last_pass <= timedelta(days=settings.DNS_CHECK_DKIM_ACTIVE_DAYS)
+
+
+def _check_selector(resolver: Resolver, target: CheckInput, selector: str, now: datetime) -> DnsCheck:
+    domain = target.domain
     title = f"DKIM-Schlüssel {selector}"
     key = f"dkim:{selector}"
     name = f"{selector}._domainkey.{domain}"
@@ -624,9 +653,15 @@ def _check_selector(resolver: Resolver, domain: str, selector: str) -> DnsCheck:
     except LookupFailed as exc:
         return _failed(key, title, name, exc)
     if not records:
-        return DnsCheck(key, title, ERROR, f"Der Selektor {selector} hat in den letzten {settings.DNS_CHECK_DKIM_DAYS} "
-                        "Tagen DKIM bestanden, sein Schlüssel fehlt jetzt im DNS. Mails mit dieser Signatur scheitern "
-                        "an DKIM.", record=name)
+        last_pass = target.dkim_last_pass.get(selector)
+        seen = f" zuletzt am {last_pass:%d.%m.%Y}" if last_pass else ""
+        if _in_use(last_pass, now):
+            return DnsCheck(key, title, ERROR, f"Der Selektor {selector} hat{seen} DKIM bestanden und ist in Gebrauch, "
+                            "sein Schlüssel fehlt jetzt im DNS. Mails mit dieser Signatur scheitern an DKIM.",
+                            record=name)
+        return DnsCheck(key, title, WARNING, f"Der Selektor {selector} hat{seen} DKIM bestanden, sein Schlüssel fehlt "
+                        "jetzt im DNS. Nach einem Schlüsselwechsel ist das gewollt; sonst scheitern Mails mit dieser "
+                        "Signatur an DKIM.", record=name)
     if len(records) > 1:
         return DnsCheck(key, title, WARNING, f"{len(records)} Schlüssel unter demselben Namen; Empfänger nehmen einen "
                         "beliebigen davon.", record=name, found="\n".join(records))
@@ -659,24 +694,25 @@ def _check_selector(resolver: Resolver, domain: str, selector: str) -> DnsCheck:
     return DnsCheck(key, title, INFO if testing else OK, f"RSA mit {bits} Bit." + testing, record=name, found=text)
 
 
-def check_dkim(resolver: Resolver, target: CheckInput) -> list[DnsCheck]:
+def check_dkim(resolver: Resolver, target: CheckInput, now: datetime | None = None) -> list[DnsCheck]:
     if not target.dkim_selectors:
         return [DnsCheck("dkim", "DKIM", INFO, f"In den Berichten der letzten {settings.DNS_CHECK_DKIM_DAYS} Tage hat "
                          f"keine Signatur von {target.domain} bestanden; ohne Selektor lässt sich kein Schlüssel "
                          "prüfen.")]
-    return [_check_selector(resolver, target.domain, selector) for selector in target.dkim_selectors]
+    now = now or datetime.now(UTC)
+    return [_check_selector(resolver, target, selector, now) for selector in target.dkim_selectors]
 
 
 # MX and TLS reporting ---------------------------------------------------------------------------
 
-def check_mx(resolver: Resolver, target: CheckInput) -> tuple[DnsCheck, bool]:
-    """MX check and whether the domain receives mail."""
+def check_mx(resolver: Resolver, target: CheckInput) -> tuple[DnsCheck, bool | None]:
+    """MX check and whether the domain receives mail; None when the lookup gave no answer."""
     title = "Mailserver (MX)"
     name = target.domain
     try:
         hosts = sorted(resolver.mx(name))
     except LookupFailed as exc:
-        return _failed("mx", title, name, exc), False
+        return _failed("mx", title, name, exc), None
     if not hosts:
         return DnsCheck("mx", title, INFO, "Kein MX-Eintrag: Die Domain empfängt keine Mails.", record=name), False
     listed = ", ".join(f"{preference} {host or '.'}" for preference, host in hosts)
@@ -696,11 +732,14 @@ def check_mx(resolver: Resolver, target: CheckInput) -> tuple[DnsCheck, bool]:
     return DnsCheck("mx", title, OK, f"{len(hosts)} Mailserver mit IP-Adresse.", record=name, found=listed), True
 
 
-def check_tls_reporting(resolver: Resolver, target: CheckInput, receives_mail: bool) -> DnsCheck | None:
+def check_tls_reporting(resolver: Resolver, target: CheckInput, receives_mail: bool | None) -> DnsCheck | None:
     if not settings.TLS_REPORTS_ENABLED:
         return None
     title = "TLS-Berichte"
     name = f"_smtp._tls.{target.domain}"
+    if receives_mail is None:
+        return DnsCheck("tlsrpt", title, UNKNOWN, "Ob die Domain Mails empfängt, blieb offen, weil die MX-Abfrage "
+                        "keine Antwort brachte. Die nächste Prüfung versucht es erneut.", record=name)
     if not receives_mail:
         return DnsCheck("tlsrpt", title, INFO, "Ohne Mailempfang braucht die Domain keinen Eintrag.", record=name)
     try:
@@ -714,6 +753,12 @@ def check_tls_reporting(resolver: Resolver, target: CheckInput, receives_mail: b
         return DnsCheck("tlsrpt", title, ERROR, f"{len(records)} Einträge mit v=TLSRPTv1; Absender werten dann keinen "
                         "aus (RFC 8460).", record=name, found="\n".join(records), suggestion=target.tls_suggestion)
     tags = dict(parse_tags(records[0]))
+    if not records[0].strip().startswith("v=TLSRPTv1"):
+        suggestion = (f"v=TLSRPTv1; rua={_with_address(tags.get('rua'), target)}"
+                      if target.report_address else None)
+        return DnsCheck("tlsrpt", title, ERROR, "Der Eintrag muss genau mit v=TLSRPTv1 beginnen, in dieser "
+                        "Schreibweise. Absender übergehen ihn sonst (RFC 8460).", record=name, found=records[0],
+                        suggestion=suggestion)
     addresses = [a for a in (_mailto(uri) for uri in _uris(tags.get("rua"))) if a]
     ours = [a for a in addresses if a in target.addresses]
     if not ours:
@@ -726,26 +771,51 @@ def check_tls_reporting(resolver: Resolver, target: CheckInput, receives_mail: b
 
 # One domain ---------------------------------------------------------------------------------
 
+INTERNAL_ERROR = ("Die Prüfung brach mit einem internen Fehler ab. Die nächste Prüfung versucht es erneut; bleibt "
+                  "es dabei, steht der Grund im Log der Anwendung.")
+
+
+def _broken(key: str, title: str, domain: str) -> DnsCheck:
+    logger.exception("DNS check %s: %s failed", domain, key)
+    return DnsCheck(key, title, UNKNOWN, INTERNAL_ERROR)
+
+
 def check_domain(target: CheckInput, resolver: Resolver | None = None, now: datetime | None = None) -> DnsCheckResult:
-    """All checks for one domain; runs DNS lookups only and touches no database."""
-    resolver = resolver or Resolver()
-    result = DnsCheckResult(domain=target.domain, checked_at=now or datetime.now(UTC))
-    result.checks.extend(check_dmarc(resolver, target))
-    result.checks.append(check_spf(resolver, target))
-    result.checks.extend(check_dkim(resolver, target))
-    mx, receives_mail = check_mx(resolver, target)
-    result.checks.append(mx)
-    tls = check_tls_reporting(resolver, target, receives_mail)
+    """All checks for one domain; runs DNS lookups only and touches no database.
+
+    Every group runs on its own: an unexpected error in one leaves its checks open and the others go on.
+    """
+    resolver = resolver or Resolver.for_one_domain()
+    now = now or datetime.now(UTC)
+    result = DnsCheckResult(domain=target.domain, checked_at=now)
+    checks = result.checks
+    for key, title, run in (("dmarc", "DMARC-Eintrag", lambda: check_dmarc(resolver, target)),
+                            ("spf", "SPF", lambda: [check_spf(resolver, target)]),
+                            ("dkim", "DKIM", lambda: check_dkim(resolver, target, now))):
+        try:
+            checks.extend(run())
+        except Exception:
+            checks.append(_broken(key, title, target.domain))
+    try:
+        mx, receives_mail = check_mx(resolver, target)
+    except Exception:
+        mx, receives_mail = _broken("mx", "Mailserver (MX)", target.domain), None
+    checks.append(mx)
+    try:
+        tls = check_tls_reporting(resolver, target, receives_mail)
+    except Exception:
+        tls = _broken("tlsrpt", "TLS-Berichte", target.domain)
     if tls:
-        result.checks.append(tls)
+        checks.append(tls)
     return result
 
 
-def dkim_selectors(db: Session, domain: Domain, now: datetime) -> list[str]:
-    """Selectors of the domain that passed DKIM in the reports of the last DNS_CHECK_DKIM_DAYS days."""
+def dkim_selectors(db: Session, domain: Domain, now: datetime) -> dict[str, datetime]:
+    """Selectors of the domain that passed DKIM in the reports of the last DNS_CHECK_DKIM_DAYS days, most used first,
+    with the arrival of the newest report that shows them passing."""
     since = now - timedelta(days=settings.DNS_CHECK_DKIM_DAYS)
     rows = (
-        db.query(DmarcAuthResult.selector, func.count(DmarcAuthResult.id))
+        db.query(DmarcAuthResult.selector, func.count(DmarcAuthResult.id), func.max(DmarcReport.created_at))
         .join(DmarcRecord, DmarcAuthResult.record_id == DmarcRecord.id)
         .join(DmarcReport, DmarcRecord.report_id == DmarcReport.id)
         .filter(DmarcReport.organization_id == domain.organization_id, DmarcReport.created_at >= since,
@@ -757,18 +827,25 @@ def dkim_selectors(db: Session, domain: Domain, now: datetime) -> list[str]:
         .limit(settings.DNS_CHECK_DKIM_MAX_SELECTORS)
         .all()
     )
-    return [selector.strip().lower() for selector, _ in rows if selector and selector.strip()]
+    found: dict[str, datetime] = {}
+    for selector, _, last_pass in rows:
+        name = (selector or "").strip().lower()
+        if name and name not in found:
+            found[name] = last_pass
+    return found
 
 
 def gather_input(db: Session, domain: Domain, now: datetime | None = None) -> CheckInput:
     address = report_address(db, domain.organization_id, domain.id)
+    selectors = dkim_selectors(db, domain, now or datetime.now(UTC))
     return CheckInput(
         domain=domain.name.lower().rstrip("."),
         addresses=active_addresses(db, domain.organization_id),
         report_address=address,
         dmarc_suggestion=suggest_dmarc_record(domain, address) if address else None,
         tls_suggestion=suggest_tls_record(address) if address else None,
-        dkim_selectors=dkim_selectors(db, domain, now or datetime.now(UTC)),
+        dkim_selectors=list(selectors),
+        dkim_last_pass=selectors,
     )
 
 
@@ -794,34 +871,63 @@ def run_check(db: Session, domain: Domain, resolver: Resolver | None = None,
 
 
 def due_domains(db: Session, now: datetime, limit: int) -> list[Domain]:
-    """Active domains whose last check is older than DNS_CHECK_MAX_AGE_SECONDS, unchecked ones first."""
+    """Active domains of active organisations whose last check is older than DNS_CHECK_MAX_AGE_SECONDS, unchecked
+    ones first."""
     cutoff = now - timedelta(seconds=settings.DNS_CHECK_MAX_AGE_SECONDS)
     return (
         db.query(Domain)
-        .filter(Domain.is_active.is_(True), or_(Domain.dns_checked_at.is_(None), Domain.dns_checked_at <= cutoff))
+        .join(Organization, Domain.organization_id == Organization.id)
+        .filter(Domain.is_active.is_(True), Organization.is_active.is_(True),
+                or_(Domain.dns_checked_at.is_(None), Domain.dns_checked_at <= cutoff))
         .order_by(Domain.dns_checked_at.is_not(None), Domain.dns_checked_at, Domain.name)
         .limit(limit)
         .all()
     )
 
 
-def run_due_checks(db: Session, now: datetime, resolver_factory=Resolver) -> set[str]:
-    """Check the domains that are due, several at once; returns the organisations that got new results."""
+def run_due_checks(db: Session, now: datetime, resolver_factory=None) -> set[str]:
+    """Check the domains that are due, several at once; returns the organisations that got new results.
+
+    No domain starts after DNS_CHECK_JOB_BUDGET_SECONDS; those stay due for the next run. A domain whose check
+    breaks still gets a result, so it cannot hold up the others.
+    """
     if not settings.DNS_CHECK_ENABLED:
         return set()
     domains = due_domains(db, now, settings.DNS_CHECK_BATCH_SIZE)
     if not domains:
         return set()
     inputs = [gather_input(db, domain, now) for domain in domains]
+    db.commit()  # the lookups take a while; no read transaction stays open meanwhile
+    job_deadline = time.monotonic() + settings.DNS_CHECK_JOB_BUDGET_SECONDS
 
-    def work(target: CheckInput) -> DnsCheckResult:
-        return check_domain(target, resolver_factory(), now)
+    def work(target: CheckInput) -> DnsCheckResult | None:
+        if time.monotonic() > job_deadline:
+            return None
+        try:
+            resolver = resolver_factory() if resolver_factory else Resolver.for_one_domain()
+            return check_domain(target, resolver, now)
+        except Exception:
+            return DnsCheckResult(target.domain, now, [_broken("dns", "DNS-Prüfung", target.domain)])
 
     with ThreadPoolExecutor(max_workers=min(settings.DNS_CHECK_WORKERS, len(inputs))) as pool:
         results = list(pool.map(work, inputs))
-    for domain, result in zip(domains, results, strict=True):
+    done = [(domain, result) for domain, result in zip(domains, results, strict=True) if result is not None]
+    for domain, result in done:
         store_result(domain, result)
     db.flush()
-    logger.info("DNS check of %d domains: %s", len(domains),
-                ", ".join(f"{d.name}={r.status}" for d, r in zip(domains, results, strict=True)))
-    return {domain.organization_id for domain in domains}
+    postponed = len(domains) - len(done)
+    logger.info("DNS check of %d domains%s: %s", len(done),
+                f", {postponed} postponed after DNS_CHECK_JOB_BUDGET_SECONDS" if postponed else "",
+                ", ".join(f"{d.name}={r.status}" for d, r in done))
+    return {domain.organization_id for domain, _ in done}
+
+
+def cooldown_left(domain: Domain, now: datetime | None = None) -> int:
+    """Seconds until the domain may be checked again on request (DNS_CHECK_MANUAL_COOLDOWN_SECONDS)."""
+    if not domain.dns_checked_at or not settings.DNS_CHECK_MANUAL_COOLDOWN_SECONDS:
+        return 0
+    now = now or datetime.now(UTC)
+    checked = domain.dns_checked_at
+    checked = checked.replace(tzinfo=UTC) if checked.tzinfo is None else checked
+    left = settings.DNS_CHECK_MANUAL_COOLDOWN_SECONDS - (now - checked).total_seconds()
+    return max(0, int(left + 0.999))

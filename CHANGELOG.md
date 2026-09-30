@@ -7,6 +7,32 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.2] – 2026-09-30
+
+### Behoben
+
+- DNS-Prüfung: Ein ungewöhnlicher Eintrag einer einzigen Domain, etwa `pct=²` oder ein verschachtelter
+  DKIM-Schlüssel, brach den ganzen Lauf des Zeitplaners ab, und die Domain blockierte danach jeden
+  weiteren Lauf. Jetzt läuft jede Prüfgruppe und jede Domain für sich; was abbricht, bleibt als „keine
+  Antwort“ offen, alle anderen Domains werden geprüft. „Jetzt prüfen“ und die API antworten dabei ohne
+  Serverfehler.
+- TLS-Berichte mit sehr langen Zahlen, Zeitpunkten außerhalb des Kalenders oder unplausibel großen
+  Verbindungszahlen führten dazu, dass der Absender die Mail immer wieder zustellte. Jetzt steht die Mail
+  mit Grund unter „Eingegangene Mails“, und der Absender ist fertig.
+- DKIM: Fehlt der Schlüssel eines Selektors, der nur früher bestanden hat, etwa nach einem
+  Schlüsselwechsel, ist das eine Warnung ohne Alarm. Ein Fehler bleibt es für Selektoren, die in den letzten
+  `DNS_CHECK_DKIM_ACTIVE_DAYS` Tagen (Vorgabe 3) bestanden haben.
+- `V=DMARC1` und `v = DMARC1` gelten als gültig (RFC 7489); `v=TLSRPTv1` muss genau so geschrieben sein
+  (RFC 8460). Antwortet die MX-Abfrage nicht, bleibt auch die Prüfung der TLS-Berichte offen. Ein `redirect`
+  neben `all` zählt nicht als SPF-Abfrage. Domains deaktivierter Organisationen prüft der Zeitplaner nicht.
+
+### Neu
+
+- `DNS_CHECK_DOMAIN_BUDGET_SECONDS` (Vorgabe 20) begrenzt die Zeit aller Abfragen einer Domain,
+  `DNS_CHECK_JOB_BUDGET_SECONDS` (Vorgabe 120) die Zeit, in der ein Lauf neue Domains beginnt;
+  `DNS_CHECK_MANUAL_COOLDOWN_SECONDS` (Vorgabe 30) sperrt „Jetzt prüfen“ kurz nach einer Prüfung, die API
+  antwortet dann mit 429 und `Retry-After`.
+
 ## [0.11.1] – 2026-09-30
 
 ### Geändert

@@ -29,7 +29,7 @@ from smtp_inbound.server import tls_context
 from tests.conftest import SAMPLE_DMARC_XML
 from tests.helpers import _free_port
 from tests.test_failure_reports import ORIGINAL_WITH_REPORT, arf_mail
-from tests.test_tls_reports import tls_mail
+from tests.test_tls_reports import HUGE_NUMBER, tls_mail
 
 
 @pytest.fixture
@@ -180,6 +180,16 @@ def test_unreadable_tls_report_is_noted(reception, session):
     assert message.import_status == "failed"
     assert message.error_message.startswith("Der TLS-Bericht ließ sich nicht lesen und bleibt unberücksichtigt.")
     assert session.query(ImportJob).count() == 0
+
+
+def test_odd_tls_report_is_noted_once(reception, session):
+    """A report the parser cannot hold is recorded as failed; the sender gets no request to deliver again."""
+    port, address = reception
+    _send_raw(port, address, tls_mail(address, data=HUGE_NUMBER))
+    session.expire_all()
+    message = session.query(SmtpInboundMessage).one()
+    assert (message.import_status, message.attachment_count) == ("failed", 1)
+    assert "außerhalb des lesbaren Bereichs" in message.error_message
 
 
 def test_tls_reports_can_be_switched_off(reception, session, monkeypatch):

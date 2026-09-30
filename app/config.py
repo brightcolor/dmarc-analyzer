@@ -161,10 +161,31 @@ class Settings(BaseSettings):
     DNS_CHECK_TIMEOUT_SECONDS: float = Field(
         4.0, ge=0.5, le=30.0, description="Zeitlimit in Sekunden für eine DNS-Abfrage der Prüfung.",
     )
+    DNS_CHECK_DOMAIN_BUDGET_SECONDS: float = Field(
+        20.0, ge=1.0, le=600.0,
+        description="Zeit in Sekunden, die alle Abfragen einer Domain zusammen brauchen dürfen; danach bleiben die "
+                    "übrigen Prüfungen offen.",
+    )
+    DNS_CHECK_JOB_BUDGET_SECONDS: int = Field(
+        120, ge=10, le=3600,
+        description="Nach so vielen Sekunden beginnt ein Lauf des Zeitplaners keine weitere Domain; sie kommen im "
+                    "nächsten Lauf dran.",
+    )
+    DNS_CHECK_MANUAL_COOLDOWN_SECONDS: int = Field(
+        30, ge=0, le=3600,
+        description="Sperre in Sekunden nach einer Prüfung, bevor „Jetzt prüfen“ dieselbe Domain erneut prüft. "
+                    "0 schaltet die Sperre ab.",
+    )
     DNS_CHECK_DKIM_DAYS: int = Field(
         30, ge=1, le=365,
         description="Tage, aus denen die Prüfung die DKIM-Selektoren einer Domain nimmt: Selektoren, die in "
                     "Berichten dieses Zeitraums bestanden haben.",
+    )
+    DNS_CHECK_DKIM_ACTIVE_DAYS: int = Field(
+        3, ge=1, le=365,
+        description="Ein Selektor, der in den Berichten dieser Tage bestanden hat, gilt als in Gebrauch: Fehlt sein "
+                    "Schlüssel, ist das ein Fehler. Bei älteren Selektoren ist es eine Warnung, etwa nach einem "
+                    "Schlüsselwechsel.",
     )
     DNS_CHECK_DKIM_MAX_SELECTORS: int = Field(
         10, ge=1, le=100, description="Höchstzahl DKIM-Selektoren, die die Prüfung je Domain nachschlägt.",

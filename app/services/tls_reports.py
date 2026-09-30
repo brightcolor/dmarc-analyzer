@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Domain, TlsReport, TlsReportFailure, TlsReportPolicy
-from app.services.mime_parser import GZIP_MAGIC, _safe_gunzip
+from app.services.mime_parser import GZIP_MAGIC, MimeParseError, _safe_gunzip
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,8 @@ GZIP_TYPE = "application/tlsrpt+gzip"
 JSON_TYPE = "application/tlsrpt+json"
 FILE_ENDINGS = (".json", ".json.gz")
 DNS_PREFIX = "_smtp._tls"
+# Largest session count the database columns hold (32-bit integer)
+MAX_SESSIONS = 2_147_483_647
 DNS_VERSION = "v=TLSRPTv1"
 
 # Policy types of RFC 8460, 4.4, as the interface names them
@@ -130,6 +132,7 @@ class TlsReportMail:
     """The TLS reports of one mail and why others in it could not be read."""
     reports: list[ParsedTlsReport] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    files: int = 0
 
 
 # Reading the JSON document ----------------------------------------------------------
@@ -161,6 +164,8 @@ def _count(value, what: str) -> int:
         raise TlsReportError(f"{what} ist keine Zahl ({value!r}).") from None
     if number < 0:
         raise TlsReportError(f"{what} ist negativ ({number}).")
+    if number > MAX_SESSIONS:
+        raise TlsReportError(f"{what} ist unplausibel groß ({number}).")
     return number
 
 
@@ -171,9 +176,9 @@ def _moment(value, what: str) -> datetime | None:
         raise TlsReportError(f"{what} ist kein Zeitpunkt ({value!r}).")
     try:
         moment = datetime.fromisoformat(value.strip().upper())
-    except ValueError:
+        return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+    except (ValueError, OverflowError):
         raise TlsReportError(f"{what} ist kein Zeitpunkt nach RFC 3339 ({value!r}).") from None
-    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
 
 
 def _failure(entry: dict, where: str) -> ParsedFailure:
@@ -236,6 +241,8 @@ def parse_tls_report(data: bytes) -> ParsedTlsReport:
             from None
     except RecursionError:
         raise TlsReportError("Der TLS-Bericht ist zu tief verschachtelt.") from None
+    except ValueError:  # e.g. a number with more digits than Python converts
+        raise TlsReportError("Der TLS-Bericht enthält einen Wert außerhalb des lesbaren Bereichs.") from None
     if not isinstance(document, dict):
         raise TlsReportError("Der TLS-Bericht ist kein JSON-Objekt.")
     report_id = _text(document.get("report-id"), 500)
@@ -249,6 +256,10 @@ def parse_tls_report(data: bytes) -> ParsedTlsReport:
                              f"{settings.TLS_REPORT_MAX_POLICIES} (TLS_REPORT_MAX_POLICIES).")
     date_range = document.get("date-range") if isinstance(document.get("date-range"), dict) else {}
     parsed = [_policy(entry, number) for number, entry in enumerate(policies, 1)]
+    for what, total in (("erfolgreicher", sum(p.successful_sessions for p in parsed)),
+                        ("gescheiterter", sum(p.failed_sessions for p in parsed))):
+        if total > MAX_SESSIONS:
+            raise TlsReportError(f"Die Summe {what} Verbindungen ist unplausibel groß ({total}).")
     return ParsedTlsReport(
         report_id=report_id,
         organization_name=_text(document.get("organization-name"), 500),
@@ -310,12 +321,17 @@ def find_tls_reports(raw: bytes) -> TlsReportMail | None:
     if not files and not declared:
         return None
 
-    found = TlsReportMail()
+    found = TlsReportMail(files=len(files))
     for name, content_type, payload in files:
         try:
             found.reports.append(parse_tls_report(_json_bytes(name, content_type, payload)))
         except TlsReportError as exc:
             found.errors.append(f"{name}: {exc}")
+        except MimeParseError:
+            raise  # an archive bomb holds the whole mail back
+        except Exception as exc:  # a strange report must not make the sender deliver again and again
+            logger.exception("TLS report %s could not be read", name)
+            found.errors.append(f"{name}: Der TLS-Bericht ließ sich nicht lesen ({exc.__class__.__name__}).")
     announced = declared or any(content_type in (GZIP_TYPE, JSON_TYPE) for _, content_type, _ in files)
     if not found.reports and not announced:
         # Some other JSON file: the search for DMARC reports decides

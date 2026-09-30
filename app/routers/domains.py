@@ -18,7 +18,7 @@ from app.services.audit import log_action
 from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
 from app.services.dmarc_record import suggest_dmarc_record
-from app.services.dns_check import run_check, stored_result
+from app.services.dns_check import cooldown_left, run_check, stored_result
 from app.services.domain_recipients import RecipientError, add_recipient, recipients_for, update_recipient
 from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
 from app.services.inbound_address import create_domain_address, report_address
@@ -210,6 +210,12 @@ def domain_dns_check(
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
     if not domain:
         raise HTTPException(status_code=404)
+    wait = cooldown_left(domain)
+    if wait:
+        flash(request, "warn", f"{domain.name} wurde gerade geprüft",
+              f"Die Liste zeigt das Ergebnis von eben. Eine neue Prüfung auf Knopfdruck ist in {wait} Sekunden "
+              "möglich.")
+        return RedirectResponse(url=f"/domains/{domain_id}#dns-pruefung", status_code=303)
     result = run_check(db, domain)
     db.commit()
     errors, warnings = result.count("error"), result.count("warning")

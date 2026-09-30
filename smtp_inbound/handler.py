@@ -309,7 +309,7 @@ class DmarcSmtpHandler:
                 duplicates += 1
             else:
                 stored += 1
-        msg.attachment_count = len(tls.reports) + len(tls.errors)
+        msg.attachment_count = tls.files
         msg.import_status, msg.error_message = mail_outcome(stored, duplicates, tls.errors)
         msg.processed_at = datetime.now(UTC)
         if stored:

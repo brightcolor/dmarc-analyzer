@@ -4,6 +4,7 @@ Every answer comes from a fake resolver; names and addresses are invented or res
 """
 import base64
 import json
+import time
 from datetime import timedelta
 
 import pytest
@@ -27,7 +28,7 @@ from app.services.dns_check import (
     stored_result,
 )
 from app.services.inbound_address import create_domain_address
-from tests.helpers import NOW, add_report, make_domain, make_org, make_rule
+from tests.helpers import NOW, add_report, aware, make_domain, make_org, make_rule
 from tests.test_web import _login, _seed
 
 ADDRESS = "dom-example-com-abc123@reports.example.test"
@@ -72,6 +73,16 @@ class FakeResolver:
 
     def addresses(self, name):
         return self._answer(self.address_answers, name)
+
+
+def use_resolver(monkeypatch, make):
+    """Every check of the application gets its answers from make()."""
+    class Patched:
+        @staticmethod
+        def for_one_domain():
+            return make()
+
+    monkeypatch.setattr(dns_check, "Resolver", Patched)
 
 
 def good_txt(**changes):
@@ -548,7 +559,7 @@ class TestWithDatabase:
 
 def test_scheduler_job_checks_and_alerts(session, monkeypatch):
     monkeypatch.setattr(settings, "DNS_CHECK_ENABLED", True)
-    monkeypatch.setattr(dns_check, "Resolver", lambda: resolver(txt={}))
+    use_resolver(monkeypatch, lambda: resolver(txt={}))
     org = make_org(session)
     make_domain(session, org, "example.com")
     make_rule(session, org, "dns_problem")
@@ -568,7 +579,7 @@ def page_txt(**changes):
 @pytest.fixture
 def fake_dns(monkeypatch):
     answers = {"txt": page_txt()}
-    monkeypatch.setattr(dns_check, "Resolver", lambda: resolver(txt=answers["txt"]))
+    use_resolver(monkeypatch, lambda: resolver(txt=answers["txt"]))
     return answers
 
 
@@ -658,6 +669,35 @@ class TestPages:
         assert "1 Domain hat Fehler im DNS" in dashboard
         assert 'href="/domains?dns=error"' in dashboard
 
+    def test_cooldown_after_a_check(self, web, session_factory, fake_dns, monkeypatch):
+        monkeypatch.setattr(settings, "DNS_CHECK_MANUAL_COOLDOWN_SECONDS", 600)
+        ids = _seed_with_address(session_factory)
+        _login(web, ids["org"])
+        web.post(f"/domains/{ids['domain']}/dns-check")
+        fake_dns["txt"] = {}
+        web.post(f"/domains/{ids['domain']}/dns-check")
+        page = web.get(f"/domains/{ids['domain']}").text
+        assert "example.com wurde gerade geprüft" in page
+        assert "Kein DMARC-Eintrag" not in page
+        monkeypatch.setattr(settings, "DNS_CHECK_MANUAL_COOLDOWN_SECONDS", 0)
+        web.post(f"/domains/{ids['domain']}/dns-check")
+        assert "Kein DMARC-Eintrag" in web.get(f"/domains/{ids['domain']}").text
+
+    def test_api_cooldown(self, web, session_factory, fake_dns, monkeypatch):
+        monkeypatch.setattr(settings, "DNS_CHECK_MANUAL_COOLDOWN_SECONDS", 600)
+        ids = _seed(session_factory)
+        db = session_factory()
+        user = db.query(User).filter_by(email="admin@example.test").one()
+        raw, _ = create_api_token(db, ids["org"], user.id, "Automatik")
+        db.commit()
+        db.close()
+        headers = {"Authorization": f"Bearer {raw}"}
+        assert web.post(f"/api/v1/domains/{ids['domain']}/dns-check", headers=headers).status_code == 200
+        again = web.post(f"/api/v1/domains/{ids['domain']}/dns-check", headers=headers)
+        assert again.status_code == 429
+        assert int(again.headers["Retry-After"]) > 590
+        assert "gerade geprüft" in again.json()["detail"]
+
     def test_api(self, web, session_factory, fake_dns):
         ids = _seed(session_factory)
         db = session_factory()
@@ -683,6 +723,10 @@ class TestPages:
     ("DNS_CHECK_WORKERS", "64", "darf höchstens 32 sein"),
     ("DNS_CHECK_TIMEOUT_SECONDS", "0.1", "muss mindestens 0.5 sein"),
     ("DNS_CHECK_DKIM_RECOMMENDED_BITS", "512", "muss mindestens 1024 sein"),
+    ("DNS_CHECK_DKIM_ACTIVE_DAYS", "0", "muss mindestens 1 sein"),
+    ("DNS_CHECK_DOMAIN_BUDGET_SECONDS", "0.5", "muss mindestens 1.0 sein"),
+    ("DNS_CHECK_JOB_BUDGET_SECONDS", "5", "muss mindestens 10 sein"),
+    ("DNS_CHECK_MANUAL_COOLDOWN_SECONDS", "-1", "muss mindestens 0 sein"),
     ("DNS_CHECK_ENABLED", "vielleicht", "muss true oder false sein"),
 ])
 def test_settings_have_bounds(name, value, reason, monkeypatch):
@@ -690,3 +734,128 @@ def test_settings_have_bounds(name, value, reason, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         load_settings()
     assert f"{name}: {reason}" in str(exc.value)
+
+
+# Findings of the review from 30.09.2026 -------------------------------------------------------
+
+class TestOddInput:
+    @pytest.mark.parametrize("value", ["²", "٣", "12345678901"])
+    def test_numbers_beyond_ascii_digits(self, value):
+        record = f"v=DMARC1; p=reject; pct={value}; ri={value}; rua=mailto:{ADDRESS}; ruf=mailto:{ADDRESS}; fo=1"
+        checks = run(resolver(txt=good_txt(**{"_dmarc.example.com": [record]})))
+        assert checks["syntax"].state == "warning"
+        assert f"pct={value} ist ungültig" in checks["syntax"].message
+        assert checks["policy"].state == "ok"
+
+    def test_nested_key_is_unreadable_instead_of_crashing(self):
+        der = base64.b64decode(RSA_2048)
+        for _ in range(2000):  # SubjectPublicKeyInfo inside SubjectPublicKeyInfo inside ...
+            bits = b"\x03" + _der_length(len(der) + 1) + b"\x00" + der
+            algorithm = b"\x30\x00"
+            body = algorithm + bits
+            der = b"\x30" + _der_length(len(body)) + body
+        assert rsa_key_bits(der) is None
+        record = [f"v=DKIM1; p={base64.b64encode(der).decode()}"]
+        assert dkim(record).state == "error"
+
+    def test_a_group_that_breaks_leaves_the_others(self, monkeypatch):
+        def broken(*args, **kwargs):
+            raise RuntimeError("kaputt")
+
+        monkeypatch.setattr(dns_check, "check_spf", broken)
+        checks = run()
+        assert checks["spf"].state == "unknown"
+        assert checks["spf"].message.startswith("Die Prüfung brach mit einem internen Fehler ab.")
+        assert checks["dmarc"].state == "ok" and checks["tlsrpt"].state == "ok"
+
+    def test_a_domain_that_breaks_does_not_hold_up_the_run(self, session, monkeypatch):
+        monkeypatch.setattr(settings, "DNS_CHECK_ENABLED", True)
+        org = make_org(session)
+        make_domain(session, org, "a.example")
+        make_domain(session, org, "b.example")
+
+        def factory():
+            raise RuntimeError("Resolver kaputt")
+
+        assert run_due_checks(session, NOW, factory) == {org.id}
+        rows = session.query(Domain).order_by(Domain.name).all()
+        assert [(d.dns_status, d.dns_checked_at is not None) for d in rows] == [("unknown", True)] * 2
+        assert stored_result(rows[0]).checks[0].message.startswith("Die Prüfung brach")
+
+
+def _der_length(size: int) -> bytes:
+    if size < 0x80:
+        return bytes([size])
+    raw = size.to_bytes((size.bit_length() + 7) // 8, "big")
+    return bytes([0x80 | len(raw)]) + raw
+
+
+class TestBudgets:
+    def test_no_lookup_after_the_domain_budget(self):
+        late = dns_check.Resolver(deadline=time.monotonic() - 1)
+        with pytest.raises(LookupFailed) as caught:
+            late.txt("example.com")
+        assert "Zeitbudget der Prüfung aufgebraucht" in str(caught.value)
+
+    def test_job_budget_postpones_domains(self, session, monkeypatch):
+        monkeypatch.setattr(settings, "DNS_CHECK_ENABLED", True)
+        monkeypatch.setattr(settings, "DNS_CHECK_JOB_BUDGET_SECONDS", -1)
+        org = make_org(session)
+        make_domain(session, org, "a.example")
+        assert run_due_checks(session, NOW, lambda: resolver(txt={})) == set()
+        assert session.query(Domain).one().dns_checked_at is None
+        assert [d.name for d in due_domains(session, NOW, 10)] == ["a.example"]
+
+    def test_inactive_organisation_is_left_out(self, session):
+        org = make_org(session)
+        make_domain(session, org, "a.example")
+        org.is_active = False
+        session.flush()
+        assert due_domains(session, NOW, 10) == []
+
+
+class TestDkimInUse:
+    @pytest.mark.parametrize(("days_ago", "active_days", "state"), [
+        (1, 3, "error"), (5, 3, "warning"), (5, 7, "error"), (20, 7, "warning"),
+    ])
+    def test_missing_key(self, monkeypatch, days_ago, active_days, state):
+        monkeypatch.setattr(settings, "DNS_CHECK_DKIM_ACTIVE_DAYS", active_days)
+        last = NOW - timedelta(days=days_ago)
+        result = check_domain(target(dkim_last_pass={"s1": last}),
+                              resolver(txt=good_txt(**{"s1._domainkey.example.com": None})), NOW)
+        check = next(c for c in result.checks if c.key == "dkim:s1")
+        assert check.state == state
+        assert f"zuletzt am {last:%d.%m.%Y}" in check.message
+
+    def test_last_pass_comes_from_the_reports(self, session):
+        org = make_org(session)
+        domain = make_domain(session, org, "example.com")
+        old = add_report(session, org, domain, [("192.0.2.1", 5, True, True, True)],
+                         created_at=NOW - timedelta(days=10))
+        _dkim_row(session, old, "alt")
+        new = add_report(session, org, domain, [("192.0.2.2", 5, True, True, True)], created_at=NOW)
+        _dkim_row(session, new, "neu")
+        found = gather_input(session, domain, NOW)
+        assert {k: aware(v) for k, v in found.dkim_last_pass.items()} == {"neu": NOW, "alt": NOW - timedelta(days=10)}
+
+
+class TestTagsAndStates:
+    @pytest.mark.parametrize("record", [f"V=DMARC1; p=reject; rua=mailto:{ADDRESS}",
+                                        f"v = DMARC1 ; p=reject; rua=mailto:{ADDRESS}"])
+    def test_version_with_capital_v_or_spaces(self, record):
+        assert run(resolver(txt=good_txt(**{"_dmarc.example.com": [record]})))["dmarc"].state == "ok"
+
+    def test_tls_reporting_version_is_case_sensitive(self):
+        check = run(resolver(txt=good_txt(**{"_smtp._tls.example.com": [f"v=tlsrptv1; rua=mailto:{ADDRESS}"]})))[
+            "tlsrpt"]
+        assert check.state == "error"
+        assert check.suggestion == f"v=TLSRPTv1; rua=mailto:{ADDRESS}"
+
+    def test_unanswered_mx_leaves_tls_reporting_open(self):
+        checks = run(resolver(failing=("example.com",)))
+        assert checks["tlsrpt"].state == "unknown"
+        assert "blieb offen" in checks["tlsrpt"].message
+
+    def test_redirect_next_to_all_is_not_counted(self):
+        check = spf("v=spf1 include:_spf.mail.example redirect=_spf.mail.example -all")
+        assert "1 von 10 DNS-Abfragen" in check.message
