@@ -9,6 +9,8 @@ from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _SAMPLE_SECRET_KEYS = {"change_me_to_a_64_char_random_hex_string", "bitte-einen-eigenen-wert-setzen"}
+# Alert statuses whose pending notifications may be dropped; new alerts are open
+_SKIPPABLE_ALERT_STATUSES = ("acknowledged", "resolved", "ignored")
 _warnings: list[str] = []
 
 
@@ -241,6 +243,12 @@ class Settings(BaseSettings):
     )
     NOTIFICATION_BUNDLE_MAX_ITEMS: int = Field(
         50, ge=1, le=500, description="Alarme, die eine Sammelmail einzeln aufführt; die übrigen nennt sie als Zahl.",
+    )
+    NOTIFICATION_SKIP_ALERT_STATUSES: str = Field(
+        "resolved,ignored",
+        description="Status von Alarmen, deren wartende Benachrichtigungen entfallen, durch Komma getrennt: "
+                    "acknowledged (gesehen), resolved (erledigt), ignored (ignoriert). Eine Sammelmail führt dann nur "
+                    "die übrigen Alarme auf. Leer: Jede Benachrichtigung geht raus, auch zu erledigten Alarmen.",
     )
     NOTIFICATION_HTTP_TIMEOUT_SECONDS: int = Field(
         10, ge=1, le=120, description="Zeitlimit in Sekunden für Webhook, ntfy und Slack.",
@@ -589,6 +597,17 @@ class Settings(BaseSettings):
             raise ValueError("muss mit http:// oder https:// beginnen, etwa https://ntfy.sh")
         return value.rstrip("/")
 
+    @field_validator("NOTIFICATION_SKIP_ALERT_STATUSES")
+    @classmethod
+    def _skippable_alert_statuses(cls, value: str) -> str:
+        allowed = f"möglich sind {', '.join(_SKIPPABLE_ALERT_STATUSES[:-1])} und {_SKIPPABLE_ALERT_STATUSES[-1]}"
+        for entry in (v.strip().lower() for v in value.split(",")):
+            if entry == "open":
+                raise ValueError(f"open würde jede Benachrichtigung verhindern, denn neue Alarme sind offen; {allowed}")
+            if entry and entry not in _SKIPPABLE_ALERT_STATUSES:
+                raise ValueError(f"unbekannter Status {entry!r}; {allowed}, durch Komma getrennt")
+        return value
+
     @field_validator("POSTAL_API_URL")
     @classmethod
     def _postal_url(cls, value: str) -> str:
@@ -636,6 +655,10 @@ class Settings(BaseSettings):
     def notification_allowed_internal_hosts(self) -> set[str]:
         return {v.strip().lower().rstrip(".") for v in self.NOTIFICATION_ALLOWED_INTERNAL_HOSTS.split(",")
                 if v.strip()}
+
+    @property
+    def notification_skip_alert_statuses(self) -> set[str]:
+        return {v.strip().lower() for v in self.NOTIFICATION_SKIP_ALERT_STATUSES.split(",") if v.strip()}
 
     @property
     def dns_nameservers(self) -> list[str]:

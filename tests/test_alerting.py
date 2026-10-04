@@ -455,6 +455,15 @@ class TestDispatch:
         assert http_calls["requests"] == []
         assert event.deliveries[0].status == "skipped"
 
+    def test_resolved_alert_ends_the_retries(self, session, http_calls):
+        http_calls["status"] = 503
+        _, _, event = _queued_event(session)
+        assert dispatch_pending(session, NOW)["failed"] == 1
+        event.status = "resolved"
+        assert dispatch_pending(session, NOW + timedelta(days=1)) == {"sent": 0, "failed": 0, "skipped": 1}
+        assert len(http_calls["requests"]) == 1
+        assert event.deliveries[0].status == "skipped"
+
     def test_batch_size(self, session, http_calls, monkeypatch):
         monkeypatch.setattr(settings, "NOTIFICATION_BATCH_SIZE", 1)
         org, channel, _ = _queued_event(session)

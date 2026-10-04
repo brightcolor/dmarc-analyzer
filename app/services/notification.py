@@ -3,7 +3,8 @@ Notification delivery: sends queued alert notifications over the channels of an 
 
 Alert evaluation queues one NotificationDelivery per channel; the scheduler calls dispatch_pending.
 A failed delivery is tried again after a growing pause, up to NOTIFICATION_RETRY_MAX times.
-Every failure stores a reason the user can act on.
+Every failure stores a reason the user can act on. A delivery whose alert reached one of the statuses in
+NOTIFICATION_SKIP_ALERT_STATUSES before it went out is skipped.
 """
 import ipaddress
 import json
@@ -332,15 +333,11 @@ def dispatch_pending(db: Session, now: datetime | None = None) -> dict[str, int]
         event, channel = delivery.alert_event, delivery.channel
         if delivery.channel_id is None:
             if not delivery.recipient or not still_wants_alerts(db, event.domain_id, delivery.recipient):
-                delivery.status = "skipped"
-                delivery.error_message = ("Die Adresse bekommt die Alarme dieser Domain nicht mehr. Die "
-                                          "Benachrichtigung wurde nicht verschickt.")
-                counts["skipped"] += 1
+                _skip(delivery, "Die Adresse bekommt die Alarme dieser Domain nicht mehr. Die Benachrichtigung "
+                                "wurde nicht verschickt.", counts)
                 continue
         elif channel is None or not channel.is_active:
-            delivery.status = "skipped"
-            delivery.error_message = "Der Kanal ist ausgeschaltet. Die Benachrichtigung wurde nicht verschickt."
-            counts["skipped"] += 1
+            _skip(delivery, "Der Kanal ist ausgeschaltet. Die Benachrichtigung wurde nicht verschickt.", counts)
             continue
         target = _mailbox(delivery) if window else None
         if target:
@@ -349,16 +346,37 @@ def dispatch_pending(db: Session, now: datetime | None = None) -> dict[str, int]
             singles.append(delivery)
 
     for delivery in singles:
-        _attempt(delivery, [delivery], now, counts)
+        if not _skip_if_closed(delivery, counts):
+            _attempt(delivery, [delivery], now, counts)
     for (kind, key), members in mailboxes.items():
         if now - min(_aware(m.created_at, now) for m in members) < window:
             continue  # still collecting; the next run sends them together
-        _attempt(members[0] if len(members) == 1 else None, members, now, counts,
-                 address=key if kind == "address" else None)
+        members = [m for m in members if not _skip_if_closed(m, counts)]
+        if members:
+            _attempt(members[0] if len(members) == 1 else None, members, now, counts,
+                     address=key if kind == "address" else None)
     db.flush()
     if any(counts.values()):
         logger.info("Notifications: %(sent)d sent, %(failed)d failed, %(skipped)d skipped", counts)
     return counts
+
+
+def _skip(delivery: NotificationDelivery, reason: str, counts: dict[str, int]) -> None:
+    delivery.status = "skipped"
+    delivery.error_message = reason
+    counts["skipped"] += 1
+
+
+def _skip_if_closed(delivery: NotificationDelivery, counts: dict[str, int]) -> bool:
+    """Skip a delivery whose alert was closed before it went out; checked right before sending."""
+    from app.templates_config import STATUS_TEXT
+
+    status = delivery.alert_event.status
+    if status not in settings.notification_skip_alert_statuses:
+        return False
+    _skip(delivery, f"Der Alarm wurde auf „{STATUS_TEXT.get(status, status)}“ gesetzt, bevor die Benachrichtigung "
+                    "rausgehen konnte. Sie wurde nicht verschickt.", counts)
+    return True
 
 
 def _mailbox(delivery: NotificationDelivery) -> tuple[str, str] | None:

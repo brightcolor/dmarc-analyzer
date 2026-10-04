@@ -378,6 +378,12 @@ kommt in seiner eigenen Mail. Eine Sammelmail führt höchstens `NOTIFICATION_BU
 einzeln auf und nennt die übrigen als Zahl. Mit `0` geht jeder Alarm sofort einzeln raus. Webhook, ntfy
 und Slack bekommen jeden Alarm sofort.
 
+Wird ein Alarm erledigt oder ignoriert, bevor seine Benachrichtigung rausgeht, entfällt sie; beim Alarm
+steht sie dann als „übersprungen“. Eine Sammelmail führt nur die übrigen Alarme auf, und sind alle
+erledigt, entfällt die Mail. Das gilt für jeden Kanal und auch für neue Versuche nach einem Fehlschlag.
+Welche Status das betrifft, legt `NOTIFICATION_SKIP_ALERT_STATUSES` fest (Vorgabe `resolved,ignored`);
+Benachrichtigungen zu gesehenen Alarmen gehen weiter raus.
+
 Der Webhook bekommt:
 
 ```json
@@ -495,6 +501,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `ALERT_DEFAULT_*` | siehe `.env.example` | Schwellen für Regeln ohne eigenen Wert |
 | `NOTIFICATION_*`, `NTFY_DEFAULT_URL` | 3 Versuche, `https://ntfy.sh` | Wiederholungen und Zeitlimits der Benachrichtigungen |
 | `NOTIFICATION_EMAIL_BUNDLE_SECONDS`, `NOTIFICATION_BUNDLE_MAX_ITEMS` | 900, 50 | Sammelmails für Alarme |
+| `NOTIFICATION_SKIP_ALERT_STATUSES` | `resolved,ignored` | Alarme, deren wartende Benachrichtigungen entfallen |
 | `SCHEDULER_ENABLED`, Takte `*_INTERVAL_SECONDS` | an | Zeitplaner im Web-Container |
 | `RETENTION_*`, `SMTP_REJECTION_RETENTION_DAYS` | täglich, 30 Tage | Aufräumen |
 | `SENDER_LOOKUP_*`, `SENDER_ASN_*` | an, jede Minute, 30 Tage | Zuordnung der Absender per DNS |

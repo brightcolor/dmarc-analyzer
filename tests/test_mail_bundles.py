@@ -86,6 +86,91 @@ def test_list_length_comes_from_the_settings(session, smtp_server, window, monke
     assert "Dazu 2 weitere Alarme" in text
 
 
+def test_same_severity_sorts_by_time_with_and_without_zone(session, smtp_server, window):
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    later = _alert(session, org, "Fehlerquote example.org", at=NOW + timedelta(minutes=5))
+    earlier = _alert(session, org, "Fehlerquote example.net")
+    session.expire(earlier)  # SQLite hands it back without zone, the other one keeps its zone
+    assert later.created_at.tzinfo is not None and earlier.created_at.tzinfo is None
+    assert dispatch_pending(session, NOW + window) == {"sent": 2, "failed": 0, "skipped": 0}
+    text = _text(smtp_server.messages[0])
+    assert text.index("Fehlerquote example.net") < text.index("Fehlerquote example.org")
+
+
+def test_alert_resolved_before_sending_gets_no_mail(session, smtp_server, window):
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    event = _alert(session, org, "DNS-Einträge fehlerhaft für example.org")
+    assert dispatch_pending(session, NOW + timedelta(minutes=5)) == {"sent": 0, "failed": 0, "skipped": 0}
+    event.status = "resolved"
+    assert dispatch_pending(session, NOW + window) == {"sent": 0, "failed": 0, "skipped": 1}
+    assert smtp_server.envelopes == []
+    delivery = event.deliveries[0]
+    assert delivery.status == "skipped"
+    assert "erledigt" in delivery.error_message
+
+
+def test_bundle_names_only_the_open_alert(session, smtp_server, window):
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    done = _alert(session, org, "DNS-Einträge fehlerhaft für example.org", severity="critical")
+    _alert(session, org, "12 % scheitern an DMARC für example.org", at=NOW + timedelta(minutes=5))
+    done.status = "resolved"
+    # The window still counts from the first alert
+    assert dispatch_pending(session, NOW + window) == {"sent": 1, "failed": 0, "skipped": 1}
+    assert len(smtp_server.envelopes) == 1
+    mail = smtp_server.messages[0]
+    assert mail["Subject"] == "Warnung: 12 % scheitern an DMARC für example.org"
+    assert "DNS-Einträge" not in _text(mail)
+
+
+def test_bundle_lists_only_open_alerts(session, smtp_server, window):
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    _alert(session, org, "Neue unbekannte Quelle 192.0.2.7", severity="critical")
+    _alert(session, org, "DNS-Einträge fehlerhaft für example.org").status = "resolved"
+    _alert(session, org, "example.org ist bereit für p=reject", severity="info")
+    assert dispatch_pending(session, NOW + window) == {"sent": 2, "failed": 0, "skipped": 1}
+    mail = smtp_server.messages[0]
+    assert mail["Subject"] == "Kritisch: 2 Alarme für Muster Farben"
+    text = _text(mail)
+    assert "Neue unbekannte Quelle 192.0.2.7" in text and "bereit für p=reject" in text
+    assert "1 kritischer Alarm · 1 Hinweis" in text
+    assert "DNS-Einträge" not in text
+
+
+def test_no_mail_when_every_alert_is_closed(session, smtp_server, window):
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    _alert(session, org, "DNS-Einträge fehlerhaft für example.org").status = "resolved"
+    _alert(session, org, "Neue unbekannte Quelle 192.0.2.7").status = "ignored"
+    assert dispatch_pending(session, NOW + window) == {"sent": 0, "failed": 0, "skipped": 2}
+    assert smtp_server.envelopes == []
+
+
+def test_acknowledged_alert_is_still_mailed(session, smtp_server, window):
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    _alert(session, org, "12 % scheitern an DMARC").status = "acknowledged"
+    assert dispatch_pending(session, NOW + window) == {"sent": 1, "failed": 0, "skipped": 0}
+    assert smtp_server.messages[0]["Subject"] == "Warnung: 12 % scheitern an DMARC"
+
+
+@pytest.mark.parametrize(("skip", "status", "mails"), [
+    ("acknowledged,resolved,ignored", "acknowledged", 0),
+    ("", "resolved", 1),
+])
+def test_skipped_alert_statuses_come_from_the_settings(session, smtp_server, window, monkeypatch, skip, status,
+                                                       mails):
+    monkeypatch.setattr(settings, "NOTIFICATION_SKIP_ALERT_STATUSES", skip)
+    org = make_org(session)
+    make_channel(session, org, "email", {"to": ["admin@example.test"]})
+    _alert(session, org, "12 % scheitern an DMARC").status = status
+    dispatch_pending(session, NOW + window)
+    assert len(smtp_server.envelopes) == mails
+
+
 def test_failed_bundle_is_retried_as_a_whole(session, window, monkeypatch):
     monkeypatch.setattr(settings, "MAIL_SMTP_HOST", "127.0.0.1")
     monkeypatch.setattr(settings, "MAIL_SMTP_PORT", 9)  # nobody listens there

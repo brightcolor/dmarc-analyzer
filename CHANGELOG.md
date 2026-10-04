@@ -7,6 +7,24 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.4] – 2026-10-04
+
+### Behoben
+
+- Für Alarme, die vor dem Versand erledigt oder ignoriert wurden, entfällt die Benachrichtigung; beim
+  Alarm steht sie als „übersprungen“, den Grund nennt die Kanalliste. Eine Sammelmail führt nur die
+  übrigen Alarme auf, und sind alle erledigt, entfällt die Mail. Das gilt für jeden Kanal und auch für
+  neue Versuche nach einem Fehlschlag. Vorher ging die Mail nach dem Sammelzeitraum auch für schon
+  behobene Probleme raus.
+- Kleineres: Eine Sammelmail sortiert Alarme gleicher Schwere auch dann nach Zeit, wenn Zeitangaben mit
+  und ohne Zeitzone zusammenkommen; betroffen waren nur Tests mit SQLite.
+
+### Neu
+
+- `NOTIFICATION_SKIP_ALERT_STATUSES` (Vorgabe `resolved,ignored`) legt fest, bei welchen Status eines
+  Alarms seine wartenden Benachrichtigungen entfallen. Möglich sind `acknowledged` (gesehen), `resolved`
+  und `ignored`; leer geht jede Benachrichtigung raus.
+
 ## [0.11.3] – 2026-09-30
 
 ### Behoben

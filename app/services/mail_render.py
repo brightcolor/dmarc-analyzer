@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoes
 from app.config import settings
 from app.templates_config import (
     CLASSIFICATION_TEXT,
+    _as_utc,
     _format_date,
     _format_datetime,
     _format_number,
@@ -106,7 +107,8 @@ def render_alert_bundle(events, channel=None, recipient: str | None = None) -> t
     """Subject, text and HTML for several alerts in one mail, most severe first."""
     from app.config import settings as current
 
-    events = sorted(events, key=lambda e: (SEVERITY_ORDER.get(e.severity, 9), e.created_at))
+    # Times from SQLite come without zone, those of alerts still in the session with one
+    events = sorted(events, key=lambda e: (SEVERITY_ORDER.get(e.severity, 9), _as_utc(e.created_at)))
     shown = events[:current.NOTIFICATION_BUNDLE_MAX_ITEMS]
     organization = events[0].organization or (channel.organization if channel else None)
     domains = sorted({e.domain.name for e in events if e.domain})
