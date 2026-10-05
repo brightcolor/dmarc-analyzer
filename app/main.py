@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.formparsers import MultiPartException
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
@@ -48,6 +49,11 @@ ERROR_TEXT = {
     500: ("Interner Fehler", "Die Anwendung konnte die Anfrage nicht bearbeiten. Versuche es später erneut; bleibt "
                              "der Fehler, wende dich mit der Kennung unten an den Administrator."),
 }
+
+# Starlette refuses forms beyond its limits (fields, files, size of one entry) or with a broken structure,
+# giving an English reason; people see this text, the reason goes to the log
+FORM_REFUSED = ("Das Formular hat zu viele Felder oder Dateien, ein Eintrag ist zu lang, oder es kam unvollständig "
+                "an. Kürze die Eingaben und sende das Formular erneut.")
 
 
 def _wants_json(request: Request) -> bool:
@@ -231,6 +237,9 @@ def create_app() -> FastAPI:
         if 300 <= exc.status_code < 400 and exc.headers and "Location" in exc.headers:
             return RedirectResponse(url=exc.headers["Location"], status_code=exc.status_code)
         detail = exc.detail if isinstance(exc.detail, str) else None
+        if isinstance(exc.__context__, MultiPartException):
+            logger.info("Form refused: %s", detail)
+            detail = FORM_REFUSED
         response = _error_response(request, exc.status_code, detail)
         for key, value in (exc.headers or {}).items():
             response.headers.setdefault(key, value)

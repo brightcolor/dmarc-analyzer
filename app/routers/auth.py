@@ -18,7 +18,8 @@ from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Dots only between domain labels: overlapping character classes made long input backtrack quadratically
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$")
 SETUP_CODE_HINT = ("Du findest ihn im Serverlog beim Start der Anwendung oder mit dem Befehl "
                    "docker compose exec web python -m app.setup_code.")
 
