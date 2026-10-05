@@ -7,6 +7,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.6] – 2026-10-05
+
 ### Sicherheit
 
 - python-multipart 0.0.31 und python-dotenv 1.2.2 mit den Korrekturen aus GHSA-v9pg-7xvm-68hf und
