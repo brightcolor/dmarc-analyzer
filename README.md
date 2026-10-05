@@ -84,6 +84,16 @@ docker compose exec web python -m app.org_limits
 docker compose exec web python -m app.org_limits <kennung> --max-domains 500
 ```
 
+### Zustand der Container
+
+Das Image prüft selbst, ob sein Dienst antwortet (`python -m app.healthcheck`): die Weboberfläche über
+`/api/v1/health`, der Mailempfang über seine Begrüßung. Weil beide aus demselben Image laufen, besteht
+die Prüfung, sobald eines der Ziele in `HEALTHCHECK_TARGETS` antwortet; das Zeitlimit je Ziel setzt
+`HEALTHCHECK_TIMEOUT_SECONDS`. `docker compose ps` zeigt das Ergebnis als `healthy` oder `unhealthy`,
+den Grund nennt `docker inspect`. In `docker-compose.yml` hat `web` eine eigene Prüfung derselben
+Adresse, `smtp` nutzt die des Images. Sie läuft einmal pro Minute und erscheint im Log des Mailempfangs
+als Verbindung von `127.0.0.1`; den Takt ändert `interval` im Abschnitt `healthcheck` des Dienstes.
+
 ---
 
 ## DNS einrichten
@@ -489,6 +499,8 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `RECOMMENDATION_*` | siehe `.env.example` | Schwellen der Empfehlungen |
 | `ARCHIVE_MAX_*` | 20 MB, 50 MB, 50 Dateien | Grenzen für Anhänge und Archive |
 | `SETUP_OPEN_PATHS` | `/static,/api,/health,…` | Pfade, die während der Ersteinrichtung offen bleiben |
+| `HEALTHCHECK_TARGETS` | `http://127.0.0.1:8000/api/v1/health,smtp://127.0.0.1` | Ziele der [Prüfung im Container](#zustand-der-container); `smtp://` ohne Port nimmt `SMTP_INBOUND_PORT` |
+| `HEALTHCHECK_TIMEOUT_SECONDS` | `3` | Zeitlimit je Ziel der Prüfung in Sekunden |
 | `MAIL_BACKEND` | `smtp` | Weg für ausgehende Mails: `smtp` oder `postal` |
 | `MAIL_SMTP_*`, `MAIL_FROM` | Versand aus | SMTP-Server und Absender für Alarme und Wochenbericht |
 | `POSTAL_API_URL`, `POSTAL_API_KEY`, `POSTAL_MESSAGE_TAG` | leer, leer, `dmarc-analyzer` | Versand über die Postal-API |
