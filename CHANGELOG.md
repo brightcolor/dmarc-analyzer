@@ -15,8 +15,7 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
   Formular darüber lehnt die Anwendung mit einer Meldung ab, die den Grund und den nächsten Schritt nennt;
   die genaue Grenze steht im Log.
 - Die Prüfung von E-Mail-Adressen bei Ersteinrichtung, Einladung, Kanälen, Wochenbericht und weiteren
-  Empfängern einer Domain verkraftet auch sehr lange Eingaben. Vorher konnte eine präparierte Adresse den
-  Server stark auslasten. Adressen mit leerem Abschnitt in der Domain, etwa `name@example..org` oder
+  Empfängern einer Domain verkraftet auch sehr lange Eingaben. Adressen mit leerem Abschnitt in der Domain, etwa `name@example..org` oder
   `name@example.org.`, gelten jetzt als ungültig.
 
 ## [0.11.4] – 2026-10-04
