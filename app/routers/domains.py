@@ -196,7 +196,7 @@ def domain_toggle(
         new_value={"is_active": domain.is_active},
     )
     db.commit()
-    return RedirectResponse(url=f"/domains/{domain_id}", status_code=303)
+    return RedirectResponse(url=f"/domains/{domain.id}", status_code=303)
 
 
 @router.post("/{domain_id}/dns-check")
@@ -210,11 +210,12 @@ def domain_dns_check(
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
     if not domain:
         raise HTTPException(status_code=404)
+    back = f"/domains/{domain.id}#dns-pruefung"
     try:
         result = run_manual_check(db, domain)
     except CheckRefused as refused:
         flash(request, "warn", f"{domain.name} jetzt nicht geprüft", str(refused))
-        return RedirectResponse(url=f"/domains/{domain_id}#dns-pruefung", status_code=303)
+        return RedirectResponse(url=back, status_code=303)
     db.commit()
     errors, warnings = result.count("error"), result.count("warning")
     if errors:
@@ -229,7 +230,7 @@ def domain_dns_check(
               "erneut, oder du startest sie nach der kurzen Sperre noch einmal.")
     else:
         flash(request, "ok", f"{domain.name}: DNS in Ordnung", "Alle Einträge, die die Anwendung braucht, stehen.")
-    return RedirectResponse(url=f"/domains/{domain_id}#dns-pruefung", status_code=303)
+    return RedirectResponse(url=back, status_code=303)
 
 
 @router.post("/{domain_id}/add-address")
@@ -245,7 +246,7 @@ def domain_add_address(
         raise HTTPException(status_code=404)
     create_domain_address(db, org, domain)
     db.commit()
-    return RedirectResponse(url=f"/domains/{domain_id}", status_code=303)
+    return RedirectResponse(url=f"/domains/{domain.id}", status_code=303)
 
 
 # Further recipients of the domain ------------------------------------------------------
@@ -263,8 +264,8 @@ def _what(alerts: bool, digest: bool) -> str:
     return "die Alarme" if alerts else "den Wochenbericht"
 
 
-def _back(domain_id: str) -> RedirectResponse:
-    return RedirectResponse(url=f"/domains/{domain_id}#empfaenger", status_code=303)
+def _back(domain: Domain) -> RedirectResponse:
+    return RedirectResponse(url=f"/domains/{domain.id}#empfaenger", status_code=303)
 
 
 @router.post("/{domain_id}/recipients")
@@ -284,14 +285,14 @@ def domain_add_recipient(
         recipient = add_recipient(db, domain, email, name, alerts=bool(alerts), digest=bool(digest))
     except RecipientError as exc:
         flash(request, "bad", "Empfänger nicht eingetragen", str(exc))
-        return _back(domain_id)
+        return _back(domain)
     log_action(db, "domain_recipient.add", org_id=org.id, user_id=user.id, resource_type="domain",
                resource_id=domain.id, new_value={"email": recipient.email, "alerts": recipient.alerts,
                                                  "digest": recipient.digest}, ip_address=get_client_ip(request))
     db.commit()
     flash(request, "ok", "Empfänger eingetragen",
           f"{recipient.email} bekommt ab jetzt {_what(recipient.alerts, recipient.digest)} für {domain.name}.")
-    return _back(domain_id)
+    return _back(domain)
 
 
 def _own_recipient(db: Session, domain: Domain, recipient_id: str) -> DomainRecipient:
@@ -318,14 +319,14 @@ def domain_update_recipient(
         update_recipient(recipient, alerts=bool(alerts), digest=bool(digest))
     except RecipientError as exc:
         flash(request, "bad", "Nicht gespeichert", str(exc))
-        return _back(domain_id)
+        return _back(domain)
     log_action(db, "domain_recipient.update", org_id=org.id, user_id=user.id, resource_type="domain",
                resource_id=domain.id, new_value={"email": recipient.email, "alerts": recipient.alerts,
                                                  "digest": recipient.digest}, ip_address=get_client_ip(request))
     db.commit()
     flash(request, "ok", "Gespeichert",
           f"{recipient.email} bekommt {_what(recipient.alerts, recipient.digest)} für {domain.name}.")
-    return _back(domain_id)
+    return _back(domain)
 
 
 @router.post("/{domain_id}/recipients/{recipient_id}/delete")
@@ -344,4 +345,4 @@ def domain_delete_recipient(
     db.delete(recipient)
     db.commit()
     flash(request, "ok", "Empfänger entfernt", f"{recipient.email} bekommt nichts mehr für {domain.name}.")
-    return _back(domain_id)
+    return _back(domain)
