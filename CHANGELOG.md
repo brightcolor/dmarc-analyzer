@@ -7,6 +7,18 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Sicherheit
+
+- Starlette 1.3.1 und python-multipart 0.0.30 schließen zwei Lücken, über die ein einzelnes Formular die
+  Rechenleistung des Servers binden konnte (GHSA-82w8-qh3p-5jfq, GHSA-5rvq-cxj2-64vf). Die Grenzen von
+  höchstens 1000 Feldern und 1 MB je Textfeld gelten damit für jedes Formular, bisher nur beim Upload. Ein
+  Formular darüber lehnt die Anwendung mit einer Meldung ab, die den Grund und den nächsten Schritt nennt;
+  die genaue Grenze steht im Log.
+- Die Prüfung von E-Mail-Adressen bei Ersteinrichtung, Einladung, Kanälen, Wochenbericht und weiteren
+  Empfängern einer Domain verkraftet auch sehr lange Eingaben. Vorher konnte eine präparierte Adresse den
+  Server stark auslasten. Adressen mit leerem Abschnitt in der Domain, etwa `name@example..org` oder
+  `name@example.org.`, gelten jetzt als ungültig.
+
 ## [0.11.4] – 2026-10-04
 
 ### Behoben

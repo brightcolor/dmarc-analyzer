@@ -1,5 +1,7 @@
-"""Security: client address behind proxies, forms from foreign sites, login lock, notification targets, roles."""
+"""Security: client address behind proxies, foreign forms, login lock, notification targets, roles, input limits."""
+import logging
 import socket
+import time
 from datetime import timedelta
 
 import pytest
@@ -8,6 +10,7 @@ from starlette.requests import Request
 from app.config import settings
 from app.dependencies import get_client_ip
 from app.models import AlertEvent, LoginAttempt, Organization, PlanDefinition, SourceIp, User
+from app.routers import auth, users
 from app.services import notification
 from app.services.auth import create_api_token
 from app.services.login_guard import locked_until, record_attempt
@@ -191,6 +194,55 @@ class TestNotificationTargets:
     def test_switched_off(self, resolve, monkeypatch):
         monkeypatch.setattr(settings, "NOTIFICATION_BLOCK_PRIVATE_TARGETS", False)
         assert target_problem("http://127.0.0.1/") is None
+
+
+class TestAddressChecks:
+    """Mail address patterns of setup, invitation, channels, digest and domain recipients."""
+
+    PATTERNS = [auth.EMAIL_RE, users.EMAIL_RE, notification.EMAIL_PATTERN]
+
+    @pytest.mark.parametrize("pattern", PATTERNS)
+    @pytest.mark.parametrize("address", ["name@example.org", "vor.nach+dmarc@mail.example.co.uk",
+                                         "info@müller-druck.example"])
+    def test_usual_addresses_pass(self, pattern, address):
+        assert pattern.match(address)
+
+    @pytest.mark.parametrize("pattern", PATTERNS)
+    @pytest.mark.parametrize("address", ["kein-at-zeichen", "name@example", "name@example..org",
+                                         "name@.example.org", "name@example.org.", "a@b@example.org",
+                                         "na me@example.org"])
+    def test_malformed_addresses_fail(self, pattern, address):
+        assert not pattern.match(address)
+
+    @pytest.mark.parametrize("pattern", PATTERNS)
+    def test_crafted_long_input_stays_linear(self, pattern):
+        # CodeQL py/polynomial-redos: overlapping classes backtracked quadratically on this input
+        crafted = "!@!." + "!." * 50_000 + "@"
+        started = time.perf_counter()
+        assert not pattern.match(crafted)
+        assert time.perf_counter() - started < 1
+
+
+class TestOversizedForms:
+    """Starlette limits every form, also without file upload; the refusal names the reason in German."""
+
+    @pytest.mark.parametrize("data", [
+        {f"feld{i}": "x" for i in range(1001)},
+        {"email": "x" * (1024 * 1024 + 1)},
+    ], ids=["too-many-fields", "entry-too-long"])
+    def test_refusal_is_explained(self, web, data, caplog):
+        caplog.set_level(logging.INFO, logger="app.main")
+        response = web.post("/auth/setup", data=data)
+        assert response.status_code == 400
+        assert "Das Formular hat zu viele Felder oder Dateien" in response.text
+        assert "Too many fields" not in response.text and "exceeded maximum size" not in response.text
+        assert "Form refused: " in caplog.text
+
+    def test_json_clients_get_the_same_reason(self, web):
+        response = web.post("/auth/setup", data={f"feld{i}": "x" for i in range(1001)},
+                            headers={"Accept": "application/json"})
+        assert response.status_code == 400
+        assert response.json()["detail"].startswith("Das Formular hat zu viele Felder oder Dateien")
 
 
 class TestRoles:

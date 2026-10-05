@@ -38,7 +38,8 @@ NTFY_PRIORITY = {"info": 2, "warning": 3, "critical": 5}
 # Palette of the bright color workbench: lime, yellow, pink
 SLACK_COLORS = {"info": "#bfd535", "warning": "#fed329", "critical": "#d61f7a"}
 
-EMAIL_PATTERN = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
+# Dots only between domain labels: overlapping character classes made long input backtrack quadratically
+EMAIL_PATTERN = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>.]+(?:\.[^@\s,;<>.]+)+$")
 TOPIC_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 

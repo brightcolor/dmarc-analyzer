@@ -16,7 +16,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 # Roles an organisation administrator can hand out; operators are set up separately
 INVITABLE_ROLES = ("org_admin", "manager", "analyst", "read_only")
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Dots only between domain labels: overlapping character classes made long input backtrack quadratically
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$")
 
 
 @router.get("", response_class=HTMLResponse)
