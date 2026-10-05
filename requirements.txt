@@ -17,7 +17,7 @@ bcrypt==4.0.1
 itsdangerous==2.2.0
 
 # Forms / Uploads
-python-multipart==0.0.31
+python-multipart==0.0.32
 
 # Settings
 pydantic==2.13.4
