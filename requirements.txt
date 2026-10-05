@@ -9,7 +9,7 @@ jinja2==3.1.6
 # Database
 sqlalchemy==2.0.36
 alembic==1.14.0
-psycopg2-binary==2.9.12
+psycopg2-binary==2.9.13
 
 # Auth / Security (itsdangerous signs the session cookie)
 passlib[bcrypt]==1.7.4
