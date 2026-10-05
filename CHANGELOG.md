@@ -7,6 +7,8 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.5] – 2026-10-05
+
 ### Sicherheit
 
 - Starlette 1.3.1 und python-multipart 0.0.30 schließen zwei Lücken, über die ein einzelnes Formular die
