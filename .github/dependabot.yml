@@ -4,6 +4,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # New releases wait a week before Dependabot proposes them; security updates come at once
+    cooldown:
+      default-days: 7
     target-branch: master
     open-pull-requests-limit: 10
 
@@ -11,4 +14,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     target-branch: master
