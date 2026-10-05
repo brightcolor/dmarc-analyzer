@@ -380,6 +380,19 @@ class Settings(BaseSettings):
     )
     PASSWORD_MIN_LENGTH: int = Field(10, ge=8, le=64, description="Mindestlänge für Passwörter.")
 
+    # Health check of the container image (python -m app.healthcheck)
+    HEALTHCHECK_TARGETS: str = Field(
+        "http://127.0.0.1:8000/api/v1/health,smtp://127.0.0.1",
+        description="Ziele der Prüfung im Container, durch Komma getrennt. http:// oder https:// muss mit Status 2xx "
+                    "antworten, smtp://host:port mit der Begrüßung 220; ohne Port gilt SMTP_INBOUND_PORT. Die Prüfung "
+                    "besteht, sobald ein Ziel antwortet: Weboberfläche und Mailempfang laufen aus demselben Image.",
+    )
+    HEALTHCHECK_TIMEOUT_SECONDS: float = Field(
+        3.0, ge=0.5, le=30.0,
+        description="Zeitlimit in Sekunden je Ziel der Prüfung. Alle Ziele zusammen müssen in das timeout der "
+                    "Docker-Prüfung passen (im Image 10 Sekunden).",
+    )
+
     # API
     API_RATE_LIMIT: str = "100/minute"
     API_TOKEN_EXPIRE_DAYS: int = 365
@@ -616,6 +629,27 @@ class Settings(BaseSettings):
             raise ValueError("muss mit http:// oder https:// beginnen, etwa https://postal.example.com")
         return value.rstrip("/")
 
+    @field_validator("HEALTHCHECK_TARGETS")
+    @classmethod
+    def _healthcheck_targets(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        example = "erwartet wird etwa http://127.0.0.1:8000/api/v1/health oder smtp://127.0.0.1:2525"
+        entries = [v.strip() for v in value.split(",") if v.strip()]
+        if not entries:
+            raise ValueError(f"braucht mindestens ein Ziel; {example}")
+        for entry in entries:
+            parts = urlsplit(entry)
+            try:
+                port = parts.port
+            except ValueError:
+                port = 0
+            if parts.scheme not in ("http", "https", "smtp") or not parts.hostname:
+                raise ValueError(f"{entry!r} ist kein Ziel der Prüfung; {example}")
+            if port is not None and not 1 <= port <= 65_535:
+                raise ValueError(f"{entry!r} hat keinen gültigen Port; erlaubt sind 1 bis 65535")
+        return value
+
     @model_validator(mode="after")
     def _rate_order(self):
         if self.UI_PASS_RATE_WARN > self.UI_PASS_RATE_GOOD:
@@ -663,6 +697,10 @@ class Settings(BaseSettings):
     @property
     def dns_nameservers(self) -> list[str]:
         return [v.strip() for v in self.DNS_NAMESERVERS.split(",") if v.strip()]
+
+    @property
+    def healthcheck_targets(self) -> list[str]:
+        return [v.strip() for v in self.HEALTHCHECK_TARGETS.split(",") if v.strip()]
 
     @property
     def setup_open_paths(self) -> list[str]:

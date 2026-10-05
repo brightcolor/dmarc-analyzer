@@ -614,7 +614,7 @@ class TestPages:
         _login(web, ids["org"])
         response = web.post(f"/domains/{ids['domain']}/dns-check")
         assert response.status_code == 303
-        assert response.headers["location"].endswith("#dns-pruefung")
+        assert response.headers["location"] == f"/domains/{ids['domain']}#dns-pruefung"
         page = web.get(f"/domains/{ids['domain']}").text
         assert "example.com: 1 Fehler im DNS" in page
         assert "Kein DMARC-Eintrag. Ohne ihn schicken Empfänger keine Berichte" in page
@@ -675,7 +675,8 @@ class TestPages:
         _login(web, ids["org"])
         web.post(f"/domains/{ids['domain']}/dns-check")
         fake_dns["txt"] = {}
-        web.post(f"/domains/{ids['domain']}/dns-check")
+        refused = web.post(f"/domains/{ids['domain']}/dns-check")
+        assert refused.headers["location"] == f"/domains/{ids['domain']}#dns-pruefung"
         page = web.get(f"/domains/{ids['domain']}").text
         assert "example.com wurde gerade geprüft" in page
         assert "Kein DMARC-Eintrag" not in page

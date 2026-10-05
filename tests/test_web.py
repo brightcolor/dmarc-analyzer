@@ -1,10 +1,12 @@
 """Web interface: first-run setup, login, permissions, error pages and every page rendering."""
+import pytest
 from fastapi.testclient import TestClient
 
 from app.models import (
     AlertEvent,
     AppSettings,
     Domain,
+    DomainRecipient,
     ImportJob,
     NotificationChannel,
     Organization,
@@ -141,6 +143,58 @@ class TestLogin:
         response = web.post("/auth/login", data={"email": "admin@example.test", "password": PASSWORD,
                                                  "next": "/reports"})
         assert response.headers["location"] == "/reports"
+
+    @pytest.mark.parametrize("target", ["https://example.net/x", "//example.net/x", "/\\example.net/x",
+                                        "reports", ""],
+                             ids=["absolute", "protocol-relative", "backslash", "without-slash", "empty"])
+    def test_next_target_outside_the_app_leads_to_the_dashboard(self, web, session_factory, target):
+        _seed(session_factory)
+        response = web.post("/auth/login", data={"email": "admin@example.test", "password": PASSWORD,
+                                                 "next": target})
+        assert response.headers["location"] == "/dashboard"
+
+    def test_login_form_carries_only_paths_inside_the_app(self, web, session_factory):
+        _seed(session_factory)
+        assert 'name="next" value="/reports?format=rfc9990"' in web.get(
+            "/auth/login", params={"next": "/reports?format=rfc9990"}).text
+        assert 'name="next" value="/dashboard"' in web.get("/auth/login", params={"next": "//example.net/x"}).text
+
+
+class TestBackToTheEntry:
+    """After a change the browser returns to the page of the entry it changed."""
+
+    def test_domain_actions_return_to_the_domain(self, web, session_factory):
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        page = f"/domains/{ids['domain']}"
+        assert web.post(f"{page}/add-address").headers["location"] == page
+        added = web.post(f"{page}/recipients", data={"email": "team@example.test", "alerts": "1"})
+        assert added.headers["location"] == f"{page}#empfaenger"
+        refused = web.post(f"{page}/recipients", data={"email": "kein-at", "alerts": "1"})
+        assert refused.headers["location"] == f"{page}#empfaenger"
+        db = session_factory()
+        recipient_id = db.query(DomainRecipient).one().id
+        db.close()
+        changed = web.post(f"{page}/recipients/{recipient_id}", data={"alerts": "1", "digest": "1"})
+        assert changed.headers["location"] == f"{page}#empfaenger"
+        assert web.post(f"{page}/recipients/{recipient_id}/delete").headers["location"] == f"{page}#empfaenger"
+        assert web.post(f"{page}/toggle").headers["location"] == page
+
+    def test_source_classification_returns_to_the_source(self, web, session_factory):
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        response = web.post(f"/source-ips/{ids['source']}/classify", data={"classification": "trusted"})
+        assert response.status_code == 303
+        assert response.headers["location"] == f"/source-ips/{ids['source']}"
+
+    @pytest.mark.parametrize("path", ["/domains/unbekannt/toggle", "/domains/unbekannt/add-address",
+                                      "/domains/unbekannt/recipients", "/source-ips/unbekannt/classify"])
+    def test_unknown_entry_ends_with_404(self, web, session_factory, path):
+        ids = _seed(session_factory)
+        _login(web, ids["org"])
+        response = web.post(path, data={"email": "team@example.test", "classification": "trusted"})
+        assert response.status_code == 404
+        assert "location" not in response.headers
 
 
 class TestPages:

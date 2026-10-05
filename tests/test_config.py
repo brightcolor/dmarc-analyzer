@@ -39,3 +39,33 @@ def test_alert_statuses_to_skip_are_checked(monkeypatch, value, reason):
 def test_alert_statuses_to_skip_ignore_case_and_spaces(monkeypatch):
     monkeypatch.setenv("NOTIFICATION_SKIP_ALERT_STATUSES", " Resolved, acknowledged ,")
     assert load_settings().notification_skip_alert_statuses == {"resolved", "acknowledged"}
+
+
+@pytest.mark.parametrize(("value", "reason"), [
+    ("", "braucht mindestens ein Ziel"),
+    (" , ", "braucht mindestens ein Ziel"),
+    ("ftp://127.0.0.1/", "'ftp://127.0.0.1/' ist kein Ziel der Prüfung"),
+    ("http:///api/v1/health", "'http:///api/v1/health' ist kein Ziel der Prüfung"),
+    ("smtp://127.0.0.1:70000", "'smtp://127.0.0.1:70000' hat keinen gültigen Port"),
+    ("smtp://127.0.0.1:0", "'smtp://127.0.0.1:0' hat keinen gültigen Port"),
+])
+def test_healthcheck_targets_are_checked(monkeypatch, value, reason):
+    monkeypatch.setenv("HEALTHCHECK_TARGETS", value)
+    with pytest.raises(SystemExit) as exc:
+        load_settings()
+    assert f"HEALTHCHECK_TARGETS: {reason}" in str(exc.value)
+
+
+def test_healthcheck_with_own_values(monkeypatch):
+    monkeypatch.setenv("HEALTHCHECK_TARGETS", " https://dmarc.example.test/api/v1/health , smtp://[::1]:25 ,")
+    monkeypatch.setenv("HEALTHCHECK_TIMEOUT_SECONDS", "1.5")
+    loaded = load_settings()
+    assert loaded.healthcheck_targets == ["https://dmarc.example.test/api/v1/health", "smtp://[::1]:25"]
+    assert loaded.HEALTHCHECK_TIMEOUT_SECONDS == 1.5
+
+
+def test_healthcheck_time_limit_has_bounds(monkeypatch):
+    monkeypatch.setenv("HEALTHCHECK_TIMEOUT_SECONDS", "60")
+    with pytest.raises(SystemExit) as exc:
+        load_settings()
+    assert "HEALTHCHECK_TIMEOUT_SECONDS: darf höchstens 30" in str(exc.value)

@@ -7,6 +7,23 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Sicherheit
+
+- python-multipart 0.0.31 und python-dotenv 1.2.2 mit den Korrekturen aus GHSA-v9pg-7xvm-68hf und
+  GHSA-mf9w-mj56-hr94. Ein Test hält die Versionen mit Sicherheitskorrekturen in `requirements.txt` fest.
+- Die Workflows für Tests und Lint arbeiten mit einem Token, das nur lesen darf. Jede Action in den
+  Workflows ist auf einen festen Commit festgelegt, die Version steht als Kommentar daneben; Dependabot hält
+  beides aktuell.
+- Dependabot schlägt neue Versionen von Paketen und Actions vor, sobald sie eine Woche alt sind;
+  Sicherheitsupdates kommen ohne Wartezeit.
+
+### Neu
+
+- Das Docker-Image prüft selbst, ob sein Dienst antwortet: die Weboberfläche über `/api/v1/health`, der
+  Mailempfang über seine Begrüßung. `docker compose ps` zeigt das Ergebnis, `docker inspect` den Grund.
+  Die Ziele legt `HEALTHCHECK_TARGETS` fest, das Zeitlimit je Ziel `HEALTHCHECK_TIMEOUT_SECONDS` (Vorgabe
+  3 Sekunden).
+
 ## [0.11.5] – 2026-10-05
 
 ### Sicherheit

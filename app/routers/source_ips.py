@@ -122,4 +122,4 @@ def classify_ip(
         classify_manually(sip, classification, user.id, db)
     sip.notes = notes.strip() or None
     db.commit()
-    return RedirectResponse(url=f"/source-ips/{ip_id}", status_code=303)
+    return RedirectResponse(url=f"/source-ips/{sip.id}", status_code=303)
