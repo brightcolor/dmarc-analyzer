@@ -1,7 +1,7 @@
 # Web framework
-fastapi==0.136.3
+fastapi==0.141.1
 uvicorn[standard]==0.32.1
-starlette==1.3.1
+starlette==1.7.0
 
 # Templates
 jinja2==3.1.6
@@ -9,7 +9,7 @@ jinja2==3.1.6
 # Database
 sqlalchemy==2.0.36
 alembic==1.14.0
-psycopg2-binary==2.9.12
+psycopg2-binary==2.9.13
 
 # Auth / Security (itsdangerous signs the session cookie)
 passlib[bcrypt]==1.7.4
@@ -17,10 +17,10 @@ bcrypt==4.0.1
 itsdangerous==2.2.0
 
 # Forms / Uploads
-python-multipart==0.0.31
+python-multipart==0.0.32
 
 # Settings
-pydantic==2.13.4
+pydantic==2.13.5
 pydantic-settings==2.6.1
 python-dotenv==1.2.2
 
@@ -43,7 +43,7 @@ dnspython==2.7.0
 publicsuffixlist==1.0.2.20260925
 
 # Testing
-pytest==9.0.3
+pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==6.0.0
 
