@@ -7,6 +7,15 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.11.7] – 2026-10-09
+
+### Geändert
+
+- FastAPI 0.141.1, Starlette 1.7.0, Pydantic 2.13.5, python-multipart 0.0.32, psycopg2-binary 2.9.13 und
+  pytest 9.1.1. `pip-audit` meldet für `requirements.txt` keine bekannte Schwachstelle.
+- Die Workflows nutzen `actions/setup-python` 7.0.0 und `codecov/codecov-action` 7.1.1, beide auf den Commit
+  der Fassung festgelegt.
+
 ## [0.11.6] – 2026-10-05
 
 ### Sicherheit
