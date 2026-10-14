@@ -57,6 +57,8 @@
 .app-stack > * + * { margin-top: 12px; }
 .app-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .app-inline form { margin: 0; }
+/* Row actions below the title at every width, for tables whose columns leave no room for three buttons */
+.bc-table .bc-row-actions.app-row-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 8px; }
 /* Form rows that belong to one choice of a select (data-show-for); they stay part of the form grid */
 .app-contents { display: contents; }
 .app-contents[hidden] { display: none; }

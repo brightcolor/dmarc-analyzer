@@ -1,0 +1,41 @@
+{# Fields shared by "Neue Regel" and "Regel bearbeiten"; expects form, domains, channels, severities, channel_types #}
+<div class="bc-formgrid">
+  <label for="r-name">Name</label>
+  <input class="bc-input" id="r-name" name="name" value="{{ form.name }}" placeholder="z. B. Unbekannte Absender bei example.com">
+  {% if rule is defined and rule %}
+  <span class="bc-formgrid__label">Art</span>
+  <p style="margin:0">{{ alert_types.get(rule.alert_type, rule.alert_type) }}</p>
+  <p class="bc-formgrid__hint">Die Art bleibt fest, weil eine Regel Alarme zum selben Befund zusammenfasst. Für eine andere Art lege eine neue Regel an.{% if type_hint %} {{ type_hint }}{% endif %}</p>
+  {% else %}
+  <label for="r-type">Art</label>
+  <select class="bc-select" id="r-type" name="alert_type" aria-describedby="r-type-hint">
+    {% for key, label in choosable_types.items() %}<option value="{{ key }}"{% if key == form.alert_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <p class="bc-formgrid__hint" id="r-type-hint">Was jede Art prüft und was ihre Schwelle bedeutet, steht unter dem Formular.</p>
+  {% endif %}
+  <label for="r-domain">Domain</label>
+  <select class="bc-select" id="r-domain" name="domain_id">
+    <option value="">alle Domains</option>
+    {% for d in domains %}<option value="{{ d.id }}"{% if d.id == form.domain_id %} selected{% endif %}>{{ d.name }}</option>{% endfor %}
+  </select>
+  <p class="bc-formgrid__hint">Mit „alle Domains“ prüft die Regel jede Domain einzeln; jeder Alarm nennt seine Domain und geht auch an deren weitere Empfänger.</p>
+  <label for="r-threshold">Schwelle</label>
+  <input class="bc-input" id="r-threshold" name="threshold" type="number" step="any" min="0" value="{{ form.threshold }}" placeholder="z. B. 10 für 10 %">
+  <p class="bc-formgrid__hint">Nur für Arten mit Quote oder Menge; leer lassen für die Vorgabe.</p>
+  <label for="r-window">Zeitraum</label>
+  <div class="bc-addon"><input class="bc-input" id="r-window" name="time_window_minutes" type="number" min="1" value="{{ form.time_window_minutes }}"><span>min</span></div>
+  <label for="r-cooldown">Pause nach einem Alarm</label>
+  <div class="bc-addon"><input class="bc-input" id="r-cooldown" name="cooldown_minutes" type="number" min="0" value="{{ form.cooldown_minutes }}"><span>min</span></div>
+  <label for="r-severity">Schwere</label>
+  <select class="bc-select" id="r-severity" name="severity">
+    {% for s in severities %}<option value="{{ s }}"{% if s == form.severity %} selected{% endif %}>{{ s | severity_text }}</option>{% endfor %}
+  </select>
+  <span class="bc-formgrid__label">Kanäle</span>
+  <div class="app-stack">
+    {% for ch in channels %}
+    <label class="app-inline"><input type="checkbox" name="channel_ids" value="{{ ch.id }}"{% if ch.id in form.channel_ids %} checked{% endif %}> {{ ch.name }} <span class="app-quiet app-small">({{ channel_types.get(ch.channel_type, ch.channel_type) }})</span></label>
+    {% else %}
+    <p class="app-small app-quiet" style="margin:0">Noch kein Kanal angelegt. <a href="/alerts/channels">Kanal anlegen</a></p>
+    {% endfor %}
+  </div>
+</div>

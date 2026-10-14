@@ -364,6 +364,10 @@ Unter **Alarme → Regeln** legst du fest, wann die Anwendung Alarm schlägt. Je
 optional eine Domain, eine Schwelle, einen Zeitraum und eine Pause nach dem Alarm. Die Anwendung prüft
 alle Regeln direkt nach jedem Import und zusätzlich im Takt von `ALERT_EVAL_INTERVAL_SECONDS`.
 
+Mit **Bearbeiten** änderst du alles außer der Art; für eine andere Art legst du eine neue Regel an, weil
+eine Regel ihre offenen Alarme zum selben Befund zusammenfasst. **Löschen** entfernt die Regel, ihre
+Alarme bleiben im Verlauf. Regeln der Betreiber-Arten ändert und löscht nur der Betreiber.
+
 | Art | Schlägt an, wenn … | Schwelle ohne eigenen Wert |
 |---|---|---|
 | Neue unbekannte Versandquelle | eine Quelle zum ersten Mal auftaucht und noch nicht eingestuft ist | – |
@@ -517,7 +521,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `SMTP_INBOUND_TLS_*` | aus, TLS 1.2 | STARTTLS für den Mailempfang mit Zertifikat und Schlüssel |
 | `DISPLAY_TIMEZONE` | `Europe/Berlin` | Zeitzone der Oberfläche |
 | `UI_CHART_DAYS` | `30` | Tage im Verlaufsdiagramm |
-| `RECOMMENDATION_*` | siehe `.env.example` | Schwellen der Empfehlungen |
+| `RECOMMENDATION_*` | siehe `.env.example` | Vorgabe für die Schwellen der Empfehlungen, [je Organisation änderbar](#schwellen-je-organisation) |
 | `ARCHIVE_MAX_*` | 20 MB, 50 MB, 50 Dateien | Grenzen für Anhänge und Archive |
 | `SETUP_OPEN_PATHS` | `/static,/api,/health,…` | Pfade, die während der Ersteinrichtung offen bleiben |
 | `HEALTHCHECK_TARGETS` | `http://127.0.0.1:8000/api/v1/health,smtp://127.0.0.1` | Ziele der [Prüfung im Container](#zustand-der-container); `smtp://` ohne Port nimmt `SMTP_INBOUND_PORT` |
@@ -547,6 +551,17 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `DEFAULT_PLAN_*` | 50 Domains, 20 Benutzer, 365 Tage | Grenzen des Standardtarifs für neue Organisationen |
 | `DNS_NAMESERVERS` | die des Systems | DNS-Server für das Nachschlagen |
 | `PUBLIC_SUFFIX_LIST_PATH` | mitgelieferte Liste | eigene Public Suffix List für die Organisationsdomain |
+
+### Schwellen je Organisation
+
+Unter **Verwaltung → Schwellen** stellt jede Organisation ein, ab welcher Bestehensquote die Oberfläche
+grün und gelb zeigt (`UI_PASS_RATE_*`) und wann die Empfehlungen eine strengere Policy oder DKIM
+vorschlagen (`RECOMMENDATION_*`). Ein leeres Feld übernimmt den Wert aus der `.env`; die Seite zeigt ihn
+als Platzhalter. Ändern dürfen Administratoren der Organisation, alle anderen sehen die Werte. Gelb darf
+nicht über grün liegen und die Schwelle für `p=quarantine` nicht über der für `p=reject`.
+
+Werte für den ganzen Server bleiben in der `.env`, allen voran der Mailempfang (`SMTP_INBOUND_*`): Er gilt
+für alle Organisationen und liest seine Werte beim Start. Die Seite **Empfang → Status** sagt das auch.
 
 ---
 
@@ -638,8 +653,8 @@ dürfen.
 |---|---|
 | Lesezugriff | alles ansehen |
 | Analyst | Berichte hochladen, IP-Adressen einstufen, Absender freigeben, Alarme als gesehen oder erledigt markieren |
-| Manager | Domains anlegen und schalten, Alarmregeln anlegen und schalten |
-| Administrator | Benachrichtigungskanäle, Wochenbericht, Mitglieder und API-Tokens verwalten |
+| Manager | Domains anlegen und schalten, Alarmregeln anlegen, bearbeiten, löschen und schalten |
+| Administrator | Benachrichtigungskanäle, Wochenbericht, Schwellen, Mitglieder und API-Tokens verwalten |
 | Betreiber | alle Organisationen, dazu Mailempfang, abgelehnte Empfänger und neue Organisationen |
 
 Formulare, die eine Rolle nicht nutzen darf, blendet die Oberfläche aus; ein direkter Aufruf endet mit

@@ -16,12 +16,13 @@ from app.models import (
     SmtpInboundRejection,
     SourceIp,
 )
+from app.services.org_settings import thresholds_for
 
 
 def get_dashboard_stats(db: Session, org_id: str) -> dict:
     now = datetime.now(UTC)
     thirty_days_ago = now - timedelta(days=settings.UI_CHART_DAYS)
-    seven_days_ago = now - timedelta(days=settings.RECOMMENDATION_STALE_REPORT_DAYS)
+    seven_days_ago = now - timedelta(days=thresholds_for(db, org_id).RECOMMENDATION_STALE_REPORT_DAYS)
 
     # Core counts
     domain_count = db.query(func.count(Domain.id)).filter_by(organization_id=org_id, is_active=True).scalar() or 0

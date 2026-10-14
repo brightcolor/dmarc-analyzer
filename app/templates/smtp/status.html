@@ -22,6 +22,7 @@
         <dt>Verschlüsselung</dt><dd>{{ 'STARTTLS aktiv' if smtp_config.tls else 'ohne STARTTLS' }}</dd>
         <dt>Rohmails</dt><dd>{% if smtp_config.store_raw %}werden {{ smtp_config.raw_retention_days }} Tage aufbewahrt{% else %}werden nach dem Import verworfen{% endif %}</dd>
       </dl>
+      <p class="app-small app-quiet" style="margin:16px 0 0">{% if user.is_superadmin %}Diese Werte stehen in der <code>.env</code> (<code>SMTP_INBOUND_…</code>) und gelten für alle Organisationen. Der Mailempfang liest sie beim Start; nach einer Änderung braucht es einen Neustart, etwa mit <code>docker compose up -d --force-recreate</code>.{% else %}Diese Werte gelten für alle Organisationen auf diesem Server. Sie legt der Betreiber in der Serverkonfiguration fest, deshalb lassen sie sich hier nicht ändern.{% endif %}</p>
     </div>
   </section>
 
