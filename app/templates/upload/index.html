@@ -9,6 +9,7 @@
   <p>{{ error }}</p>
 </div>
 {% endif %}
+{% if can.analyst %}
 <section class="bc-panel">
   <form method="post" action="/upload" enctype="multipart/form-data">
     <div class="bc-panel__body">
@@ -30,4 +31,7 @@
     </div>
   </form>
 </section>
+{% else %}
+<p class="app-small app-quiet">Berichte hochladen dürfen Mitglieder ab der Rolle Analyst.</p>
+{% endif %}
 {% endblock %}

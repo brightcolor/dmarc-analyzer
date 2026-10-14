@@ -1,0 +1,117 @@
+{% import "_parts.html" as m %}
+<!DOCTYPE html>
+<html lang="de" dir="ltr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{% block title %}{% endblock %}</title>
+<!--[if gte mso 9]>
+<xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+<![endif]-->
+<!--[if mso]>
+<style>
+  table, td, p, a, span, div, h1, h2, strong { font-family: Arial, Helvetica, sans-serif !important; }
+  .bc-display { font-family: Impact, 'Arial Narrow', Arial, sans-serif !important; }
+</style>
+<![endif]-->
+<style>
+  body { margin: 0 !important; padding: 0 !important; width: 100% !important; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+  table, td { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+  img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+  .bc-button a:hover { background-color: #333333 !important; border-color: #333333 !important; }
+  @media screen and (max-width: 620px) {
+    .bc-outer { padding: 0 !important; }
+    .bc-pad { padding-left: 24px !important; padding-right: 24px !important; }
+    .bc-h1 { font-size: 32px !important; line-height: 36px !important; }
+    .bc-amount { font-size: 40px !important; line-height: 44px !important; }
+    .bc-stack td { display: block !important; width: auto !important; text-align: left !important; }
+    .bc-stack td.bc-label { border-bottom: 0 !important; padding-bottom: 0 !important; }
+    .bc-stack td.bc-value { padding-top: 2px !important; }
+  }
+</style>
+<style>
+  :root { color-scheme: light; supported-color-schemes: light; }
+  a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font: inherit !important; }
+</style>
+<style>
+  @media screen {
+    @font-face { font-family: 'Anton'; font-style: normal; font-weight: 400; src: url('{{ app_url }}/static/bc/fonts/anton-400.woff2') format('woff2'); }
+    @font-face { font-family: 'Atkinson Hyperlegible'; font-style: normal; font-weight: 400; src: url('{{ app_url }}/static/bc/fonts/atkinson-400.woff2') format('woff2'); }
+    @font-face { font-family: 'Atkinson Hyperlegible'; font-style: normal; font-weight: 700; src: url('{{ app_url }}/static/bc/fonts/atkinson-700.woff2') format('woff2'); }
+  }
+</style>
+</head>
+<body id="body" style="margin:0; padding:0; background-color:#f2f0eb; word-spacing:normal;">
+<div role="article" aria-roledescription="email" aria-label="{% block aria_label %}{% endblock %}" lang="de" dir="ltr" style="background-color:#f2f0eb;">
+
+<div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; mso-hide:all; font-size:1px; line-height:1px; color:#f2f0eb;">{% block preheader %}{% endblock %}&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f2f0eb" style="width:100%; background-color:#f2f0eb;">
+<tr>
+<td class="bc-outer" align="center" style="padding:32px 16px;">
+<!--[if mso]><table role="presentation" align="center" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+<div style="max-width:600px; margin:0 auto;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+
+  <tr>
+    <td class="bc-pad" bgcolor="#111111" style="padding:20px 32px; background-color:#111111;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+        <tr>
+          <td valign="middle"><img src="{{ logo_url }}" width="170" height="28" alt="bright color" style="display:block; width:170px; height:28px; border:0; color:#ffffff; font-family:Arial, Helvetica, sans-serif; font-size:18px; font-weight:700; line-height:28px;"></td>
+          <td valign="middle" align="right" style="font-family:{{ m.font }}; font-size:14px; line-height:20px; font-weight:700; color:#ffffff; text-align:right; mso-line-height-rule:exactly;">{{ app_name }}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td style="padding:0; font-size:0; line-height:0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+        <tr>
+          <td width="25%" height="4" bgcolor="#ee318a" style="height:4px; background-color:#ee318a; font-size:4px; line-height:4px; mso-line-height-rule:exactly;">&nbsp;</td>
+          <td width="25%" height="4" bgcolor="#1dc3f3" style="height:4px; background-color:#1dc3f3; font-size:4px; line-height:4px; mso-line-height-rule:exactly;">&nbsp;</td>
+          <td width="25%" height="4" bgcolor="#bfd535" style="height:4px; background-color:#bfd535; font-size:4px; line-height:4px; mso-line-height-rule:exactly;">&nbsp;</td>
+          <td width="25%" height="4" bgcolor="#fed329" style="height:4px; background-color:#fed329; font-size:4px; line-height:4px; mso-line-height-rule:exactly;">&nbsp;</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="bc-pad" bgcolor="#ffffff" style="padding:40px 32px 0; background-color:#ffffff;">
+      {{ m.eyebrow(eyebrow_text, square=square_color) }}
+      <h1 class="bc-h1 bc-display" style="margin:12px 0 0; font-family:{{ m.display }}; font-size:40px; line-height:44px; font-weight:400; letter-spacing:1px; text-transform:uppercase; text-wrap:balance; color:#111111; mso-line-height-rule:exactly;">{% block heading %}{% endblock %}</h1>
+      {% block intro %}{% endblock %}
+    </td>
+  </tr>
+
+  {% block content %}{% endblock %}
+
+  <tr>
+    <td class="bc-pad" bgcolor="#ffffff" style="padding:40px 32px 40px; background-color:#ffffff;">
+      {% call m.p(margin="0") %}Viele Grüße<br>{{ app_name }}{% endcall %}
+    </td>
+  </tr>
+
+  <tr>
+    <td class="bc-pad" bgcolor="#e3e0d8" style="padding:24px 32px 28px; background-color:#e3e0d8;">
+      <p style="margin:0; font-family:{{ m.font }}; font-size:14px; line-height:21px; color:#4a4a4a; mso-line-height-rule:exactly;"><strong style="font-weight:700; color:#111111;">{{ app_name }}</strong> · {{ organization.name }}</p>
+      <p style="margin:8px 0 0; font-family:{{ m.font }}; font-size:14px; line-height:21px; color:#4a4a4a; mso-line-height-rule:exactly;">{% block reason %}{% endblock %}</p>
+    </td>
+  </tr>
+
+</table>
+</div>
+<!--[if mso]></td></tr></table><![endif]-->
+</td>
+</tr>
+</table>
+
+</div>
+</body>
+</html>

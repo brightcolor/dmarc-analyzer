@@ -83,5 +83,5 @@ def report_detail(
         "report": report, "domain": domain,
         "records": records, "total_records": total_records,
         "page": page, "pages": pages,
-        "page_title": f"Bericht von {report.reporting_org or 'unbekanntem Absender'}",
+        "page_title": f"Bericht von {report.reporting_org or 'unbekanntem Empfänger'}",
     })

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, now_utc, uuid_pk
@@ -52,6 +52,12 @@ class Organization(Base):
     api_rate_limit_per_hour: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Weekly digest: recipients one per line; empty means all administrators of the organisation
+    digest_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
+    digest_recipients: Mapped[str | None] = mapped_column(Text, nullable=True)
+    digest_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False

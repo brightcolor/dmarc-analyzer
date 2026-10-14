@@ -18,7 +18,7 @@ tests/
 *.md
 Makefile
 docker-compose*.yml
-data/
+/data/
 uploads/
 raw_mail/
 *.db

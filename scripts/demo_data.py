@@ -3,10 +3,12 @@ Fill a local SQLite database with invented demo data for previews and screenshot
 
     DATABASE_URL=sqlite:///./demo.db python scripts/demo_data.py
 
-Creates an organisation, an administrator, three domains and about a month of reports in
-both formats (RFC 7489 and RFC 9990). The administrator's login goes to demo-login.txt
-(ignored by git). Refuses to run against anything other than SQLite.
+Creates an organisation, an administrator, three domains, about a month of reports in
+both formats (RFC 7489 and RFC 9990), failure reports and two weeks of TLS reports. The
+administrator's login goes to demo-login.txt (ignored by git). Refuses to run against
+anything other than SQLite.
 """
+import json
 import os
 import random
 import secrets
@@ -33,9 +35,12 @@ from app.models import (  # noqa: E402
 )
 from app.services.auth import create_user  # noqa: E402
 from app.services.dmarc_parser import parse_xml_bytes  # noqa: E402
+from app.services.failure_reports import ParsedFailureReport, store_failure_report  # noqa: E402
 from app.services.import_service import store_parsed_report  # noqa: E402
 from app.services.inbound_address import create_domain_address, create_org_address  # noqa: E402
+from app.services.senders import refresh_sources  # noqa: E402
 from app.services.setup import clear_setup_code  # noqa: E402
+from app.services.tls_reports import parse_tls_report, store_tls_report  # noqa: E402
 
 LOGIN_FILE = Path(__file__).resolve().parent.parent / "demo-login.txt"
 DOMAINS = [("example.com", "reject", "quarantine", 100), ("example.org", "quarantine", None, 0),
@@ -45,12 +50,66 @@ SOURCES = {
     "198.51.100.20": ("example.com", True), "198.51.100.66": ("example.org", False),
     "203.0.113.5": ("example.net", False), "203.0.113.77": ("example.net", True),
 }
+# Signing domain of the sending service; the demo addresses have no host names, DKIM names the sender
+SERVICE_DKIM = {"192.0.2.10": "gappssmtp.com", "192.0.2.11": "gappssmtp.com", "198.51.100.20": "amazonses.com",
+                "203.0.113.77": "mcsv.net"}
+# Failure reports: (domain, source, failed checks, aligned identifiers, delivery, sender, subject, reporter)
+FAILURE_REPORTS = [
+    ("example.org", "198.51.100.66", "dmarc", "none", "spam", "Buchhaltung <rechnung@example.org>",
+     "Offene Rechnung 2026-0931", "dmarc-noreply@post.example"),
+    ("example.net", "203.0.113.5", "dmarc", "none", "delivered", "Muster Farben <news@example.net>",
+     "Neuigkeiten im Oktober", "noreply@webmail.example"),
+    ("example.com", "192.0.2.11", "dkim", "spf", "delivered", "Max Mustermann <max@example.com>",
+     "Angebot Wandgestaltung", "dmarc-noreply@post.example"),
+]
+
+# TLS reports: (domain, policy type, mail server, daily sessions, failure reason, days with failures, share failed)
+TLS_DOMAINS = [
+    ("example.com", "sts", "mx.example.com", (400, 900), "certificate-expired", 3, 0.08),
+    ("example.org", "no-policy-found", "mail.example.org", (60, 180), "starttls-not-supported", 14, 0.12),
+    ("example.net", "no-policy-found", "mx.example.net", (20, 60), None, 0, 0.0),
+]
+TLS_REPORTERS = [("Beispiel Mail AG", "tls-reports@mail.example", "192.0.2.200"),
+                 ("Nordlicht Post", "tlsrpt@post.example", "198.51.100.200")]
+
+
+def _tls_report(reporter: str, contact: str, sender_ip: str, domain: str, policy_type: str, mx: str, day: datetime,
+                successful: int, reason: str | None, failed: int) -> bytes:
+    policy = {"policy-type": policy_type, "policy-domain": domain, "mx-host": [mx]}
+    if policy_type == "sts":
+        policy["policy-string"] = ["version: STSv1", "mode: enforce", f"mx: {mx}", "max_age: 604800"]
+    details = [{"result-type": reason, "sending-mta-ip": sender_ip, "receiving-mx-hostname": mx,
+                "receiving-ip": "203.0.113.25", "failed-session-count": failed}] if failed else []
+    return json.dumps({
+        "organization-name": reporter, "contact-info": contact,
+        "report-id": f"{day:%Y-%m-%d}T00:00:00Z_{domain}_{contact.split('@')[1]}",
+        "date-range": {"start-datetime": f"{day:%Y-%m-%d}T00:00:00Z", "end-datetime": f"{day:%Y-%m-%d}T23:59:59Z"},
+        "policies": [{"policy": policy, "summary": {"total-successful-session-count": successful,
+                                                    "total-failure-session-count": failed},
+                      "failure-details": details}],
+    }).encode()
+
+
+def add_tls_reports(db, org: Organization, today: datetime, rng: random.Random) -> None:
+    for domain, policy_type, mx, sessions, reason, failing_days, share in TLS_DOMAINS:
+        for offset in range(1, 15):
+            day = today - timedelta(days=offset)
+            for reporter, contact, sender_ip in TLS_REPORTERS:
+                successful = rng.randint(*sessions)
+                failed = round(successful * share * rng.uniform(0.5, 1.5)) if reason and offset <= failing_days else 0
+                data = _tls_report(reporter, contact, sender_ip, domain, policy_type, mx, day, successful, reason,
+                                   failed)
+                record = store_tls_report(db, parse_tls_report(data), organization_id=org.id)
+                if record is not None:
+                    record.created_at = day + timedelta(days=1, hours=6, minutes=rng.randint(0, 50))
 
 
 def _record(ip: str, count: int, passed: bool, domain: str, dmarcbis: bool, testing: bool) -> str:
     if passed:
         disposition = "pass" if dmarcbis else "none"
         dkim = f"<dkim><domain>{domain}</domain><selector>s1</selector><result>pass</result></dkim>"
+        if ip in SERVICE_DKIM:
+            dkim += f"<dkim><domain>{SERVICE_DKIM[ip]}</domain><selector>s2</selector><result>pass</result></dkim>"
         spf = f"<spf><domain>{domain}</domain><scope>mfrom</scope><result>pass</result></spf>"
         evaluated = "<dkim>pass</dkim><spf>pass</spf>"
         reason = ""
@@ -144,12 +203,32 @@ def main() -> None:
             source = db.query(SourceIp).filter_by(organization_id=org.id, ip_address=ip).first()
             if source:
                 source.classification = classification
+                source.classification_source = "manual"
 
         example_net = db.query(Domain).filter_by(organization_id=org.id, name="example.net").one()
         db.add(AlertEvent(organization_id=org.id, domain_id=example_net.id, alert_type="new_unknown_source",
                           severity="warning", title="Neue unbekannte Versandquelle 203.0.113.5",
                           description="203.0.113.5 verschickt Mails für example.net und besteht DMARC nicht.",
                           source_ip="203.0.113.5", status="open"))
+        for index, (name, ip, failed, aligned, delivery, sender, subject, reporter) in enumerate(FAILURE_REPORTS):
+            arrival = today - timedelta(days=index + 1, hours=-9, minutes=-17 * index)
+            headers = "\n".join([
+                f"Received: from mail.{name} ([{ip}]) by mx.post.example; {arrival:%a, %d %b %Y %H:%M:%S} +0000",
+                f"From: {sender}", "To: kundin@post.example", f"Subject: {subject}",
+                f"Message-ID: <{index}.demo@{name}>", f"Date: {arrival:%a, %d %b %Y %H:%M:%S} +0000",
+            ])
+            store_failure_report(db, ParsedFailureReport(
+                feedback_type="auth-failure", auth_failure=failed, identity_alignment=aligned,
+                delivery_result=delivery, reported_domain=name, source_ip=ip, arrival_date=arrival,
+                original_mail_from=f"bounce@{name}", original_rcpt_to="kundin@post.example",
+                reporting_mta="mx.post.example", user_agent="NordlichtFBL/2.1",
+                authentication_results=f"mx.post.example; dmarc=fail header.from={name}; "
+                                       f"spf={'pass' if aligned == 'spf' else 'fail'} smtp.mailfrom={name}",
+                header_from=sender, subject=subject, message_id=f"<{index}.demo@{name}>", original_headers=headers,
+            ), organization_id=org.id, reporter=reporter)
+        add_tls_reports(db, org, today, rng)
+        db.flush()
+        refresh_sources(db, everything=True)
         db.commit()
         LOGIN_FILE.write_text(f"E-Mail: admin@example.test\nPasswort: {password}\n", encoding="utf-8")
         print(f"Demo-Daten angelegt. Anmeldung steht in {LOGIN_FILE.name}.")

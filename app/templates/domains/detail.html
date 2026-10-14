@@ -4,9 +4,11 @@
 {% block lede %}<p>DMARC-Stand, Empfangsadressen und Empfehlungen für diese Domain.</p>{% endblock %}
 {% block actions %}
 <a class="bc-button bc-button--secondary" href="/reports?domain_id={{ domain.id }}">Berichte ansehen</a>
+{% if can.manager %}
 <form method="post" action="/domains/{{ domain.id }}/toggle"{% if domain.is_active %} data-confirm="Domain {{ domain.name }} deaktivieren? Die Anwendung nimmt dann keine Berichte mehr für sie an."{% endif %}>
   <button class="bc-button bc-button--secondary" type="submit">{{ 'Deaktivieren' if domain.is_active else 'Aktivieren' }}</button>
 </form>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -48,18 +50,18 @@
   <section class="bc-panel" aria-labelledby="adressen-titel">
     <div class="bc-panel__head">
       <h2 class="bc-panel__title" id="adressen-titel">Empfangsadressen</h2>
-      <form method="post" action="/domains/{{ domain.id }}/add-address"><button class="bc-button bc-button--secondary" type="submit">Neue Adresse</button></form>
+      {% if can.manager %}<form method="post" action="/domains/{{ domain.id }}/add-address"><button class="bc-button bc-button--secondary" type="submit">Neue Adresse</button></form>{% endif %}
     </div>
     {% if addresses %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Adresse</th><th>Status</th><th>Zuletzt genutzt</th></tr></thead>
+        <thead><tr><th>Adresse</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Zuletzt genutzt</th></tr></thead>
         <tbody>
           {% for addr in addresses %}
           <tr>
-            <td class="app-mono app-break">{{ addr.address }}</td>
-            <td>{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
-            <td class="app-nowrap">{{ addr.last_used_at | datetime }}</td>
+            <td><span class="bc-row-title app-mono app-break">{{ addr.address }}</span><span class="bc-row-sub bc-only-narrow">{{ addr.status | status_text }} · zuletzt genutzt {{ addr.last_used_at | datetime }}</span></td>
+            <td class="bc-hide-narrow">{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
+            <td class="app-nowrap bc-hide-narrow">{{ addr.last_used_at | datetime }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -71,8 +73,47 @@
   </section>
 </div>
 
+<section class="bc-panel" id="dns-pruefung" aria-labelledby="dnscheck-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="dnscheck-titel">DNS-Prüfung</h2>{{ ui.dns_icon(domain.dns_status, domain.dns_status | dns_status_text) }}</div>
+  <div class="bc-panel__body">
+    <p style="margin:0">{% if dns_result %}Geprüft am {{ dns_result.checked_at | datetime }}. {% endif %}Die Prüfung sieht nach DMARC, der Zustimmung der Empfangsdomain, SPF, den DKIM-Schlüsseln aus den Berichten, den Mailservern und den TLS-Berichten.{% if dns_auto and domain.is_active %} Aktive Domains prüft die Anwendung {{ dns_max_age | interval }} neu.{% endif %}</p>
+    {% if dns_result %}
+    <ul class="app-legend app-small app-quiet" aria-label="Bedeutung der Zeichen">
+      {% for key in ('ok', 'info', 'warning', 'error', 'unknown') %}<li>{{ ui.dns_icon(key, key | dns_state_text) }}<span aria-hidden="true">{{ key | dns_state_text }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if can.analyst %}<form method="post" action="/domains/{{ domain.id }}/dns-check" style="margin-top:12px"><button class="bc-button bc-button--secondary" type="submit">Jetzt prüfen</button></form>{% endif %}
+  </div>
+  {% if dns_result %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Prüfung</th><th class="bc-hide-narrow">Im DNS gefunden</th></tr></thead>
+      <tbody>
+        {% for c in dns_result.checks %}
+        <tr>
+          <td>
+            <div class="app-check">
+              {{ ui.dns_icon(c.state, c.state | dns_state_text) }}
+              <div>
+                <span class="bc-row-title">{{ c.title }}</span><span class="bc-row-sub">{{ c.message }}</span>
+                {% if c.suggestion and c.state in ('error', 'warning') %}<div class="app-dns-fix">{{ ui.copy_code("dns-fix-" ~ loop.index, c.suggestion, "Richtiger Wert für " ~ c.record) }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td class="app-mono app-small app-break bc-hide-narrow">{% if c.record %}<span class="app-quiet">{{ c.record }}</span><br>{% endif %}{{ c.found or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {% if dns_auto %}{% set hint = "Die erste Prüfung startet der Zeitplaner" ~ (", oder du startest sie mit „Jetzt prüfen“." if can.analyst else ".") %}{% else %}{% set hint = "Starte die Prüfung mit „Jetzt prüfen“." if can.analyst else "Die Prüfung starten Mitglieder ab der Rolle Analyst." %}{% endif %}
+  <div class="bc-panel__body">{{ ui.empty("Noch nicht geprüft", hint) }}</div>
+  {% endif %}
+</section>
+
 {% if suggested_record %}
-<section class="bc-panel" aria-labelledby="dns-titel">
+<section class="bc-panel" id="dmarc-eintrag" aria-labelledby="dns-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="dns-titel">DNS-Eintrag</h2></div>
   <div class="bc-panel__body">
     <p style="margin-top:0">Trage diesen TXT-Eintrag in die DNS-Zone von {{ domain.name }} ein. {% if domain.dmarc_policy %}Er übernimmt die Policy aus den letzten Berichten{% else %}Er startet mit <code>p=none</code>, damit du erst beobachtest{% endif %} und leitet die Berichte an diese Anwendung.</p>
@@ -84,7 +125,7 @@
 {% endif %}
 
 {% if ext_verify_record %}
-<section class="bc-panel" aria-labelledby="zustimmung-titel">
+<section class="bc-panel" id="zustimmung" aria-labelledby="zustimmung-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="zustimmung-titel">Zustimmung der Empfangsdomain</h2></div>
   <div class="bc-panel__body">
     <p style="margin-top:0">Die Berichtsadresse liegt unter {{ rua_domain }}, also auf einer anderen Domain als {{ domain.name }}. Empfänger schicken Berichte dorthin erst, wenn {{ rua_domain }} zustimmt. Diesen Eintrag setzt, wer die DNS-Zone von {{ rua_domain }} verwaltet:</p>
@@ -94,6 +135,80 @@
   </div>
 </section>
 {% endif %}
+
+{% if tls_summary is not none %}
+<section class="bc-panel" id="tls" aria-labelledby="tls-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="tls-titel">TLS-Berichte</h2>{% if tls_summary.reports %}<a class="bc-button bc-button--secondary" href="/tls-reports?domain_id={{ domain.id }}">Berichte ansehen</a>{% endif %}</div>
+  <div class="bc-panel__body">
+    {% if tls_summary.reports %}
+    <p style="margin-top:0">Letzte {{ chart_days | num }} Tage: {{ tls_summary.reports | plural('Bericht', 'Berichte') }} über {{ tls_summary.total | plural('Verbindung', 'Verbindungen') }} zu den Mailservern von {{ domain.name }}. {% if tls_summary.failed %}{{ ui.state(tls_summary.failed | num ~ ' gescheitert · ' ~ (tls_summary.failure_rate | percent), tls_summary.failure_rate | tls_rate_state) }}{% if tls_summary.top_result is not none %} Häufigster Grund: {{ tls_summary.top_result | tls_result_text }}.{% endif %}{% else %}{{ ui.state('alle mit TLS', 'bc-state--on') }}{% endif %}</p>
+    {% else %}
+    <p style="margin-top:0">Noch keine TLS-Berichte für {{ domain.name }}. Mit diesem TXT-Eintrag melden Mailserver wie Google und Microsoft einmal am Tag, ob sie Mails an {{ domain.name }} verschlüsselt zustellen konnten. Das lohnt sich für jede Domain, die selbst Mails empfängt.</p>
+    {% endif %}
+    {% if tls_record %}
+    {{ ui.copy_code("tls-name", tls_dns_name, "Name") }}
+    {{ ui.copy_code("tls-value", tls_record, "Wert") }}
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<section class="bc-panel" id="empfaenger" aria-labelledby="empfaenger-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="empfaenger-titel">Weitere Empfänger</h2><span class="app-quiet app-small">{{ recipients | length }} von {{ recipients_max }}</span></div>
+  <div class="bc-panel__body">
+    <p style="margin:0">Diese Adressen bekommen die Alarme von {{ domain.name }} und einen eigenen Wochenbericht nur für diese Domain, zusätzlich zu den <a href="/alerts/channels">Kanälen</a> und dem <a href="/alerts/digest">Wochenbericht</a> der Organisation. Alarme entstehen aus den <a href="/alerts/rules">Regeln</a>.</p>
+    {% if not mail_ready %}<p class="app-small" style="margin:8px 0 0"><strong>Der Mailversand ist nicht eingerichtet.</strong> Bis dahin wartet jede Mail an diese Adressen.</p>{% endif %}
+  </div>
+  {% if recipients %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Adresse</th><th class="bc-hide-narrow">Bekommt</th><th class="bc-hide-narrow">Letzter Wochenbericht</th>{% if can.manager %}<th class="bc-hide-narrow"><span class="bc-sr">Entfernen</span></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for r in recipients %}
+        {% set switches %}<form class="app-inline" method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}" aria-label="Was {{ r.email }} bekommt">
+              <label class="app-inline"><input type="checkbox" name="alerts" value="1"{% if r.alerts %} checked{% endif %}> Alarme</label>
+              <label class="app-inline"><input type="checkbox" name="digest" value="1"{% if r.digest %} checked{% endif %}> Wochenbericht</label>
+              <button class="bc-button bc-button--secondary" type="submit">Speichern</button>
+            </form>{% endset %}
+        {% set remove %}<form method="post" action="/domains/{{ domain.id }}/recipients/{{ r.id }}/delete" data-confirm="{{ r.email }} entfernen? Die Adresse bekommt dann nichts mehr für {{ domain.name }}."><button class="bc-button bc-button--danger" type="submit">Entfernen</button></form>{% endset %}
+        <tr>
+          <td><span class="bc-row-title app-break">{{ r.email }}</span><span class="bc-row-sub">{{ r.name or '' }}<span class="bc-only-narrow">{% if r.name %} · {% endif %}{{ 'Alarme und Wochenbericht' if r.alerts and r.digest else ('Alarme' if r.alerts else 'Wochenbericht') }} · letzter Wochenbericht {% if r.digest_last_sent_at %}{{ r.digest_last_sent_at | datetime }}{% else %}noch keiner{% endif %}</span></span>{% if can.manager %}<div class="bc-row-actions bc-only-narrow">{{ switches }}{{ remove }}</div>{% endif %}</td>
+          <td class="bc-hide-narrow">
+            {% if can.manager %}
+            {{ switches }}
+            {% else %}
+            {% if r.alerts %}{{ ui.state('Alarme', 'bc-state--on') }} {% endif %}{% if r.digest %}{{ ui.state('Wochenbericht', 'bc-state--on') }}{% endif %}
+            {% endif %}
+          </td>
+          <td class="app-nowrap bc-hide-narrow">{% if r.digest_last_sent_at %}{{ r.digest_last_sent_at | datetime }}{% else %}<span class="app-quiet">noch keiner</span>{% endif %}</td>
+          {% if can.manager %}
+          <td class="bc-hide-narrow">{{ remove }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if can.manager and recipients | length < recipients_max %}
+  <form method="post" action="/domains/{{ domain.id }}/recipients">
+    <div class="bc-panel__body">
+      <div class="bc-formgrid">
+        <label for="r-email">E-Mail-Adresse</label>
+        <input class="bc-input" id="r-email" type="email" name="email" required maxlength="320" placeholder="name@example.com" autocomplete="off">
+        <label for="r-name">Name</label>
+        <input class="bc-input" id="r-name" type="text" name="name" maxlength="200" placeholder="für die Anrede, kann leer bleiben" autocomplete="off">
+        <span class="bc-formgrid__label">Bekommt</span>
+        <div class="app-inline">
+          <label class="app-inline"><input type="checkbox" name="alerts" value="1" checked> Alarme</label>
+          <label class="app-inline"><input type="checkbox" name="digest" value="1" checked> Wochenbericht</label>
+        </div>
+      </div>
+    </div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Empfänger eintragen</button></div>
+  </form>
+  {% endif %}
+</section>
 
 <section class="bc-panel" aria-labelledby="verlauf-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="verlauf-titel">Verlauf</h2><span class="app-quiet app-small">Tage in UTC, nach Berichtszeitraum</span></div>
@@ -112,9 +227,9 @@
     {% if reporters %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Absender</th><th>Format</th><th class="bc-num">Berichte</th></tr></thead>
+        <thead><tr><th>Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-num bc-hide-narrow">Berichte</th></tr></thead>
         <tbody>
-          {% for r in reporters %}<tr><td class="app-break">{{ r.reporting_org }}</td><td>{{ ui.format_badge(r.report_format) }}</td><td class="bc-num">{{ r.reports | num }}</td></tr>{% endfor %}
+          {% for r in reporters %}<tr><td><span class="bc-row-title app-break">{{ r.reporting_org }}</span><span class="bc-row-sub bc-only-narrow">{{ format_info(r.report_format).label }} · {{ r.reports | plural('Bericht', 'Berichte') }}</span></td><td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td><td class="bc-num bc-hide-narrow">{{ r.reports | num }}</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>
@@ -128,14 +243,14 @@
     {% if recent_reports %}
     <div class="bc-table-wrap">
       <table class="bc-table">
-        <thead><tr><th>Zeitraum bis</th><th>Absender</th><th>Format</th><th>Bestanden</th></tr></thead>
+        <thead><tr><th>Zeitraum bis</th><th class="bc-hide-narrow">Berichtet von</th><th class="bc-hide-narrow">Format</th><th class="bc-hide-narrow">Bestanden</th></tr></thead>
         <tbody>
           {% for r in recent_reports %}
           <tr>
-            <td class="app-nowrap"><a href="/reports/{{ r.id }}">{{ r.period_end | date }}</a></td>
-            <td class="app-break">{{ r.reporting_org or '—' }}</td>
-            <td>{{ ui.format_badge(r.report_format) }}</td>
-            <td>{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
+            <td><a class="bc-row-title" href="/reports/{{ r.id }}">{{ r.period_end | date }}</a><span class="bc-row-sub bc-only-narrow">{{ r.reporting_org or 'unbekannter Empfänger' }} · {{ format_info(r.report_format).label }} · {{ r.pass_rate | percent }} bestanden</span></td>
+            <td class="app-break bc-hide-narrow">{{ r.reporting_org or '—' }}</td>
+            <td class="bc-hide-narrow">{{ ui.format_badge(r.report_format) }}</td>
+            <td class="bc-hide-narrow">{{ ui.state(r.pass_rate | percent, r.pass_rate | rate_state) }}</td>
           </tr>
           {% endfor %}
         </tbody>

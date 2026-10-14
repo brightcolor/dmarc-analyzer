@@ -76,6 +76,31 @@ class TestOrganizationalDomain:
     def test_single_label(self):
         assert _organizational_domain("localhost") == "localhost"
 
+    def test_multi_label_public_suffix(self):
+        assert _organizational_domain("mail.example.co.uk") == "example.co.uk"
+        assert _organizational_domain("a.b.example.com.au") == "example.com.au"
+
+    def test_private_suffixes_keep_owners_apart(self):
+        assert _organizational_domain("blog.alice.github.io") == "alice.github.io"
+        assert not _domains_aligned("alice.github.io", "bob.github.io", "r")
+
+    def test_public_suffix_itself(self):
+        assert _organizational_domain("co.uk") == "co.uk"
+
+    def test_own_list_from_the_settings(self, tmp_path, monkeypatch):
+        from app.config import settings
+        from app.services import dmarc_evaluator
+
+        own = tmp_path / "public_suffix_list.dat"
+        own.write_text("com\nexample.com\n", encoding="utf-8")
+        monkeypatch.setattr(settings, "PUBLIC_SUFFIX_LIST_PATH", str(own))
+        dmarc_evaluator.public_suffix_list.cache_clear()
+        try:
+            assert _organizational_domain("mail.shop.example.com") == "shop.example.com"
+        finally:
+            monkeypatch.setattr(settings, "PUBLIC_SUFFIX_LIST_PATH", "")
+            dmarc_evaluator.public_suffix_list.cache_clear()
+
 
 # ── Domain alignment ──────────────────────────────────────────────────────────
 

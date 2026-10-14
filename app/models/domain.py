@@ -31,6 +31,11 @@ class Domain(Base):
     dmarc_policy_testing: Mapped[str | None] = mapped_column(String(1), nullable=True)
     last_report_format: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
+    # Latest DNS check: overall state (ok, warning, error, unknown) and the single checks as JSON
+    dns_status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    dns_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    dns_results: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

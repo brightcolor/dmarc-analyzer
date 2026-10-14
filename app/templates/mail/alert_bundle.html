@@ -1,0 +1,32 @@
+{% extends "_layout.html" %}
+{% import "_parts.html" as m %}
+{% set eyebrow_text = "Alarme · " ~ summary %}
+{% set square_color = square %}
+{% block title %}{{ subject }}{% endblock %}
+{% block aria_label %}Alarme{% endblock %}
+{% block preheader %}{{ count }} neue Alarme für {{ title }}: {{ summary }}.{% endblock %}
+{% block heading %}{{ count }} neue Alarme{% endblock %}
+{% block intro %}
+      {% call m.p(margin="24px 0 0") %}Hallo,{% endcall %}
+      {% call m.p() %}der {{ app_name }} meldet für {{ title }} diese Alarme. Die wichtigsten stehen oben.{% endcall %}
+{% endblock %}
+{% block content %}
+  <tr>
+    <td class="bc-pad" bgcolor="#ffffff" style="padding:24px 32px 0; background-color:#ffffff;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-top:2px solid #111111;">
+        {% for item in items %}
+        <tr>
+          <td style="padding:12px 0; border-bottom:1px solid #dad6cd;">
+            <p style="margin:0; font-family:{{ m.font }}; font-size:16px; line-height:25px; font-weight:700; color:#111111; mso-line-height-rule:exactly;">{{ item.title }}</p>
+            {% call m.p(margin="2px 0 0", size=14, color="#4a4a4a") %}{{ item.severity }}{% if item.domain %} · {{ item.domain }}{% endif %} · {{ item.time }}{% endcall %}
+            {% if item.description %}{% call m.p(margin="6px 0 0", size=14) %}{{ item.description }}{% endcall %}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% if more %}{% call m.p() %}Dazu {{ more }} weitere Alarme, alle stehen in der Liste.{% endcall %}{% endif %}
+      <div style="padding-top:24px;">{{ m.button(events_url, "Alarme ansehen") }}</div>
+    </td>
+  </tr>
+{% endblock %}
+{% block reason %}{% if channel %}Du bekommst diese Mail, weil deine Adresse im Benachrichtigungskanal „{{ channel.name }}“ steht. Alarme, die kurz nacheinander entstehen, kommen gesammelt in einer Mail. Kanäle verwaltest du unter {{ m.link(app_url ~ "/alerts/channels", "Alarme → Kanäle") }}.{% else %}Du bekommst diese Mail, weil deine Adresse bei {{ domains | join(", ") }} als Empfänger für Alarme eingetragen ist. Austragen kann dich ein Manager von {{ organization.name }} auf der Seite der Domain.{% endif %}{% endblock %}

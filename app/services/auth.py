@@ -17,6 +17,22 @@ logger = logging.getLogger(__name__)
 ROLES = ["super_admin", "org_admin", "manager", "analyst", "read_only"]
 ROLE_HIERARCHY = {r: i for i, r in enumerate(ROLES)}
 
+# What a role may do in its organisation; each level includes the ones below.
+# read_only: look at everything. analyst: upload reports, classify sources and senders, handle alerts.
+# manager: domains and alert rules. org_admin: channels, weekly digest, members and API tokens.
+ROLE_LEVEL = {"read_only": 0, "viewer": 0, "analyst": 1, "member": 1, "manager": 2, "org_admin": 3}
+OPERATOR_LEVEL = 99
+ROLE_NAMES = {"analyst": "Analyst", "manager": "Manager", "org_admin": "Administrator"}
+
+
+def role_level(db: Session, user: User, org_id: str | None) -> int:
+    """Rights of a user in an organisation: the operator may do everything, strangers nothing (-1)."""
+    if user.is_superadmin:
+        return OPERATOR_LEVEL
+    if not org_id:
+        return -1
+    return ROLE_LEVEL.get(get_user_role_in_org(db, user.id, org_id), -1)
+
 
 def authenticate_user(db: Session, email: str, password: str) -> User | None:
     user = db.query(User).filter_by(email=email.lower().strip()).first()

@@ -1,4 +1,5 @@
 """Suggested DMARC DNS record for receivers of both standards."""
+from app.config import settings
 from app.models import Domain
 from app.services.dmarc_record import suggest_dmarc_record
 
@@ -10,7 +11,15 @@ def _domain(**policy) -> Domain:
 
 
 def test_minimal_record():
+    assert suggest_dmarc_record(_domain(), RUA) == f"v=DMARC1; p=none; rua=mailto:{RUA}; ruf=mailto:{RUA}; fo=1"
+
+
+def test_without_failure_reports(monkeypatch):
+    monkeypatch.setattr(settings, "DMARC_SUGGEST_FAILURE_REPORTS", False)
     assert suggest_dmarc_record(_domain(), RUA) == f"v=DMARC1; p=none; rua=mailto:{RUA}"
+    monkeypatch.setattr(settings, "DMARC_SUGGEST_FAILURE_REPORTS", True)
+    monkeypatch.setattr(settings, "FAILURE_REPORTS_ENABLED", False)
+    assert "ruf" not in suggest_dmarc_record(_domain(), RUA)
 
 
 def test_pct_zero_is_kept():
@@ -34,7 +43,7 @@ def test_subdomain_policies_are_kept():
     record = suggest_dmarc_record(
         _domain(dmarc_policy="reject", dmarc_policy_sp="quarantine", dmarc_policy_np="reject"), RUA
     )
-    assert record == f"v=DMARC1; p=reject; sp=quarantine; np=reject; rua=mailto:{RUA}"
+    assert record == f"v=DMARC1; p=reject; sp=quarantine; np=reject; rua=mailto:{RUA}; ruf=mailto:{RUA}; fo=1"
 
 
 def test_sp_equal_to_p_is_left_out():

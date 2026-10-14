@@ -7,12 +7,14 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from http import HTTPStatus
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.formparsers import MultiPartException
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
@@ -27,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Slim container images lack /etc/mime.types; without these, fonts and icons go out as text/plain
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("image/svg+xml", ".svg")
+
+# Methods that change something; they need a form from this application
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # Title and next step per status for pages people see
 ERROR_TEXT = {
@@ -44,6 +49,11 @@ ERROR_TEXT = {
     500: ("Interner Fehler", "Die Anwendung konnte die Anfrage nicht bearbeiten. Versuche es später erneut; bleibt "
                              "der Fehler, wende dich mit der Kennung unten an den Administrator."),
 }
+
+# Starlette refuses forms beyond its limits (fields, files, size of one entry) or with a broken structure,
+# giving an English reason; people see this text, the reason goes to the log
+FORM_REFUSED = ("Das Formular hat zu viele Felder oder Dateien, ein Eintrag ist zu lang, oder es kam unvollständig "
+                "an. Kürze die Eingaben und sende das Formular erneut.")
 
 
 def _wants_json(request: Request) -> bool:
@@ -78,9 +88,14 @@ async def lifespan(app: FastAPI):
     _create_default_plan()
     _announce_setup()
 
+    from app.scheduler import Scheduler
+    scheduler = Scheduler()
+    scheduler.start()
+
     logger.info("%s v%s started", APP_NAME, VERSION)
     yield
     logger.info("%s shutting down", APP_NAME)
+    await scheduler.stop()
 
 
 def _announce_setup() -> None:
@@ -105,14 +120,14 @@ def _create_default_plan() -> None:
             db.add(PlanDefinition(
                 name="Default",
                 slug="default",
-                max_domains=50,
-                max_users=20,
-                max_api_tokens=10,
-                max_alert_rules=50,
-                max_inbound_addresses=50,
-                report_retention_days=365,
-                smtp_rate_limit_per_hour=500,
-                api_rate_limit_per_hour=2000,
+                max_domains=settings.DEFAULT_PLAN_MAX_DOMAINS,
+                max_users=settings.DEFAULT_PLAN_MAX_USERS,
+                max_api_tokens=settings.DEFAULT_PLAN_MAX_API_TOKENS,
+                max_alert_rules=settings.DEFAULT_PLAN_MAX_ALERT_RULES,
+                max_inbound_addresses=settings.DEFAULT_PLAN_MAX_INBOUND_ADDRESSES,
+                report_retention_days=settings.DEFAULT_PLAN_REPORT_RETENTION_DAYS,
+                smtp_rate_limit_per_hour=settings.DEFAULT_PLAN_SMTP_RATE_LIMIT_PER_HOUR,
+                api_rate_limit_per_hour=settings.DEFAULT_PLAN_API_RATE_LIMIT_PER_HOUR,
             ))
             db.commit()
     except Exception:
@@ -147,6 +162,24 @@ def create_app() -> FastAPI:
                 return RedirectResponse(url="/auth/setup", status_code=303)
         return await call_next(request)
 
+    @app.middleware("http")
+    async def same_origin_forms(request: Request, call_next):
+        """Forms only count when they come from this application (Origin, else Referer)."""
+        if request.method in UNSAFE_METHODS and not request.url.path.startswith("/api/"):
+            source = request.headers.get("origin") or request.headers.get("referer")
+            if source is not None:
+                host = urlsplit(source).netloc.lower() if source != "null" else ""
+                allowed = settings.csrf_trusted_origins | {request.headers.get("host", "").lower()}
+                if host not in allowed:
+                    logger.warning("Refused %s %s from foreign origin %r", request.method, request.url.path, source)
+                    return _error_response(request, 403, (
+                        f"Das Formular kam von einer fremden Seite ({host or 'ohne Absender'}) und wurde deshalb "
+                        "abgelehnt. Öffne den DMARC Analyzer direkt über seine Adresse und sende das Formular "
+                        "dort erneut. Nutzt ihr eine weitere Adresse, trägt der Betreiber sie in "
+                        "CSRF_TRUSTED_ORIGINS ein."
+                    ))
+        return await call_next(request)
+
     # Added last, so it runs first and the gate above can rely on it
     app.add_middleware(
         SessionMiddleware,
@@ -167,12 +200,15 @@ def create_app() -> FastAPI:
         auth,
         dashboard,
         domains,
+        failure_reports,
         help,
         imports,
         organizations,
         reports,
+        senders,
         smtp_admin,
         source_ips,
+        tls_reports,
         upload,
         users,
     )
@@ -184,9 +220,12 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(domains.router)
     app.include_router(reports.router)
+    app.include_router(failure_reports.router)
+    app.include_router(tls_reports.router)
     app.include_router(upload.router)
     app.include_router(imports.router)
     app.include_router(smtp_admin.router)
+    app.include_router(senders.router)
     app.include_router(source_ips.router)
     app.include_router(alerts.router)
     app.include_router(api_tokens.router)
@@ -198,6 +237,9 @@ def create_app() -> FastAPI:
         if 300 <= exc.status_code < 400 and exc.headers and "Location" in exc.headers:
             return RedirectResponse(url=exc.headers["Location"], status_code=exc.status_code)
         detail = exc.detail if isinstance(exc.detail, str) else None
+        if isinstance(exc.__context__, MultiPartException):
+            logger.info("Form refused: %s", detail)
+            detail = FORM_REFUSED
         response = _error_response(request, exc.status_code, detail)
         for key, value in (exc.headers or {}).items():
             response.headers.setdefault(key, value)

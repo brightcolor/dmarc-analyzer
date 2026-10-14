@@ -9,19 +9,16 @@
   {% if orgs %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Name</th><th>Kennung</th><th class="bc-num">Domains</th><th>Angelegt</th><th><span class="bc-sr">Aktionen</span></th></tr></thead>
+      <thead><tr><th>Name</th><th class="bc-hide-narrow">Kennung</th><th class="bc-num bc-hide-narrow">Domains</th><th class="bc-hide-narrow">Angelegt</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
       <tbody>
         {% for o in orgs %}
         <tr>
-          <td><a href="/organizations/{{ o.id }}">{{ o.name }}</a>{% if org and org.id == o.id %} {{ ui.state('aktuell', 'bc-state--on') }}{% endif %}{% if not o.is_active %} {{ ui.state('gesperrt', 'bc-state--warn') }}{% endif %}</td>
-          <td class="app-mono">{{ o.slug }}</td>
-          <td class="bc-num">{{ o.domains | length }}</td>
-          <td class="app-nowrap">{{ o.created_at | date }}</td>
-          <td><div class="bc-row-actions">
-            {% if not org or org.id != o.id %}
-            <form method="post" action="/organizations/select"><input type="hidden" name="org_id" value="{{ o.id }}"><button class="bc-button bc-button--secondary" type="submit">Wechseln</button></form>
-            {% endif %}
-          </div></td>
+          {% set switch %}{% if not org or org.id != o.id %}<form method="post" action="/organizations/select"><input type="hidden" name="org_id" value="{{ o.id }}"><button class="bc-button bc-button--secondary" type="submit">Wechseln</button></form>{% endif %}{% endset %}
+          <td><span class="bc-row-title"><a href="/organizations/{{ o.id }}">{{ o.name }}</a>{% if org and org.id == o.id %} {{ ui.state('aktuell', 'bc-state--on') }}{% endif %}{% if not o.is_active %} {{ ui.state('gesperrt', 'bc-state--warn') }}{% endif %}</span><span class="bc-row-sub bc-only-narrow"><span class="app-mono">{{ o.slug }}</span> · {{ o.domains | length }} Domains · angelegt {{ o.created_at | date }}</span>{% if not org or org.id != o.id %}<div class="bc-row-actions bc-only-narrow">{{ switch }}</div>{% endif %}</td>
+          <td class="app-mono bc-hide-narrow">{{ o.slug }}</td>
+          <td class="bc-num bc-hide-narrow">{{ o.domains | length }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ o.created_at | date }}</td>
+          <td class="bc-hide-narrow"><div class="bc-row-actions">{{ switch }}</div></td>
         </tr>
         {% endfor %}
       </tbody>

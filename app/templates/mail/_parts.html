@@ -1,0 +1,95 @@
+{#- Building blocks of the bright color mail: tables with inline styles, see bright-color-design references/medien.md -#}
+{#- Font stacks go into style attributes as written; escaping would turn the quotes into entities -#}
+{% set font = "'Atkinson Hyperlegible', Arial, Helvetica, sans-serif" | safe %}
+{% set display = "Anton, Impact, 'Arial Narrow', Arial, sans-serif" | safe %}
+
+{% macro eyebrow(text, square="#1dc3f3", color="#4a4a4a") -%}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td valign="middle" width="10" style="width:10px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="10" height="10" bgcolor="{{ square }}" style="width:10px; height:10px; background-color:{{ square }}; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr></table>
+    </td>
+    <td valign="middle" style="padding-left:10px; font-family:{{ font }}; font-size:12px; line-height:18px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:{{ color }}; mso-line-height-rule:exactly;">{{ text }}</td>
+  </tr>
+</table>
+{%- endmacro %}
+
+{% macro p(margin="16px 0 0", size=16, color="#111111") -%}
+<p style="margin:{{ margin }}; font-family:{{ font }}; font-size:{{ size }}px; line-height:{{ (size * 1.5625) | round | int }}px; color:{{ color }}; mso-line-height-rule:exactly;">{{ caller() }}</p>
+{%- endmacro %}
+
+{% macro h2(text) -%}
+<h2 class="bc-display" style="margin:12px 0 0; font-family:{{ display }}; font-size:28px; line-height:32px; font-weight:400; letter-spacing:1px; text-transform:uppercase; text-wrap:balance; color:#111111; mso-line-height-rule:exactly;">{{ text }}</h2>
+{%- endmacro %}
+
+{% macro link(href, text) -%}
+<a href="{{ href }}" style="color:#8b3a6f; text-decoration:underline;">{{ text }}</a>
+{%- endmacro %}
+
+{#- Label and value rows; on phones the value moves below its label -#}
+{% macro rows(items, top_rule=True) -%}
+<table role="presentation" class="bc-stack" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;{% if top_rule %} border-top:2px solid #111111;{% endif %}">
+  {% for label, value in items %}
+  <tr>
+    <td class="bc-label" width="40%" style="padding:10px 16px 10px 0; border-bottom:1px solid #dad6cd; font-family:{{ font }}; font-size:16px; line-height:24px; color:#4a4a4a; mso-line-height-rule:exactly;">{{ label }}</td>
+    <td class="bc-value" width="60%" align="right" style="padding:10px 0; border-bottom:1px solid #dad6cd; font-family:{{ font }}; font-size:16px; line-height:24px; font-weight:700; text-align:right; color:#111111; mso-line-height-rule:exactly;">{{ value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{%- endmacro %}
+
+{#- Rows inside the yellow box: ink rules instead of the light hairline -#}
+{% macro box_rows(items) -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+  {% for label, value in items %}
+  <tr>
+    <td width="50%" style="padding:10px 0; {% if loop.first %}border-top:2px solid #111111; {% endif %}border-bottom:1px solid #111111; font-family:{{ font }}; font-size:16px; line-height:24px; color:#111111; mso-line-height-rule:exactly;">{{ label }}</td>
+    <td width="50%" align="right" style="padding:10px 0; {% if loop.first %}border-top:2px solid #111111; {% endif %}border-bottom:1px solid #111111; font-family:{{ font }}; font-size:16px; line-height:24px; font-weight:700; text-align:right; color:#111111; mso-line-height-rule:exactly;">{{ value }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{%- endmacro %}
+
+{% macro button(href, label, width=200) -%}
+<table role="presentation" class="bc-button" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td>
+      <!--[if mso]>
+      <v:rect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ href }}" style="height:48px; v-text-anchor:middle; width:{{ width }}px;" fillcolor="#111111" stroke="f">
+        <w:anchorlock/>
+        <center style="color:#ffffff; font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold;">{{ label }}</center>
+      </v:rect>
+      <![endif]-->
+      <!--[if !mso]><!--><a href="{{ href }}" style="display:inline-block; padding:12px 26px; background-color:#111111; border:2px solid #111111; color:#ffffff; font-family:{{ font }}; font-size:16px; font-weight:700; line-height:20px; text-align:center; text-decoration:none; -webkit-text-size-adjust:none;">{{ label }}</a><!--<![endif]-->
+    </td>
+  </tr>
+</table>
+{%- endmacro %}
+
+{#- Yellow box with ink border for the most important facts -#}
+{% macro box(label) -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+  <tr>
+    <td bgcolor="#fed329" style="background-color:#fed329; border:2px solid #111111; padding:24px;">
+      {{ eyebrow(label, square="#111111", color="#111111") }}
+      {{ caller() }}
+    </td>
+  </tr>
+</table>
+{%- endmacro %}
+
+{#- Section after a hairline, with its own label -#}
+{% macro section(label, square="#1dc3f3") -%}
+<tr>
+  <td class="bc-pad" bgcolor="#ffffff" style="padding:40px 32px 0; background-color:#ffffff;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+      <tr>
+        <td style="padding-top:32px; border-top:1px solid #dad6cd;">
+          {{ eyebrow(label, square=square) }}
+          {{ caller() }}
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+{%- endmacro %}

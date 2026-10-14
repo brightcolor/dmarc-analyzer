@@ -53,6 +53,11 @@ USER appuser
 # Expose HTTP and SMTP ports
 EXPOSE 8000 2525
 
+# Web and mail reception share this image; the check passes when the service of the container answers
+# (targets and time limit per target: HEALTHCHECK_TARGETS, HEALTHCHECK_TIMEOUT_SECONDS)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["python", "-m", "app.healthcheck"]
+
 # Default command runs the web server.
 # Override with "python -m smtp_inbound" for the SMTP service.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

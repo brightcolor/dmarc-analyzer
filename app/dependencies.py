@@ -69,6 +69,28 @@ def get_current_org_admin(
     )
 
 
+def require_role(minimum: str):
+    """Dependency: the current user needs at least this role in the current organisation."""
+    def dependency(
+        user: User = Depends(get_current_user),
+        org: Organization = Depends(get_current_org),
+        db: Session = Depends(get_db),
+    ) -> User:
+        from app.services.auth import ROLE_LEVEL, ROLE_NAMES, role_level
+        if role_level(db, user, org.id) >= ROLE_LEVEL[minimum]:
+            return user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Dafür brauchst du in dieser Organisation mindestens die Rolle {ROLE_NAMES[minimum]}. Bitte "
+                   "einen Administrator, dir die Rolle zu geben oder es für dich zu erledigen.",
+        )
+    return dependency
+
+
+get_current_analyst = require_role("analyst")
+get_current_manager = require_role("manager")
+
+
 def get_current_user_and_org(
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -109,15 +131,29 @@ def redirect(url: str):
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
 
-def get_client_ip(request: Request) -> str:
-    """Extract real client IP, respecting trusted proxy headers."""
+def _is_trusted_proxy(address: str) -> bool:
+    import ipaddress
+
     from app.config import settings
-    trusted = {p.strip() for p in settings.TRUSTED_PROXIES.split(",") if p.strip()}
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if forwarded_for:
-        ips = [ip.strip() for ip in forwarded_for.split(",")]
-        # Trust the leftmost non-trusted IP
-        for ip in ips:
-            if ip not in trusted:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(ip in network for network in settings.trusted_proxy_networks)
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Address of the client. X-Forwarded-For counts only when the connection comes from a trusted proxy
+    (TRUSTED_PROXIES); the chain is read from the right, the first address that is no proxy is the client.
+    """
+    peer = request.client.host if request.client else None
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if peer and forwarded and _is_trusted_proxy(peer):
+        chain = [ip.strip() for ip in forwarded.split(",") if ip.strip()]
+        for ip in reversed(chain):
+            if not _is_trusted_proxy(ip):
                 return ip
-    return request.client.host if request.client else "unknown"
+        if chain:
+            return chain[0]
+    return peer or "unbekannt"

@@ -13,7 +13,9 @@ from aiosmtpd.smtp import Session as SmtpSession
 from app.config import settings
 from app.database import get_db_context
 from app.models import ImportJob, InboundMailAttachment, SmtpInboundMessage, SmtpInboundRejection
-from app.services.alert_service import create_system_alert
+from app.services.alert_service import create_system_alert, evaluate_after_import
+from app.services.failure_reports import parse_failure_report, store_failure_report
+from app.services.files import safe_filename
 from app.services.import_service import process_import_job
 from app.services.mime_parser import (
     MimeParseError,
@@ -22,9 +24,15 @@ from app.services.mime_parser import (
     parse_mail_headers,
     sha256_hex,
 )
+from app.services.text import clean_text
+from app.services.tls_reports import TlsReportMail, find_tls_reports, mail_outcome, store_tls_report
 from smtp_inbound.validator import validate_recipient
 
 logger = logging.getLogger(__name__)
+
+# Answer to an unexpected error: a temporary failure, so the sending server tries again later.
+# SMTP replies stay ASCII; details go to the log only.
+TEMPORARY_FAILURE = "451 4.3.0 Temporary local problem, please try again later"
 
 
 class DmarcSmtpHandler:
@@ -40,6 +48,11 @@ class DmarcSmtpHandler:
         self.rcpt_rate_limit = settings.SMTP_INBOUND_RATE_LIMIT_PER_RECIPIENT
         self.store_raw = settings.SMTP_INBOUND_STORE_RAW
         self.reject_unknown = settings.SMTP_INBOUND_REJECT_UNKNOWN
+
+    async def handle_exception(self, error: Exception) -> str:
+        """aiosmtpd calls this for errors in the other handlers; its default reply shows the exception text."""
+        logger.error("SMTP session error: %s", error, exc_info=error)
+        return TEMPORARY_FAILURE
 
     # ── RCPT TO handler ───────────────────────────────────────────────────────
 
@@ -108,7 +121,7 @@ class DmarcSmtpHandler:
                 logger.warning("No validation result for accepted recipient %s, skipping", rcpt)
                 continue
 
-            await asyncio.to_thread(
+            stored = await asyncio.to_thread(
                 self._persist_and_process,
                 raw=raw,
                 envelope_sender=envelope.mail_from or "",
@@ -119,6 +132,9 @@ class DmarcSmtpHandler:
                 organization_id=vr.organization_id,
                 domain_id=vr.domain_id,
             )
+            if not stored:
+                # Nothing was saved; the sender keeps the mail and delivers it again (imports skip duplicates)
+                return TEMPORARY_FAILURE
 
         return "250 2.0.0 OK"
 
@@ -135,7 +151,7 @@ class DmarcSmtpHandler:
         address_id: str | None,
         organization_id: str,
         domain_id: str | None,
-    ) -> None:
+    ) -> bool:
         """Synchronous persistence and processing (called via asyncio.to_thread)."""
         raw_path = None
         if self.store_raw:
@@ -148,8 +164,8 @@ class DmarcSmtpHandler:
                     inbound_address_id=address_id,
                     organization_id=organization_id,
                     domain_id=domain_id,
-                    envelope_sender=envelope_sender[:320] if envelope_sender else None,
-                    envelope_recipient=envelope_recipient[:320],
+                    envelope_sender=clean_text(envelope_sender, 320) or None,
+                    envelope_recipient=clean_text(envelope_recipient, 320),
                     remote_ip=remote_ip[:45],
                     header_from=headers.get("from", "")[:500] or None,
                     header_to=headers.get("to", "")[:1000] or None,
@@ -170,39 +186,56 @@ class DmarcSmtpHandler:
                     if addr:
                         addr.last_used_at = datetime.now(UTC)
 
-                # Extract DMARC attachments
+                # Failure reports first: the reported mail inside may carry attachments that are no reports
+                failure = parse_failure_report(raw) if settings.FAILURE_REPORTS_ENABLED else None
+                if failure is not None:
+                    store_failure_report(db, failure, organization_id=organization_id, domain_id=domain_id,
+                                         smtp_message_id=msg.id, reporter=headers.get("from") or None)
+                    msg.import_status = "completed"
+                    msg.processed_at = datetime.now(UTC)
+                    return True
+
+                # TLS reports next: their JSON files would fail as DMARC reports
                 try:
-                    attachments = extract_dmarc_attachments(raw)
+                    tls = find_tls_reports(raw) if settings.TLS_REPORTS_ENABLED else None
+                    attachments = [] if tls is not None else extract_dmarc_attachments(raw)
                 except ZipBombError as exc:
                     logger.warning("ZIP bomb detected from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
-                    msg.error_message = f"ZIP bomb protection triggered: {exc}"
+                    msg.error_message = clean_text(f"Archivbombe abgewehrt: {exc}")
                     create_system_alert(
                         db,
                         org_id=organization_id,
                         alert_type="import_failed",
                         severity="critical",
-                        title=f"ZIP bomb blocked from {remote_ip}",
-                        description=str(exc),
+                        title=f"Archivbombe von {remote_ip} abgewehrt",
+                        description=f"Eine Mail an {envelope_recipient} enthielt ein Archiv, das sich über die "
+                                    f"erlaubte Größe hinaus entpackt. Die Mail wurde zurückgehalten ({exc}).",
                         smtp_message_id=msg.id,
                     )
-                    return
+                    return True
                 except MimeParseError as exc:
                     logger.warning("MIME parse error from %s: %s", remote_ip, exc)
                     msg.import_status = "quarantine"
-                    msg.error_message = f"MIME parse error: {exc}"
-                    return
+                    msg.error_message = clean_text(f"Die Mail ließ sich nicht lesen: {exc}")
+                    return True
+
+                if tls is not None:
+                    self._store_tls_reports(db, msg, tls, organization_id, domain_id)
+                    return True
 
                 if not attachments:
                     logger.info("No DMARC attachments found in mail from %s to %s", remote_ip, envelope_recipient)
                     msg.import_status = "completed"
-                    msg.error_message = "No DMARC report attachments found"
-                    return
+                    msg.error_message = "Die Mail enthielt keinen DMARC-Bericht als Anhang."
+                    return True
 
                 msg.attachment_count = len(attachments)
                 imported_count = 0
 
                 for att in attachments:
+                    att.filename = clean_text(att.filename, 500)
+                    att.content_type = clean_text(att.content_type, 200)
                     # Record attachment
                     att_record = InboundMailAttachment(
                         message_id=msg.id,
@@ -217,7 +250,7 @@ class DmarcSmtpHandler:
                     # Save attachment to disk for import job
                     att_dir = settings.upload_dir_path / organization_id / "smtp"
                     att_dir.mkdir(parents=True, exist_ok=True)
-                    att_path = att_dir / f"{att.sha256[:16]}_{att.filename or 'report.xml'}"
+                    att_path = att_dir / f"{att.sha256[:16]}_{safe_filename(att.filename, 'report.xml')}"
                     with open(att_path, "wb") as fh:
                         fh.write(att.data)
 
@@ -258,11 +291,32 @@ class DmarcSmtpHandler:
 
                 msg.import_status = "completed" if imported_count > 0 else "failed"
                 if imported_count == 0:
-                    msg.error_message = "All attachments failed to import"
+                    msg.error_message = "Keiner der Anhänge ließ sich importieren. Die Gründe stehen beim Import."
                 msg.processed_at = datetime.now(UTC)
+                # Also after failures: the rule for failed imports needs them
+                evaluate_after_import(db, organization_id)
 
         except Exception as exc:
             logger.exception("Error processing mail from %s to %s: %s", remote_ip, envelope_recipient, exc)
+            return False
+        return True
+
+    @staticmethod
+    def _store_tls_reports(db, msg: SmtpInboundMessage, tls: TlsReportMail, organization_id: str,
+                           domain_id: str | None) -> None:
+        stored = duplicates = 0
+        for report in tls.reports:
+            record = store_tls_report(db, report, organization_id=organization_id, domain_id=domain_id,
+                                      smtp_message_id=msg.id)
+            if record is None:
+                duplicates += 1
+            else:
+                stored += 1
+        msg.attachment_count = tls.files
+        msg.import_status, msg.error_message = mail_outcome(stored, duplicates, tls.errors)
+        msg.processed_at = datetime.now(UTC)
+        if stored:
+            evaluate_after_import(db, organization_id)
 
     @staticmethod
     def _save_raw_mail(organization_id: str, raw: bytes) -> str | None:

@@ -2,12 +2,15 @@ import logging
 import secrets
 import sys
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _SAMPLE_SECRET_KEYS = {"change_me_to_a_64_char_random_hex_string", "bitte-einen-eigenen-wert-setzen"}
+# Alert statuses whose pending notifications may be dropped; new alerts are open
+_SKIPPABLE_ALERT_STATUSES = ("acknowledged", "resolved", "ignored")
 _warnings: list[str] = []
 
 
@@ -25,7 +28,31 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:8000"
     DEBUG: bool = False
     SECRET_KEY: str = Field("", validate_default=True)
-    TRUSTED_PROXIES: str = ""
+    TRUSTED_PROXIES: str = Field(
+        "", description="Reverse-Proxys, deren X-Forwarded-For die Anwendung glaubt: IP-Adressen oder Netze wie "
+                        "172.16.0.0/12, durch Komma getrennt. Leer: die Anwendung nimmt die Adresse der Verbindung.",
+    )
+    CSRF_TRUSTED_ORIGINS: str = Field(
+        "", description="Weitere Adressen, von denen Formulare kommen dürfen, etwa https://dmarc.example.com, durch "
+                        "Komma getrennt. Die eigene Adresse und APP_URL gelten immer.",
+    )
+
+    # Protection against guessing passwords and setup codes
+    LOGIN_FAILURE_WINDOW_SECONDS: int = Field(
+        900, ge=60, le=86_400, description="Zeitraum in Sekunden, in dem fehlgeschlagene Anmeldungen zählen.",
+    )
+    LOGIN_MAX_FAILURES_PER_IP: int = Field(
+        20, ge=1, le=10_000, description="Fehlversuche je IP-Adresse im Zeitraum, ab denen die Anmeldung sperrt.",
+    )
+    LOGIN_MAX_FAILURES_PER_ACCOUNT: int = Field(
+        10, ge=1, le=10_000, description="Fehlversuche je Konto im Zeitraum, ab denen das Konto gesperrt wird.",
+    )
+    LOGIN_LOCKOUT_SECONDS: int = Field(
+        900, ge=60, le=86_400, description="Dauer der Sperre in Sekunden nach dem letzten Fehlversuch.",
+    )
+    LOGIN_ATTEMPT_RETENTION_DAYS: int = Field(
+        30, ge=1, le=3650, description="Tage, die Anmeldeversuche für die Sperre gespeichert bleiben.",
+    )
 
     # Database
     DATABASE_URL: str = "sqlite:///./dmarc_analyzer.db"
@@ -53,19 +80,295 @@ class Settings(BaseSettings):
     SMTP_INBOUND_MAX_RECIPIENTS: int = 1
     SMTP_INBOUND_REJECT_UNKNOWN: bool = True
     SMTP_INBOUND_STORE_RAW: bool = False
-    SMTP_INBOUND_RAW_RETENTION_DAYS: int = 7
+    SMTP_INBOUND_RAW_RETENTION_DAYS: int = Field(
+        7, ge=1, le=3650, description="Tage, die gespeicherte Rohmails aufbewahrt werden.",
+    )
+    SMTP_REJECTION_RETENTION_DAYS: int = Field(
+        30, ge=1, le=3650, description="Tage, die abgelehnte Zustellversuche in der Liste bleiben.",
+    )
     SMTP_INBOUND_RATE_LIMIT_PER_IP: int = 60       # per hour
     SMTP_INBOUND_RATE_LIMIT_PER_RECIPIENT: int = 120  # per hour
-    SMTP_INBOUND_TLS_ENABLED: bool = False
-    SMTP_INBOUND_TLS_CERT_PATH: str | None = None
-    SMTP_INBOUND_TLS_KEY_PATH: str | None = None
+    SMTP_INBOUND_TLS_ENABLED: bool = Field(
+        False, description="STARTTLS für den Mailempfang anbieten. Mailserver ohne TLS liefern weiter unverschlüsselt.",
+    )
+    SMTP_INBOUND_TLS_CERT_PATH: str | None = Field(
+        None, description="Zertifikat mit Kette für STARTTLS (PEM), etwa das Wildcard-Zertifikat der Empfangsdomain.",
+    )
+    SMTP_INBOUND_TLS_KEY_PATH: str | None = Field(None, description="Privater Schlüssel zum Zertifikat (PEM).")
+    SMTP_INBOUND_TLS_MIN_VERSION: Literal["TLSv1.2", "TLSv1.3"] = Field(
+        "TLSv1.2", description="Älteste TLS-Version, die der Mailempfang annimmt.",
+    )
 
     # Raw mail storage (when STORE_RAW=true)
     RAW_MAIL_DIR: str = "./raw_mail"
 
-    # Alert scheduler
-    ALERT_EVAL_INTERVAL_SECONDS: int = 300  # 5 minutes
-    NOTIFICATION_RETRY_MAX: int = 3
+    # Further recipients per domain for its alerts and weekly digest
+    DOMAIN_RECIPIENTS_MAX: int = Field(
+        20, ge=1, le=500, description="Höchstzahl weiterer Empfänger je Domain für Alarme und Wochenbericht.",
+    )
+
+    # Failure reports (ruf): one report per mail that failed, in the Abuse Reporting Format
+    FAILURE_REPORTS_ENABLED: bool = Field(
+        True, description="Fehlerberichte (ruf) erkennen und speichern. Aus: Die Anwendung vermerkt solche Mails "
+                          "wie jede Mail ohne Sammelbericht.",
+    )
+    DMARC_SUGGEST_FAILURE_REPORTS: bool = Field(
+        True, description="Der vorgeschlagene DNS-Eintrag einer Domain bittet mit ruf und fo=1 um Fehlerberichte.",
+    )
+    FAILURE_REPORT_RETENTION_DAYS: int = Field(
+        30, ge=1, le=3650, description="Tage, die Fehlerberichte aufbewahrt werden. Bewahrt die Organisation "
+                                       "Berichte kürzer auf, gilt ihre Frist.",
+    )
+    FAILURE_REPORT_STORE_HEADERS: bool = Field(
+        True, description="Kopfzeilen der gemeldeten Mail speichern: Absender, Empfänger, Betreff und beteiligte "
+                          "Mailserver. Den Inhalt der Mail speichert die Anwendung nie.",
+    )
+    FAILURE_REPORT_MAX_HEADER_BYTES: int = Field(
+        65_536, ge=1024, le=1_048_576,
+        description="Höchstgröße der gespeicherten Kopfzeilen in Bytes; was darüber hinausgeht, wird abgeschnitten.",
+    )
+
+    # TLS reports (TLS-RPT, RFC 8460): how often senders reached the mail servers of a domain with TLS
+    TLS_REPORTS_ENABLED: bool = Field(
+        True, description="TLS-Berichte (TLS-RPT) erkennen und speichern. Aus: Die Anwendung versucht die Datei "
+                          "als DMARC-Bericht zu lesen und vermerkt den Fehlschlag unter „Eingegangene Mails“.",
+    )
+    TLS_REPORT_MAX_POLICIES: int = Field(
+        100, ge=1, le=10_000,
+        description="Höchstzahl Richtlinien in einem TLS-Bericht; einen Bericht mit mehr lehnt die Anwendung ab.",
+    )
+    TLS_REPORT_MAX_AGE_DAYS: int = Field(
+        400, ge=1, le=3650,
+        description="Ältester Zeitraum in Tagen, den ein TLS-Bericht nennen darf; ältere Berichte lehnt die Anwendung "
+                    "mit Grund ab.",
+    )
+    TLS_REPORT_FUTURE_TOLERANCE_HOURS: int = Field(
+        48, ge=0, le=720,
+        description="So viele Stunden darf der Zeitraum eines TLS-Berichts in der Zukunft liegen, etwa wegen "
+                    "falsch gehender Uhren beim Absender.",
+    )
+    TLS_REPORT_MAX_FAILURE_DETAILS: int = Field(
+        1000, ge=1, le=100_000,
+        description="Fehlerangaben, die die Anwendung je TLS-Bericht speichert. Sie behält die mit den meisten "
+                    "gescheiterten Verbindungen; die Summen des Berichts bleiben vollständig.",
+    )
+
+    # DNS check per domain: DMARC, consent of the report domain, SPF, DKIM, MX and TLS reporting
+    DNS_CHECK_ENABLED: bool = Field(
+        True, description="DNS-Einträge jeder aktiven Domain regelmäßig prüfen. Aus: Die Prüfung läuft nur auf "
+                          "Knopfdruck.",
+    )
+    DNS_CHECK_INTERVAL_SECONDS: int = Field(
+        600, ge=60, le=86_400, description="Abstand in Sekunden, in dem der Zeitplaner nach fälligen Domains sieht.",
+    )
+    DNS_CHECK_MAX_AGE_SECONDS: int = Field(
+        86_400, ge=600, le=2_592_000, description="Nach so vielen Sekunden prüft die Anwendung eine Domain erneut.",
+    )
+    DNS_CHECK_BATCH_SIZE: int = Field(
+        20, ge=1, le=1000, description="Höchstzahl Domains, die ein Lauf des Zeitplaners prüft.",
+    )
+    DNS_CHECK_WORKERS: int = Field(
+        4, ge=1, le=32, description="Domains, die ein Lauf gleichzeitig prüft.",
+    )
+    DNS_CHECK_TIMEOUT_SECONDS: float = Field(
+        4.0, ge=0.5, le=30.0, description="Zeitlimit in Sekunden für eine DNS-Abfrage der Prüfung.",
+    )
+    DNS_CHECK_DOMAIN_BUDGET_SECONDS: float = Field(
+        20.0, ge=1.0, le=600.0,
+        description="Zeit in Sekunden, die alle Abfragen einer Domain zusammen brauchen dürfen; danach bleiben die "
+                    "übrigen Prüfungen offen.",
+    )
+    DNS_CHECK_JOB_BUDGET_SECONDS: int = Field(
+        120, ge=10, le=3600,
+        description="Nach so vielen Sekunden beginnt ein Lauf des Zeitplaners keine weitere Domain; sie kommen im "
+                    "nächsten Lauf dran.",
+    )
+    DNS_CHECK_MANUAL_PARALLEL: int = Field(
+        4, ge=1, le=64,
+        description="Prüfungen auf Knopfdruck (Oberfläche und API), die ein Web-Prozess gleichzeitig ausführt; "
+                    "weitere bekommen die Bitte, es gleich noch einmal zu versuchen.",
+    )
+    DNS_CHECK_MANUAL_COOLDOWN_SECONDS: int = Field(
+        30, ge=0, le=3600,
+        description="Sperre in Sekunden nach einer Prüfung, bevor „Jetzt prüfen“ dieselbe Domain erneut prüft. "
+                    "0 schaltet die Sperre ab.",
+    )
+    DNS_CHECK_DKIM_DAYS: int = Field(
+        30, ge=1, le=365,
+        description="Tage, aus denen die Prüfung die DKIM-Selektoren einer Domain nimmt: Selektoren, die in "
+                    "Berichten dieses Zeitraums bestanden haben.",
+    )
+    DNS_CHECK_DKIM_ACTIVE_DAYS: int = Field(
+        3, ge=1, le=365,
+        description="Ein Selektor, der in den Berichten dieser Tage bestanden hat, gilt als in Gebrauch: Fehlt sein "
+                    "Schlüssel, ist das ein Fehler. Bei älteren Selektoren ist es eine Warnung, etwa nach einem "
+                    "Schlüsselwechsel.",
+    )
+    DNS_CHECK_DKIM_MAX_SELECTORS: int = Field(
+        10, ge=1, le=100, description="Höchstzahl DKIM-Selektoren, die die Prüfung je Domain nachschlägt.",
+    )
+    DNS_CHECK_DKIM_RECOMMENDED_BITS: int = Field(
+        2048, ge=1024, le=8192,
+        description="Länge in Bit, ab der ein RSA-Schlüssel für DKIM ohne Hinweis bleibt. Unter 1024 Bit werten "
+                    "Empfänger den Schlüssel nicht (RFC 8301).",
+    )
+
+    # Scheduler in the web process
+    SCHEDULER_ENABLED: bool = Field(
+        True, description="Zeitplaner für Alarme, Benachrichtigungen, Aufräumen und Wochenbericht einschalten.",
+    )
+    SCHEDULER_TICK_SECONDS: int = Field(
+        30, ge=5, le=3600, description="Abstand in Sekunden, in dem der Zeitplaner nach fälligen Aufgaben sieht.",
+    )
+    ALERT_EVAL_INTERVAL_SECONDS: int = Field(
+        300, ge=60, le=86_400, description="Abstand in Sekunden zwischen zwei Prüfungen aller Alarmregeln.",
+    )
+    NOTIFICATION_DISPATCH_INTERVAL_SECONDS: int = Field(
+        60, ge=10, le=3600, description="Abstand in Sekunden, in dem wartende Benachrichtigungen verschickt werden.",
+    )
+    NOTIFICATION_RETRY_MAX: int = Field(
+        3, ge=0, le=20, description="Wie oft eine fehlgeschlagene Benachrichtigung erneut versucht wird.",
+    )
+    NOTIFICATION_RETRY_DELAY_SECONDS: int = Field(
+        300, ge=10, le=86_400,
+        description="Wartezeit in Sekunden vor dem ersten neuen Versuch; jeder weitere wartet doppelt so lange.",
+    )
+    NOTIFICATION_BATCH_SIZE: int = Field(
+        100, ge=1, le=10_000, description="Höchstzahl Benachrichtigungen, die ein Lauf verschickt.",
+    )
+    NOTIFICATION_EMAIL_BUNDLE_SECONDS: int = Field(
+        900, ge=0, le=86_400,
+        description="Sekunden, die Alarme per E-Mail gesammelt werden; danach kommen sie in einer Mail je Kanal oder "
+                    "Adresse. 0 schickt jeden Alarm sofort einzeln.",
+    )
+    NOTIFICATION_BUNDLE_MAX_ITEMS: int = Field(
+        50, ge=1, le=500, description="Alarme, die eine Sammelmail einzeln aufführt; die übrigen nennt sie als Zahl.",
+    )
+    NOTIFICATION_SKIP_ALERT_STATUSES: str = Field(
+        "resolved,ignored",
+        description="Status von Alarmen, deren wartende Benachrichtigungen entfallen, durch Komma getrennt: "
+                    "acknowledged (gesehen), resolved (erledigt), ignored (ignoriert). Eine Sammelmail führt dann nur "
+                    "die übrigen Alarme auf. Leer: Jede Benachrichtigung geht raus, auch zu erledigten Alarmen.",
+    )
+    NOTIFICATION_HTTP_TIMEOUT_SECONDS: int = Field(
+        10, ge=1, le=120, description="Zeitlimit in Sekunden für Webhook, ntfy und Slack.",
+    )
+    NOTIFICATION_BLOCK_PRIVATE_TARGETS: bool = Field(
+        True, description="Webhook, ntfy und Slack nur an öffentliche Adressen schicken. Sperrt localhost, private "
+                          "und reservierte Netze, damit niemand über Kanäle interne Dienste abfragt.",
+    )
+    NOTIFICATION_ALLOWED_INTERNAL_HOSTS: str = Field(
+        "", description="Hostnamen, die trotz interner Adresse erlaubt sind, etwa ntfy.lan oder ntfy, durch Komma "
+                        "getrennt.",
+    )
+    NTFY_DEFAULT_URL: str = Field(
+        "https://ntfy.sh", description="ntfy-Server für Kanäle, die keinen eigenen Server angeben.",
+    )
+    RETENTION_INTERVAL_SECONDS: int = Field(
+        86_400, ge=3600, le=604_800, description="Abstand in Sekunden zwischen zwei Aufräumläufen.",
+    )
+    RETENTION_BATCH_SIZE: int = Field(
+        1000, ge=10, le=100_000, description="Höchstzahl Berichte, die ein Aufräumlauf löscht.",
+    )
+
+    # Alert defaults for rules without their own threshold
+    ALERT_DEFAULT_FAIL_RATE: float = Field(
+        10.0, ge=0.0, le=100.0, description="DMARC-Fehlerquote in Prozent, ab der eine Regel ohne Schwelle auslöst.",
+    )
+    ALERT_DEFAULT_AUTH_FAIL_RATE: float = Field(
+        20.0, ge=0.0, le=100.0,
+        description="Anteil in Prozent ohne passendes SPF bzw. DKIM, ab dem eine Regel ohne Schwelle auslöst.",
+    )
+    ALERT_DEFAULT_TLS_FAIL_RATE: float = Field(
+        5.0, ge=0.0, le=100.0,
+        description="Anteil gescheiterter TLS-Verbindungen in Prozent, ab dem eine Regel ohne Schwelle auslöst.",
+    )
+    ALERT_DEFAULT_HIGH_VOLUME: int = Field(
+        500, ge=1, le=100_000_000, description="Nachrichten, ab denen eine neue Quelle als groß gilt.",
+    )
+    ALERT_DEFAULT_VOLUME_SPIKE: float = Field(
+        200.0, ge=1.0, le=10_000.0,
+        description="Anstieg in Prozent über dem Durchschnitt, ab dem Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_VOLUME_DROP: float = Field(
+        80.0, ge=1.0, le=100.0, description="Rückgang in Prozent unter den Durchschnitt, ab dem Alarm ausgelöst wird.",
+    )
+    ALERT_VOLUME_BASELINE_WINDOWS: int = Field(
+        7, ge=1, le=90, description="Anzahl früherer Zeiträume, aus denen der Durchschnitt für Mengenalarme entsteht.",
+    )
+    ALERT_DEFAULT_INVALID_RECIPIENTS: int = Field(
+        20, ge=1, le=1_000_000, description="Abgelehnte Mails an unbekannte Adressen, ab denen Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_RATE_LIMIT_HITS: int = Field(
+        10, ge=1, le=1_000_000, description="Treffer der Mailgrenze, ab denen Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_NEW_SOURCE_FAILURES: int = Field(
+        1, ge=1, le=1_000_000,
+        description="Nicht bestandene Nachrichten einer neuen Quelle, ab denen Alarm ausgelöst wird.",
+    )
+    ALERT_DEFAULT_IMPORT_FAILURES: int = Field(
+        1, ge=1, le=10_000, description="Fehlgeschlagene Importe, ab denen Alarm ausgelöst wird.",
+    )
+
+    # Outgoing mail for alerts and the weekly digest
+    MAIL_BACKEND: Literal["smtp", "postal"] = Field(
+        "smtp", description="Weg für ausgehende Mails: smtp über MAIL_SMTP_HOST oder postal über die HTTP-API eines "
+                            "Postal-Servers (POSTAL_API_URL, POSTAL_API_KEY).",
+    )
+    POSTAL_API_URL: str = Field(
+        "", description="Adresse des Postal-Servers für die API, etwa https://postal.example.com.",
+    )
+    POSTAL_API_KEY: str = Field("", description="API-Schlüssel eines Mailservers in Postal (Zugang vom Typ API).")
+    POSTAL_MESSAGE_TAG: str = Field(
+        "dmarc-analyzer", max_length=100,
+        description="Kennzeichen der Mails in Postal, damit sie sich dort filtern lassen; leer für keins.",
+    )
+    MAIL_SMTP_HOST: str = Field(
+        "", description="SMTP-Server für ausgehende Mails. Leer lassen schaltet den Mailversand aus.",
+    )
+    MAIL_SMTP_PORT: int = Field(587, ge=1, le=65_535, description="Port des SMTP-Servers.")
+    MAIL_SMTP_SECURITY: Literal["starttls", "ssl", "none"] = Field(
+        "starttls", description="Verschlüsselung zum SMTP-Server: starttls, ssl oder none.",
+    )
+    MAIL_SMTP_USER: str = Field("", description="Benutzername am SMTP-Server; leer ohne Anmeldung.")
+    MAIL_SMTP_PASSWORD: str = Field("", description="Passwort am SMTP-Server.")
+    MAIL_FROM: str = Field("DMARC Analyzer <dmarc@example.org>", description="Absender der Mails.")
+    MAIL_TIMEOUT_SECONDS: int = Field(20, ge=1, le=300, description="Zeitlimit in Sekunden für den SMTP-Server.")
+
+    # Weekly digest
+    DIGEST_WEEKDAY: int = Field(0, ge=0, le=6, description="Wochentag des Wochenberichts, 0 = Montag bis 6 = Sonntag.")
+    DIGEST_HOUR: int = Field(
+        8, ge=0, le=23, description="Stunde, ab der der Wochenbericht verschickt wird (DISPLAY_TIMEZONE).",
+    )
+    DIGEST_PERIOD_DAYS: int = Field(7, ge=1, le=31, description="Tage, die der Wochenbericht zusammenfasst.")
+    DIGEST_CHECK_INTERVAL_SECONDS: int = Field(
+        900, ge=60, le=86_400, description="Abstand in Sekunden, in dem der Zeitplaner fällige Wochenberichte sucht.",
+    )
+    DIGEST_LIST_LIMIT: int = Field(
+        5, ge=1, le=50, description="Einträge je Liste im Wochenbericht: Quellen, Alarme und Empfehlungen.",
+    )
+
+    # Limits of the default plan for new organisations
+    DEFAULT_PLAN_MAX_DOMAINS: int = Field(50, ge=1, le=100_000, description="Domains je Organisation im Standardtarif.")
+    DEFAULT_PLAN_MAX_USERS: int = Field(20, ge=1, le=100_000, description="Benutzer je Organisation im Standardtarif.")
+    DEFAULT_PLAN_MAX_API_TOKENS: int = Field(
+        10, ge=0, le=100_000, description="API-Tokens je Organisation im Standardtarif.",
+    )
+    DEFAULT_PLAN_MAX_ALERT_RULES: int = Field(
+        50, ge=0, le=100_000, description="Alarmregeln je Organisation im Standardtarif.",
+    )
+    DEFAULT_PLAN_MAX_INBOUND_ADDRESSES: int = Field(
+        50, ge=1, le=100_000, description="Empfangsadressen je Organisation im Standardtarif.",
+    )
+    DEFAULT_PLAN_REPORT_RETENTION_DAYS: int = Field(
+        365, ge=1, le=36_500, description="Tage, die Berichte im Standardtarif aufbewahrt werden.",
+    )
+    DEFAULT_PLAN_SMTP_RATE_LIMIT_PER_HOUR: int = Field(
+        500, ge=1, le=10_000_000, description="Mails je Stunde, die eine Organisation im Standardtarif empfängt.",
+    )
+    DEFAULT_PLAN_API_RATE_LIMIT_PER_HOUR: int = Field(
+        2000, ge=1, le=10_000_000, description="API-Anfragen je Stunde im Standardtarif.",
+    )
 
     # First-run setup and accounts
     SETUP_CODE_LENGTH: int = Field(
@@ -77,18 +380,100 @@ class Settings(BaseSettings):
     )
     PASSWORD_MIN_LENGTH: int = Field(10, ge=8, le=64, description="Mindestlänge für Passwörter.")
 
+    # Health check of the container image (python -m app.healthcheck)
+    HEALTHCHECK_TARGETS: str = Field(
+        "http://127.0.0.1:8000/api/v1/health,smtp://127.0.0.1",
+        description="Ziele der Prüfung im Container, durch Komma getrennt. http:// oder https:// muss mit Status 2xx "
+                    "antworten, smtp://host:port mit der Begrüßung 220; ohne Port gilt SMTP_INBOUND_PORT. Die Prüfung "
+                    "besteht, sobald ein Ziel antwortet: Weboberfläche und Mailempfang laufen aus demselben Image.",
+    )
+    HEALTHCHECK_TIMEOUT_SECONDS: float = Field(
+        3.0, ge=0.5, le=30.0,
+        description="Zeitlimit in Sekunden je Ziel der Prüfung. Alle Ziele zusammen müssen in das timeout der "
+                    "Docker-Prüfung passen (im Image 10 Sekunden).",
+    )
+
     # API
     API_RATE_LIMIT: str = "100/minute"
     API_TOKEN_EXPIRE_DAYS: int = 365
 
-    # DNS enrichment (optional)
-    DNS_ENRICHMENT_ENABLED: bool = False
-    DNS_ENRICHMENT_TIMEOUT: float = 2.0
-    DNS_ENRICHMENT_RATE_LIMIT: int = 10  # per minute
+    # Sender identification: which service a source IP belongs to
+    SENDER_LOOKUP_ENABLED: bool = Field(
+        True, description="Hostname und Netzbetreiber jeder Quelle per DNS nachschlagen. Aus: Absender werden nur "
+                          "über DKIM und SPF aus den Berichten erkannt.",
+    )
+    SENDER_LOOKUP_TIMEOUT_SECONDS: float = Field(
+        2.0, ge=0.2, le=30.0, description="Zeitlimit in Sekunden für eine DNS-Abfrage.",
+    )
+    SENDER_LOOKUP_BATCH_SIZE: int = Field(
+        50, ge=1, le=5000, description="Höchstzahl Quellen, die ein Lauf nachschlägt und zuordnet.",
+    )
+    SENDER_LOOKUP_INTERVAL_SECONDS: int = Field(
+        60, ge=10, le=86_400, description="Abstand in Sekunden, in dem der Zeitplaner neue Quellen zuordnet.",
+    )
+    SENDER_LOOKUP_REFRESH_DAYS: int = Field(
+        30, ge=1, le=365, description="Nach so vielen Tagen schlägt die Anwendung eine Quelle erneut nach.",
+    )
+    SENDER_LOOKUP_WORKERS: int = Field(
+        8, ge=1, le=64, description="Anzahl gleichzeitiger DNS-Abfragen in einem Lauf.",
+    )
+    SENDER_EVIDENCE_LIMIT: int = Field(
+        200, ge=10, le=100_000,
+        description="Höchstzahl DKIM- und SPF-Ergebnisse je Quelle, die für die Zuordnung gelesen werden.",
+    )
+    SENDER_ASN_LOOKUP_ENABLED: bool = Field(
+        True, description="Netzbetreiber (AS-Nummer, Name, Land) über den DNS-Dienst von Team Cymru nachschlagen.",
+    )
+    SENDER_ASN_ZONE_V4: str = Field(
+        "origin.asn.cymru.com", description="DNS-Zone für die AS-Nummer einer IPv4-Adresse.",
+    )
+    SENDER_ASN_ZONE_V6: str = Field(
+        "origin6.asn.cymru.com", description="DNS-Zone für die AS-Nummer einer IPv6-Adresse.",
+    )
+    SENDER_ASN_NAME_ZONE: str = Field(
+        "asn.cymru.com", description="DNS-Zone für Name und Land zu einer AS-Nummer.",
+    )
+    SENDER_CATALOG_PATH: str = Field(
+        "", description="Zusätzlicher Absenderkatalog als JSON-Datei. Einträge mit gleichem Schlüssel ersetzen "
+                        "die eingebauten, neue kommen dazu.",
+    )
+    SOURCE_RULES_ENABLED: bool = Field(
+        True, description="Quellenregeln anwenden: Netze, Hostnamen und Länder aus den folgenden Einstellungen stufen "
+                          "neue Quellen ohne Entscheidung selbst ein.",
+    )
+    SOURCE_RULE_CLASSIFICATION: str = Field(
+        "suspicious", description="Einstufung, die eine Quellenregel setzt: suspicious (verdächtig, bleibt in den "
+                                  "Auswertungen sichtbar) oder ignored (ignoriert).",
+    )
+    SOURCE_RULE_ASNS: str = Field(
+        "", description="AS-Nummern, durch Komma getrennt, deren Quellen die Quellenregel trifft, etwa "
+                        "8193,9198,AS4837. Leer für keine.",
+    )
+    SOURCE_RULE_COUNTRIES: str = Field(
+        "", description="Ländercodes (ISO, zwei Buchstaben), durch Komma getrennt, deren Quellen die Quellenregel "
+                        "trifft, etwa KZ,UZ. Leer für keine.",
+    )
+    SOURCE_RULE_RDNS_PATTERNS: str = Field(
+        "dialup, dynamic, dhcp, ppp, pppoe, adsl, dsl, pool",
+        description="Hostnamen-Muster, durch Komma getrennt. Ein Wort ohne Punkt trifft jeden Hostnamen, der es "
+                    "als Teil enthält (dynamic trifft host-1-2-3-4.dynamic.example.net); eine Domain wie "
+                    "telecom.kz trifft diese Domain und ihre Unterdomains.",
+    )
+    SOURCE_RULE_MAX_PASSED_MESSAGES: int = Field(
+        0, ge=0, le=1_000_000,
+        description="Höchstzahl Nachrichten, die eine Quelle schon mit DMARC-Erfolg verschickt haben darf, damit "
+                    "die Quellenregel sie trifft. 0: nur Quellen, von denen noch nie etwas bestanden hat.",
+    )
+    PUBLIC_SUFFIX_LIST_PATH: str = Field(
+        "", description="Eigene Fassung der Public Suffix List (public_suffix_list.dat) für die Organisationsdomain; "
+                        "leer für die mitgelieferte.",
+    )
+    DNS_NAMESERVERS: str = Field(
+        "", description="DNS-Server für das Nachschlagen, durch Komma getrennt; leer für die des Systems.",
+    )
 
     # Feature flags
     FEATURE_DOMAIN_VERIFICATION: bool = True
-    FEATURE_SOURCE_ENRICHMENT: bool = False
     FEATURE_SAAS_MODE: bool = False
 
     # Display
@@ -186,10 +571,158 @@ class Settings(BaseSettings):
             raise ValueError(f"unbekannte Zeitzone {value!r}, erwartet wird etwa Europe/Berlin oder UTC") from exc
         return value
 
+    @field_validator("TRUSTED_PROXIES")
+    @classmethod
+    def _proxy_networks(cls, value: str) -> str:
+        import ipaddress
+
+        for entry in (v.strip() for v in value.split(",")):
+            if not entry:
+                continue
+            try:
+                ipaddress.ip_network(entry, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"{entry!r} ist weder IP-Adresse noch Netz; erwartet wird etwa 127.0.0.1 oder "
+                                 "172.16.0.0/12") from exc
+        return value
+
+    @field_validator("CSRF_TRUSTED_ORIGINS")
+    @classmethod
+    def _origins(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and (urlsplit(entry).scheme not in ("http", "https") or not urlsplit(entry).netloc):
+                raise ValueError(f"{entry!r} ist keine Adresse; erwartet wird etwa https://dmarc.example.com")
+        return value
+
+    @field_validator("PUBLIC_SUFFIX_LIST_PATH")
+    @classmethod
+    def _suffix_list_file(cls, value: str) -> str:
+        from pathlib import Path
+
+        if value and not Path(value).is_file():
+            raise ValueError(f"die Datei {value!r} gibt es nicht; lade sie etwa von publicsuffix.org herunter "
+                             "oder lass die Einstellung leer")
+        return value
+
+    @field_validator("DNS_NAMESERVERS")
+    @classmethod
+    def _nameservers(cls, value: str) -> str:
+        import ipaddress
+
+        for entry in (v.strip() for v in value.split(",")):
+            if not entry:
+                continue
+            try:
+                ipaddress.ip_address(entry)
+            except ValueError as exc:
+                raise ValueError(f"{entry!r} ist keine IP-Adresse; erwartet werden etwa 9.9.9.9,1.1.1.1") from exc
+        return value
+
+    @field_validator("SENDER_ASN_ZONE_V4", "SENDER_ASN_ZONE_V6", "SENDER_ASN_NAME_ZONE")
+    @classmethod
+    def _dns_zone(cls, value: str) -> str:
+        import re
+
+        zone = value.strip().strip(".").lower()
+        if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", zone):
+            raise ValueError(f"{value!r} ist kein DNS-Name, erwartet wird etwa origin.asn.cymru.com")
+        return zone
+
+    @field_validator("SOURCE_RULE_CLASSIFICATION")
+    @classmethod
+    def _source_rule_classification(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in ("suspicious", "ignored"):
+            raise ValueError(f"{value!r} gibt es nicht; erlaubt sind suspicious (verdächtig) und ignored (ignoriert)")
+        return value
+
+    @field_validator("SOURCE_RULE_ASNS")
+    @classmethod
+    def _source_rule_asns(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and not re.fullmatch(r"(?i)(AS)?\d{1,10}", entry):
+                raise ValueError(f"{entry!r} ist keine AS-Nummer; erwartet werden etwa 8193,9198,AS4837")
+        return value
+
+    @field_validator("SOURCE_RULE_COUNTRIES")
+    @classmethod
+    def _source_rule_countries(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and not re.fullmatch(r"[A-Za-z]{2}", entry):
+                raise ValueError(f"{entry!r} ist kein Ländercode aus zwei Buchstaben; erwartet werden etwa KZ,UZ")
+        return value
+
+    @field_validator("SOURCE_RULE_RDNS_PATTERNS")
+    @classmethod
+    def _source_rule_rdns_patterns(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip().strip(".") for v in value.split(",")):
+            if entry and not re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*", entry):
+                raise ValueError(f"{entry!r} ist kein Hostnamen-Muster; erwartet werden Wörter oder Domains wie "
+                                 "dynamic oder telecom.kz")
+        return value
+
+    @field_validator("NTFY_DEFAULT_URL")
+    @classmethod
+    def _http_url(cls, value: str) -> str:
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("muss mit http:// oder https:// beginnen, etwa https://ntfy.sh")
+        return value.rstrip("/")
+
+    @field_validator("NOTIFICATION_SKIP_ALERT_STATUSES")
+    @classmethod
+    def _skippable_alert_statuses(cls, value: str) -> str:
+        allowed = f"möglich sind {', '.join(_SKIPPABLE_ALERT_STATUSES[:-1])} und {_SKIPPABLE_ALERT_STATUSES[-1]}"
+        for entry in (v.strip().lower() for v in value.split(",")):
+            if entry == "open":
+                raise ValueError(f"open würde jede Benachrichtigung verhindern, denn neue Alarme sind offen; {allowed}")
+            if entry and entry not in _SKIPPABLE_ALERT_STATUSES:
+                raise ValueError(f"unbekannter Status {entry!r}; {allowed}, durch Komma getrennt")
+        return value
+
+    @field_validator("POSTAL_API_URL")
+    @classmethod
+    def _postal_url(cls, value: str) -> str:
+        value = value.strip()
+        if value and not value.startswith(("http://", "https://")):
+            raise ValueError("muss mit http:// oder https:// beginnen, etwa https://postal.example.com")
+        return value.rstrip("/")
+
+    @field_validator("HEALTHCHECK_TARGETS")
+    @classmethod
+    def _healthcheck_targets(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        example = "erwartet wird etwa http://127.0.0.1:8000/api/v1/health oder smtp://127.0.0.1:2525"
+        entries = [v.strip() for v in value.split(",") if v.strip()]
+        if not entries:
+            raise ValueError(f"braucht mindestens ein Ziel; {example}")
+        for entry in entries:
+            parts = urlsplit(entry)
+            try:
+                port = parts.port
+            except ValueError:
+                port = 0
+            if parts.scheme not in ("http", "https", "smtp") or not parts.hostname:
+                raise ValueError(f"{entry!r} ist kein Ziel der Prüfung; {example}")
+            if port is not None and not 1 <= port <= 65_535:
+                raise ValueError(f"{entry!r} hat keinen gültigen Port; erlaubt sind 1 bis 65535")
+        return value
+
     @model_validator(mode="after")
     def _rate_order(self):
         if self.UI_PASS_RATE_WARN > self.UI_PASS_RATE_GOOD:
             raise ValueError("UI_PASS_RATE_WARN darf nicht über UI_PASS_RATE_GOOD liegen")
+        if self.DNS_CHECK_DKIM_ACTIVE_DAYS > self.DNS_CHECK_DKIM_DAYS:
+            raise ValueError("DNS_CHECK_DKIM_ACTIVE_DAYS darf nicht über DNS_CHECK_DKIM_DAYS liegen, sonst gelten "
+                             "Selektoren als in Gebrauch, die die Prüfung gar nicht mehr liest")
         return self
 
     @property
@@ -203,6 +736,49 @@ class Settings(BaseSettings):
         p = Path(self.RAW_MAIL_DIR)
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    @property
+    def trusted_proxy_networks(self) -> list:
+        import ipaddress
+
+        return [ipaddress.ip_network(v.strip(), strict=False) for v in self.TRUSTED_PROXIES.split(",") if v.strip()]
+
+    @property
+    def csrf_trusted_origins(self) -> set[str]:
+        from urllib.parse import urlsplit
+
+        hosts = {urlsplit(v.strip()).netloc.lower() for v in self.CSRF_TRUSTED_ORIGINS.split(",") if v.strip()}
+        hosts.add(urlsplit(self.APP_URL).netloc.lower())
+        return {h for h in hosts if h}
+
+    @property
+    def notification_allowed_internal_hosts(self) -> set[str]:
+        return {v.strip().lower().rstrip(".") for v in self.NOTIFICATION_ALLOWED_INTERNAL_HOSTS.split(",")
+                if v.strip()}
+
+    @property
+    def notification_skip_alert_statuses(self) -> set[str]:
+        return {v.strip().lower() for v in self.NOTIFICATION_SKIP_ALERT_STATUSES.split(",") if v.strip()}
+
+    @property
+    def dns_nameservers(self) -> list[str]:
+        return [v.strip() for v in self.DNS_NAMESERVERS.split(",") if v.strip()]
+
+    @property
+    def source_rule_asns(self) -> set[str]:
+        return {v.strip().upper().removeprefix("AS") for v in self.SOURCE_RULE_ASNS.split(",") if v.strip()}
+
+    @property
+    def source_rule_countries(self) -> set[str]:
+        return {v.strip().upper() for v in self.SOURCE_RULE_COUNTRIES.split(",") if v.strip()}
+
+    @property
+    def source_rule_rdns_patterns(self) -> list[str]:
+        return [v.strip().strip(".").lower() for v in self.SOURCE_RULE_RDNS_PATTERNS.split(",") if v.strip()]
+
+    @property
+    def healthcheck_targets(self) -> list[str]:
+        return [v.strip() for v in self.HEALTHCHECK_TARGETS.split(",") if v.strip()]
 
     @property
     def setup_open_paths(self) -> list[str]:
@@ -219,6 +795,8 @@ _VALIDATION_MESSAGES = {
     "int_parsing": "muss eine ganze Zahl sein",
     "float_parsing": "muss eine Zahl sein",
     "bool_parsing": "muss true oder false sein",
+    "literal_error": "muss einer dieser Werte sein: {expected}",
+    "string_too_long": "darf höchstens {max_length} Zeichen lang sein",
 }
 _VALIDATION_PREFIX = "Value error, "
 
@@ -227,7 +805,8 @@ def _describe_error(error: dict) -> str:
     name = ".".join(str(part) for part in error.get("loc", ())) or "?"
     template = _VALIDATION_MESSAGES.get(error.get("type", ""))
     if template:
-        reason = template.format(**error.get("ctx", {}))
+        ctx = {key: str(value).replace(" or ", " oder ") for key, value in error.get("ctx", {}).items()}
+        reason = template.format(**ctx)
     else:
         reason = error.get("msg", "ist ungültig").removeprefix(_VALIDATION_PREFIX)
     if error.get("type") == "value_error" and not error.get("loc"):

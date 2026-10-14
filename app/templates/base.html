@@ -90,6 +90,12 @@
         <div class="app-head__actions">{% block actions %}{% endblock %}</div>
       </div>
       {% endblock %}
+      {% if flash %}
+      <div class="bc-alert bc-alert--{{ flash.kind }}" role="{{ 'alert' if flash.kind == 'bad' else 'status' }}">
+        <p class="bc-alert__title">{{ flash.title }}</p>
+        {% if flash.text %}<p>{{ flash.text }}</p>{% endif %}
+      </div>
+      {% endif %}
       {% block content %}{% endblock %}
     </main>
   </div>

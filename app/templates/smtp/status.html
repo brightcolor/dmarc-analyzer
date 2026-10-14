@@ -35,26 +35,70 @@
   </section>
 </div>
 
+{% if mail %}
+<section class="bc-panel" aria-labelledby="versand-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="versand-titel">Mailversand</h2>{{ ui.state('eingerichtet' if mail.configured else 'aus', 'bc-state--on' if mail.configured else 'bc-state--warn') }}</div>
+    <div class="bc-panel__body">
+      {% if mail.configured %}
+      <dl class="app-dl">
+        <dt>Weg</dt><dd class="app-mono app-break">{{ mail.backend }}</dd>
+        <dt>Absender</dt><dd class="app-break">{{ mail.sender }}</dd>
+      </dl>
+      {% else %}
+      <p style="margin-top:0">Alarme per E-Mail und der Wochenbericht brauchen einen Weg für ausgehende Mails. Trage <code>MAIL_SMTP_HOST</code> und den Zugang in die <code>.env</code> ein, oder <code>MAIL_BACKEND=postal</code> mit <code>POSTAL_API_URL</code> und <code>POSTAL_API_KEY</code>, und starte den Web-Container neu. Prüfen lässt sich der Weg ohne Mail mit <code>python -m app.mail_check</code>.</p>
+      {% endif %}
+    </div>
+</section>
+
+<section class="bc-panel" aria-labelledby="zeitplaner-titel">
+    <div class="bc-panel__head"><h2 class="bc-panel__title" id="zeitplaner-titel">Zeitplaner</h2>{{ ui.state('läuft' if scheduler_enabled else 'aus', 'bc-state--on' if scheduler_enabled else 'bc-state--warn') }}</div>
+    <div class="bc-table-wrap">
+      <table class="bc-table">
+        <thead><tr><th>Aufgabe</th><th class="bc-hide-narrow">Takt</th><th class="bc-hide-narrow">Zuletzt</th><th class="bc-hide-narrow">Ergebnis</th></tr></thead>
+        <tbody>
+          {% for job in jobs %}
+          <tr>
+            <td><span class="bc-row-title">{{ job.label }}</span><span class="bc-row-sub bc-only-narrow">{{ job.interval | interval }} · zuletzt {{ job.run.last_started_at | datetime if job.run else '—' }} · {% if job.run and job.run.last_status %}{{ {'ok': 'fertig', 'running': 'läuft', 'failed': 'Fehler'}.get(job.run.last_status, job.run.last_status) }}{% if job.run.last_error %}: {{ job.run.last_error }}{% endif %}{% else %}noch nicht gelaufen{% endif %}</span></td>
+            <td class="app-nowrap bc-hide-narrow">{{ job.interval | interval }}</td>
+            <td class="app-nowrap bc-hide-narrow">{{ job.run.last_started_at | datetime if job.run else '—' }}</td>
+            <td class="bc-hide-narrow">
+              {% if job.run and job.run.last_status %}
+                {{ ui.state({'ok': 'fertig', 'running': 'läuft', 'failed': 'Fehler'}.get(job.run.last_status, job.run.last_status), {'ok': 'bc-state--on', 'running': 'bc-state--warn', 'failed': 'bc-state--bad'}.get(job.run.last_status, '')) }}
+                {% if job.run.last_error %}<span class="app-reason">{{ job.run.last_error }}</span>{% endif %}
+              {% else %}<span class="app-quiet">noch nicht gelaufen</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+</section>
+{% endif %}
+
 <section class="bc-panel" aria-labelledby="adressen-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="adressen-titel">Empfangsadressen</h2><span class="app-quiet app-small">{{ addresses | length }} Adressen</span></div>
   {% if addresses %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Adresse</th><th>Zweck</th><th>Status</th><th>Zuletzt genutzt</th></tr></thead>
+      <thead><tr><th>Adresse</th><th class="bc-hide-narrow">Zweck</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Zuletzt genutzt</th></tr></thead>
       <tbody>
         {% for addr in addresses %}
         <tr>
-          <td class="app-mono app-break">{{ addr.address }}</td>
-          <td>{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %}</td>
-          <td>{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
-          <td class="app-nowrap">{{ addr.last_used_at | datetime }}</td>
+          <td><span class="bc-row-title app-mono app-break">{{ addr.address }}</span><span class="bc-row-sub bc-only-narrow">{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %} · {{ addr.status | status_text }} · zuletzt genutzt {{ addr.last_used_at | datetime }}</span></td>
+          <td class="bc-hide-narrow">{{ 'Domain' if addr.purpose == 'domain_report' else 'Organisation' }}{% if addr.domain %}: {{ addr.domain.name }}{% endif %}</td>
+          <td class="bc-hide-narrow">{{ ui.state(addr.status | status_text, addr.status | status_state) }}</td>
+          <td class="app-nowrap bc-hide-narrow">{{ addr.last_used_at | datetime }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
+    {% if can.manager %}
     {{ ui.empty("Noch keine Empfangsadresse", "Beim Anlegen einer Domain erzeugt die Anwendung eine Adresse.", "/domains/new", "Domain anlegen") }}
+    {% else %}
+    {{ ui.empty("Noch keine Empfangsadresse", "Beim Anlegen einer Domain erzeugt die Anwendung eine Adresse; Domains legen Mitglieder ab der Rolle Manager an.") }}
+    {% endif %}
   {% endif %}
 </section>
 

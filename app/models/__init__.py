@@ -7,14 +7,19 @@ from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.base import Base  # noqa: F401
 from app.models.dmarc_report import DmarcAuthResult, DmarcRecord, DmarcReport  # noqa: F401
 from app.models.domain import Domain  # noqa: F401
+from app.models.domain_recipient import DomainRecipient  # noqa: F401
+from app.models.failure_report import DmarcFailureReport  # noqa: F401
 from app.models.import_job import ImportError, ImportJob  # noqa: F401
 from app.models.inbound_mail_address import InboundMailAddress  # noqa: F401
+from app.models.login_attempt import LoginAttempt  # noqa: F401
 from app.models.notification import NotificationChannel, NotificationDelivery  # noqa: F401
 from app.models.organization import (  # noqa: F401
     Organization,
     OrganizationMembership,
     PlanDefinition,
 )
+from app.models.scheduler import SchedulerRun  # noqa: F401
+from app.models.sender import SenderApproval  # noqa: F401
 from app.models.settings import AppSettings  # noqa: F401
 from app.models.smtp_inbound import (  # noqa: F401
     InboundMailAttachment,
@@ -22,6 +27,7 @@ from app.models.smtp_inbound import (  # noqa: F401
     SmtpInboundRejection,
 )
 from app.models.source_ip import SourceIp  # noqa: F401
+from app.models.tls_report import TlsReport, TlsReportFailure, TlsReportPolicy  # noqa: F401
 from app.models.user import User  # noqa: F401
 
 # Wire up back-references that require all models to be loaded

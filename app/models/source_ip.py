@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, now_utc, uuid_pk
@@ -29,9 +29,14 @@ class SourceIp(Base):
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # manual: set by a person for this address; sender: taken over from the decision about its sender
+    classification_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
-    # Optional enrichment fields
+    # Lookup results; the sender comes from the catalog in app/data/sender_catalog.json
     reverse_dns: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reverse_dns_confirmed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    sender_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    sender_evidence: Mapped[str | None] = mapped_column(String(300), nullable=True)
     asn: Mapped[str | None] = mapped_column(String(20), nullable=True)
     asn_org: Mapped[str | None] = mapped_column(String(255), nullable=True)
     country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)

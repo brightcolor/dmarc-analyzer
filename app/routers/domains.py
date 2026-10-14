@@ -1,4 +1,3 @@
-import re
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -7,20 +6,32 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_client_ip, get_current_org, get_current_user
-from app.models import DmarcReport, Domain, InboundMailAddress, Organization, User
+from app.dependencies import (
+    get_client_ip,
+    get_current_analyst,
+    get_current_manager,
+    get_current_org,
+    get_current_user,
+)
+from app.models import DmarcReport, Domain, DomainRecipient, InboundMailAddress, Organization, User
 from app.services.audit import log_action
 from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
 from app.services.dmarc_record import suggest_dmarc_record
-from app.services.inbound_address import create_domain_address
+from app.services.dns_check import CheckRefused, run_manual_check, stored_result
+from app.services.domain_recipients import RecipientError, add_recipient, recipients_for, update_recipient
+from app.services.domains import INVALID_NAME, DomainLimitReached, create_domain, normalize_domain
+from app.services.inbound_address import create_domain_address, report_address
+from app.services.mailer import mail_configured
 from app.services.recommendation import get_recommendations_for_domain
 from app.services.report_formats import reporter_formats
-from app.templates_config import templates
+from app.services.tls_reports import DNS_PREFIX, recent_summary, suggest_tls_record
+from app.templates_config import flash, templates
 
 router = APIRouter(prefix="/domains", tags=["domains"])
 
-DOMAIN_RE = re.compile(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+# Filter of the domain list by the state of the last DNS check; "unchecked" means never checked
+DNS_FILTERS = ("error", "warning", "unknown", "ok", "unchecked")
 
 
 def _paginate(q, page: int, per_page: int):
@@ -34,6 +45,7 @@ def domain_list(
     request: Request,
     page: int = Query(1, ge=1),
     search: str | None = Query(None),
+    dns: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -41,20 +53,24 @@ def domain_list(
     q = db.query(Domain).filter_by(organization_id=org.id)
     if search:
         q = q.filter(Domain.name.ilike(f"%{search}%"))
+    if dns == "unchecked":
+        q = q.filter(Domain.dns_status.is_(None))
+    elif dns in DNS_FILTERS:
+        q = q.filter(Domain.dns_status == dns)
     q = q.order_by(Domain.name)
     domains, total, pages = _paginate(q, page, settings.UI_PAGE_SIZE)
 
     return templates.TemplateResponse(request, "domains/index.html", {
         "user": user, "org": org,
         "domains": domains, "total": total, "page": page, "pages": pages,
-        "search": search or "", "page_title": "Domains",
+        "search": search or "", "selected_dns": dns if dns in DNS_FILTERS else "", "page_title": "Domains",
     })
 
 
 @router.get("/new", response_class=HTMLResponse)
 def domain_new_form(
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     return _form(request, user, org)
@@ -69,29 +85,24 @@ def _form(request: Request, user: User, org: Organization, name: str = "", error
 @router.post("/new")
 def domain_create(
     request: Request,
-    name: str = Form(...),
+    name: str = Form(""),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
-    name = name.strip().lower().rstrip(".")
-    if not DOMAIN_RE.match(name):
-        return _form(request, user, org, name, "Das ist kein gültiger Domainname. Erlaubt sind Buchstaben, Ziffern, "
-                     "Punkte und Bindestriche, etwa example.com.")
+    typed = name.strip()
+    name = normalize_domain(typed)
+    if not name:
+        return _form(request, user, org, typed, INVALID_NAME)
 
     if db.query(Domain).filter_by(organization_id=org.id, name=name).first():
         return _form(request, user, org, name, f"Die Domain {name} ist bereits angelegt. Du findest sie in der Liste.")
 
-    if db.query(Domain).filter_by(organization_id=org.id).count() >= org.max_domains:
+    try:
+        domain, _, _ = create_domain(db, org, name)
+    except DomainLimitReached:
         return _form(request, user, org, name, f"Diese Organisation darf höchstens {org.max_domains} Domains "
-                     "anlegen. Bitte den Administrator, die Grenze zu erhöhen.")
-
-    domain = Domain(organization_id=org.id, name=name, is_active=True)
-    db.add(domain)
-    db.flush()
-
-    # Auto-create domain-specific inbound address
-    create_domain_address(db, org, domain)
+                     "anlegen. Bitte den Betreiber, die Grenze zu erhöhen.")
 
     log_action(
         db, "domain.create", org_id=org.id, user_id=user.id,
@@ -135,19 +146,8 @@ def domain_detail(
     )
     report_count = db.query(DmarcReport).filter_by(organization_id=org.id, domain_id=domain_id).count()
 
-    # DMARC record suggestion
-    rua_addr = next(
-        (a.address for a in addresses if a.status == "active" and a.purpose == "domain_report"),
-        None,
-    )
-    if not rua_addr:
-        # Fall back to org-level address
-        org_addr = db.query(InboundMailAddress).filter_by(
-            organization_id=org.id, status="active", purpose="org_report"
-        ).filter(InboundMailAddress.domain_id.is_(None)).first()
-        if org_addr:
-            rua_addr = org_addr.address
-
+    # DMARC record suggestion with the domain's own address, else the one of the organisation
+    rua_addr = report_address(db, org.id, domain_id)
     suggested_record = suggest_dmarc_record(domain, rua_addr) if rua_addr else None
 
     # External DMARC destination verification record
@@ -157,6 +157,7 @@ def domain_detail(
         if rua_domain != domain.name:
             ext_verify_record = f"{domain.name}._report._dmarc.{rua_domain}"
 
+    tls_on = settings.TLS_REPORTS_ENABLED
     return templates.TemplateResponse(request, "domains/detail.html", {
         "user": user, "org": org, "domain": domain,
         "addresses": addresses, "recommendations": recs,
@@ -166,6 +167,13 @@ def domain_detail(
         "ext_verify_record": ext_verify_record,
         "rua_addr": rua_addr,
         "rua_domain": rua_addr.split("@")[1] if rua_addr and "@" in rua_addr else None,
+        "recipients": recipients_for(db, domain), "recipients_max": settings.DOMAIN_RECIPIENTS_MAX,
+        "mail_ready": mail_configured(),
+        "tls_summary": recent_summary(db, org.id, domain_id, days) if tls_on else None,
+        "tls_record": suggest_tls_record(rua_addr) if tls_on and rua_addr else None,
+        "tls_dns_name": f"{DNS_PREFIX}.{domain.name}",
+        "dns_result": stored_result(domain),
+        "dns_auto": settings.DNS_CHECK_ENABLED, "dns_max_age": settings.DNS_CHECK_MAX_AGE_SECONDS,
         "page_title": domain.name,
     })
 
@@ -175,7 +183,7 @@ def domain_toggle(
     request: Request,
     domain_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
@@ -188,7 +196,41 @@ def domain_toggle(
         new_value={"is_active": domain.is_active},
     )
     db.commit()
-    return RedirectResponse(url=f"/domains/{domain_id}", status_code=303)
+    return RedirectResponse(url=f"/domains/{domain.id}", status_code=303)
+
+
+@router.post("/{domain_id}/dns-check")
+def domain_dns_check(
+    request: Request,
+    domain_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_analyst),
+    org: Organization = Depends(get_current_org),
+):
+    domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
+    if not domain:
+        raise HTTPException(status_code=404)
+    back = f"/domains/{domain.id}#dns-pruefung"
+    try:
+        result = run_manual_check(db, domain)
+    except CheckRefused as refused:
+        flash(request, "warn", f"{domain.name} jetzt nicht geprüft", str(refused))
+        return RedirectResponse(url=back, status_code=303)
+    db.commit()
+    errors, warnings = result.count("error"), result.count("warning")
+    if errors:
+        flash(request, "bad", f"{domain.name}: {errors} Fehler im DNS",
+              "Die betroffenen Prüfungen stehen in der Liste; der passende Eintrag steht jeweils daneben.")
+    elif warnings:
+        flash(request, "warn", f"{domain.name}: {warnings} {'Hinweis' if warnings == 1 else 'Hinweise'} zum DNS",
+              "Die Berichte kommen trotzdem an; die Hinweise stehen in der Liste.")
+    elif result.status == "unknown":
+        flash(request, "warn", f"{domain.name}: DNS-Prüfung unvollständig",
+              "Mindestens eine Prüfung blieb offen; warum, steht in der Liste. Die tägliche Prüfung versucht es "
+              "erneut, oder du startest sie nach der kurzen Sperre noch einmal.")
+    else:
+        flash(request, "ok", f"{domain.name}: DNS in Ordnung", "Alle Einträge, die die Anwendung braucht, stehen.")
+    return RedirectResponse(url=back, status_code=303)
 
 
 @router.post("/{domain_id}/add-address")
@@ -196,7 +238,7 @@ def domain_add_address(
     request: Request,
     domain_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
     domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
@@ -204,4 +246,103 @@ def domain_add_address(
         raise HTTPException(status_code=404)
     create_domain_address(db, org, domain)
     db.commit()
-    return RedirectResponse(url=f"/domains/{domain_id}", status_code=303)
+    return RedirectResponse(url=f"/domains/{domain.id}", status_code=303)
+
+
+# Further recipients of the domain ------------------------------------------------------
+
+def _own_domain(db: Session, org: Organization, domain_id: str) -> Domain:
+    domain = db.query(Domain).filter_by(id=domain_id, organization_id=org.id).first()
+    if not domain:
+        raise HTTPException(status_code=404)
+    return domain
+
+
+def _what(alerts: bool, digest: bool) -> str:
+    if alerts and digest:
+        return "die Alarme und den Wochenbericht"
+    return "die Alarme" if alerts else "den Wochenbericht"
+
+
+def _back(domain: Domain) -> RedirectResponse:
+    return RedirectResponse(url=f"/domains/{domain.id}#empfaenger", status_code=303)
+
+
+@router.post("/{domain_id}/recipients")
+def domain_add_recipient(
+    request: Request,
+    domain_id: str,
+    email: str = Form(""),
+    name: str = Form(""),
+    alerts: str = Form(""),
+    digest: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_manager),
+    org: Organization = Depends(get_current_org),
+):
+    domain = _own_domain(db, org, domain_id)
+    try:
+        recipient = add_recipient(db, domain, email, name, alerts=bool(alerts), digest=bool(digest))
+    except RecipientError as exc:
+        flash(request, "bad", "Empfänger nicht eingetragen", str(exc))
+        return _back(domain)
+    log_action(db, "domain_recipient.add", org_id=org.id, user_id=user.id, resource_type="domain",
+               resource_id=domain.id, new_value={"email": recipient.email, "alerts": recipient.alerts,
+                                                 "digest": recipient.digest}, ip_address=get_client_ip(request))
+    db.commit()
+    flash(request, "ok", "Empfänger eingetragen",
+          f"{recipient.email} bekommt ab jetzt {_what(recipient.alerts, recipient.digest)} für {domain.name}.")
+    return _back(domain)
+
+
+def _own_recipient(db: Session, domain: Domain, recipient_id: str) -> DomainRecipient:
+    recipient = db.query(DomainRecipient).filter_by(id=recipient_id, domain_id=domain.id).first()
+    if not recipient:
+        raise HTTPException(status_code=404)
+    return recipient
+
+
+@router.post("/{domain_id}/recipients/{recipient_id}")
+def domain_update_recipient(
+    request: Request,
+    domain_id: str,
+    recipient_id: str,
+    alerts: str = Form(""),
+    digest: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_manager),
+    org: Organization = Depends(get_current_org),
+):
+    domain = _own_domain(db, org, domain_id)
+    recipient = _own_recipient(db, domain, recipient_id)
+    try:
+        update_recipient(recipient, alerts=bool(alerts), digest=bool(digest))
+    except RecipientError as exc:
+        flash(request, "bad", "Nicht gespeichert", str(exc))
+        return _back(domain)
+    log_action(db, "domain_recipient.update", org_id=org.id, user_id=user.id, resource_type="domain",
+               resource_id=domain.id, new_value={"email": recipient.email, "alerts": recipient.alerts,
+                                                 "digest": recipient.digest}, ip_address=get_client_ip(request))
+    db.commit()
+    flash(request, "ok", "Gespeichert",
+          f"{recipient.email} bekommt {_what(recipient.alerts, recipient.digest)} für {domain.name}.")
+    return _back(domain)
+
+
+@router.post("/{domain_id}/recipients/{recipient_id}/delete")
+def domain_delete_recipient(
+    request: Request,
+    domain_id: str,
+    recipient_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_manager),
+    org: Organization = Depends(get_current_org),
+):
+    domain = _own_domain(db, org, domain_id)
+    recipient = _own_recipient(db, domain, recipient_id)
+    log_action(db, "domain_recipient.delete", org_id=org.id, user_id=user.id, resource_type="domain",
+               resource_id=domain.id, old_value={"email": recipient.email}, ip_address=get_client_ip(request))
+    db.delete(recipient)
+    db.commit()
+    flash(request, "ok", "Empfänger entfernt", f"{recipient.email} bekommt nichts mehr für {domain.name}.")
+    return _back(domain)

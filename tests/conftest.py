@@ -6,6 +6,15 @@ import os
 
 # The app engine must never point at a real database file during tests
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+# Tests call the jobs themselves; outgoing mail only goes to the local test server of a test
+os.environ["SCHEDULER_ENABLED"] = "false"
+os.environ["MAIL_SMTP_HOST"] = ""
+# Tests that need DNS answers bring their own
+os.environ["SENDER_LOOKUP_ENABLED"] = "false"
+os.environ["DNS_CHECK_ENABLED"] = "false"
+os.environ["NOTIFICATION_BLOCK_PRIVATE_TARGETS"] = "false"
+# Alerts by mail go out at once; the bundling tests set their own window
+os.environ["NOTIFICATION_EMAIL_BUNDLE_SECONDS"] = "0"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -17,6 +26,20 @@ from app.database import get_db
 from app.main import app
 from app.security import hash_password, generate_inbound_token
 from app.config import settings
+
+from tests.helpers import session, session_factory, smtp_server, web  # noqa: E402,F401 - shared fixtures
+
+
+@pytest.fixture(autouse=True)
+def no_real_dns(monkeypatch):
+    """Tests bring their own DNS answers; a lookup that reaches the network fails loudly."""
+    import dns.resolver
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("Echte DNS-Abfrage im Test: gib dem Test einen eigenen Resolver.")
+
+    monkeypatch.setattr(dns.resolver.Resolver, "resolve", refuse)
+    monkeypatch.setattr(dns.resolver, "resolve", refuse)
 
 # Force SQLite for tests
 TEST_DB_URL = "sqlite:///:memory:"

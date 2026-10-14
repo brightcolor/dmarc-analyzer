@@ -9,15 +9,14 @@
   {% if orgs %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Organisation</th><th>Kennung</th><th><span class="bc-sr">Aktion</span></th></tr></thead>
+      <thead><tr><th>Organisation</th><th class="bc-hide-narrow">Kennung</th><th class="bc-hide-narrow"><span class="bc-sr">Aktion</span></th></tr></thead>
       <tbody>
         {% for o in orgs %}
         <tr>
-          <td>{{ o.name }}{% if org and org.id == o.id %} {{ ui.state('aktuell', 'bc-state--on') }}{% endif %}</td>
-          <td class="app-mono">{{ o.slug }}</td>
-          <td><div class="bc-row-actions">
-            <form method="post" action="/organizations/select"><input type="hidden" name="org_id" value="{{ o.id }}"><button class="bc-button" type="submit">Öffnen</button></form>
-          </div></td>
+          {% set open_form %}<form method="post" action="/organizations/select"><input type="hidden" name="org_id" value="{{ o.id }}"><button class="bc-button" type="submit">Öffnen</button></form>{% endset %}
+          <td><span class="bc-row-title">{{ o.name }}{% if org and org.id == o.id %} {{ ui.state('aktuell', 'bc-state--on') }}{% endif %}</span><span class="bc-row-sub bc-only-narrow app-mono">{{ o.slug }}</span><div class="bc-row-actions bc-only-narrow">{{ open_form }}</div></td>
+          <td class="app-mono bc-hide-narrow">{{ o.slug }}</td>
+          <td class="bc-hide-narrow"><div class="bc-row-actions">{{ open_form }}</div></td>
         </tr>
         {% endfor %}
       </tbody>
