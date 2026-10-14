@@ -26,6 +26,7 @@ from app.config import settings
 from app.models import DmarcAuthResult, DmarcRecord, SenderApproval, SourceIp
 from app.security import utcnow
 from app.services.sender_lookup import LookupResult, lookup
+from app.services.source_rules import apply_rules, apply_rules_all
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +262,8 @@ def decide(db: Session, org_id: str, sender_key: str, decision: str, user_id: st
     changed = 0
     for source in db.query(SourceIp).filter_by(organization_id=org_id, sender_key=sender_key):
         changed += apply_decision(source, approval, catalog)
+        # Without a decision about the sender the source rules apply again
+        apply_rules(source)
     db.flush()
     return changed
 
@@ -277,6 +280,7 @@ def classify_manually(source: SourceIp, classification: str, user_id: str, db: S
         if source.sender_key:
             approval = decisions(db, source.organization_id).get(source.sender_key)
             apply_decision(source, approval, load_catalog())
+        apply_rules(source)
         return
     source.classification = classification
     source.classification_source = "manual"
@@ -324,6 +328,7 @@ def identify_source(db: Session, source: SourceIp, catalog: Catalog, approvals: 
     source.sender_evidence = result.evidence[:300] if result.evidence else None
     source.enriched_at = now
     apply_decision(source, approvals.get(source.sender_key) if source.sender_key else None, catalog)
+    apply_rules(source)
     return result.sender is not None
 
 
@@ -331,6 +336,9 @@ def refresh_sources(db: Session, now: datetime | None = None, organization_id: s
                     limit: int | None = None, everything: bool = False) -> RefreshResult:
     """Identify new sources and those not looked at for SENDER_LOOKUP_REFRESH_DAYS."""
     now = now or utcnow()
+    if organization_id is None:
+        # A change of the source rule settings reaches the sources that are already known
+        apply_rules_all(db)
     query = db.query(SourceIp)
     if organization_id:
         query = query.filter(SourceIp.organization_id == organization_id)

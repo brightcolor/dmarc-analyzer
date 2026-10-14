@@ -27,6 +27,7 @@
           <textarea class="bc-textarea" id="c-notes" name="notes" rows="3" placeholder="z. B. Newsletter-Dienst der Marketingabteilung">{{ sip.notes or '' }}</textarea>
         </div>
         {% if sip.classification_source == 'sender' %}<p class="app-small app-quiet" style="margin:12px 0 0">{{ sip.classification_reason }}, gilt für alle Adressen dieses Dienstes. Eine Einstufung hier gilt nur für diese Adresse; „unbekannt“ übergibt sie wieder an die Entscheidung über den Absender.</p>
+        {% elif sip.classification_source == 'rule' %}<p class="app-small app-quiet" style="margin:12px 0 0">{{ sip.classification_reason }}. Eine Einstufung hier gilt für diese Adresse und geht der Quellenregel vor.</p>
         {% elif sip.classified_at %}<p class="app-small app-quiet" style="margin:12px 0 0">Zuletzt eingestuft am {{ sip.classified_at | datetime }}.</p>{% endif %}
       </div>
       <div class="bc-panel__foot"><button class="bc-button" type="submit">Speichern</button></div>

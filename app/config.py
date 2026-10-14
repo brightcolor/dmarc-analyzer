@@ -437,6 +437,33 @@ class Settings(BaseSettings):
         "", description="Zusätzlicher Absenderkatalog als JSON-Datei. Einträge mit gleichem Schlüssel ersetzen "
                         "die eingebauten, neue kommen dazu.",
     )
+    SOURCE_RULES_ENABLED: bool = Field(
+        True, description="Quellenregeln anwenden: Netze, Hostnamen und Länder aus den folgenden Einstellungen stufen "
+                          "neue Quellen ohne Entscheidung selbst ein.",
+    )
+    SOURCE_RULE_CLASSIFICATION: str = Field(
+        "suspicious", description="Einstufung, die eine Quellenregel setzt: suspicious (verdächtig, bleibt in den "
+                                  "Auswertungen sichtbar) oder ignored (ignoriert).",
+    )
+    SOURCE_RULE_ASNS: str = Field(
+        "", description="AS-Nummern, durch Komma getrennt, deren Quellen die Quellenregel trifft, etwa "
+                        "8193,9198,AS4837. Leer für keine.",
+    )
+    SOURCE_RULE_COUNTRIES: str = Field(
+        "", description="Ländercodes (ISO, zwei Buchstaben), durch Komma getrennt, deren Quellen die Quellenregel "
+                        "trifft, etwa KZ,UZ. Leer für keine.",
+    )
+    SOURCE_RULE_RDNS_PATTERNS: str = Field(
+        "dialup, dynamic, dhcp, ppp, pppoe, adsl, dsl, pool",
+        description="Hostnamen-Muster, durch Komma getrennt. Ein Wort ohne Punkt trifft jeden Hostnamen, der es "
+                    "als Teil enthält (dynamic trifft host-1-2-3-4.dynamic.example.net); eine Domain wie "
+                    "telecom.kz trifft diese Domain und ihre Unterdomains.",
+    )
+    SOURCE_RULE_MAX_PASSED_MESSAGES: int = Field(
+        0, ge=0, le=1_000_000,
+        description="Höchstzahl Nachrichten, die eine Quelle schon mit DMARC-Erfolg verschickt haben darf, damit "
+                    "die Quellenregel sie trifft. 0: nur Quellen, von denen noch nie etwas bestanden hat.",
+    )
     PUBLIC_SUFFIX_LIST_PATH: str = Field(
         "", description="Eigene Fassung der Public Suffix List (public_suffix_list.dat) für die Organisationsdomain; "
                         "leer für die mitgelieferte.",
@@ -603,6 +630,45 @@ class Settings(BaseSettings):
             raise ValueError(f"{value!r} ist kein DNS-Name, erwartet wird etwa origin.asn.cymru.com")
         return zone
 
+    @field_validator("SOURCE_RULE_CLASSIFICATION")
+    @classmethod
+    def _source_rule_classification(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in ("suspicious", "ignored"):
+            raise ValueError(f"{value!r} gibt es nicht; erlaubt sind suspicious (verdächtig) und ignored (ignoriert)")
+        return value
+
+    @field_validator("SOURCE_RULE_ASNS")
+    @classmethod
+    def _source_rule_asns(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and not re.fullmatch(r"(?i)(AS)?\d{1,10}", entry):
+                raise ValueError(f"{entry!r} ist keine AS-Nummer; erwartet werden etwa 8193,9198,AS4837")
+        return value
+
+    @field_validator("SOURCE_RULE_COUNTRIES")
+    @classmethod
+    def _source_rule_countries(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and not re.fullmatch(r"[A-Za-z]{2}", entry):
+                raise ValueError(f"{entry!r} ist kein Ländercode aus zwei Buchstaben; erwartet werden etwa KZ,UZ")
+        return value
+
+    @field_validator("SOURCE_RULE_RDNS_PATTERNS")
+    @classmethod
+    def _source_rule_rdns_patterns(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip().strip(".") for v in value.split(",")):
+            if entry and not re.fullmatch(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*", entry):
+                raise ValueError(f"{entry!r} ist kein Hostnamen-Muster; erwartet werden Wörter oder Domains wie "
+                                 "dynamic oder telecom.kz")
+        return value
+
     @field_validator("NTFY_DEFAULT_URL")
     @classmethod
     def _http_url(cls, value: str) -> str:
@@ -697,6 +763,18 @@ class Settings(BaseSettings):
     @property
     def dns_nameservers(self) -> list[str]:
         return [v.strip() for v in self.DNS_NAMESERVERS.split(",") if v.strip()]
+
+    @property
+    def source_rule_asns(self) -> set[str]:
+        return {v.strip().upper().removeprefix("AS") for v in self.SOURCE_RULE_ASNS.split(",") if v.strip()}
+
+    @property
+    def source_rule_countries(self) -> set[str]:
+        return {v.strip().upper() for v in self.SOURCE_RULE_COUNTRIES.split(",") if v.strip()}
+
+    @property
+    def source_rule_rdns_patterns(self) -> list[str]:
+        return [v.strip().strip(".").lower() for v in self.SOURCE_RULE_RDNS_PATTERNS.split(",") if v.strip()]
 
     @property
     def healthcheck_targets(self) -> list[str]:

@@ -38,7 +38,7 @@
         <tr>
           <td><a class="bc-row-title app-mono" href="/source-ips/{{ s.id }}">{{ s.ip_address }}</a><span class="bc-row-sub">{% if s.reverse_dns %}<span class="app-break">{{ s.reverse_dns }}</span>{% endif %}<span class="bc-only-narrow">{% if s.reverse_dns %} · {% endif %}{% if s.sender_key %}{{ catalog.name(s.sender_key) }} · {% endif %}{{ s.classification | classification_text }} · {{ s.total_messages | plural('Nachricht', 'Nachrichten') }} · {{ s.pass_rate | percent }} bestanden</span></span></td>
           <td class="bc-hide-narrow">{% if s.sender_key %}<a href="/source-ips?sender={{ s.sender_key }}">{{ catalog.name(s.sender_key) }}</a>{% elif s.enriched_at %}<span class="app-quiet app-nowrap">nicht zugeordnet</span>{% else %}<span class="app-quiet app-nowrap">wird ermittelt</span>{% endif %}</td>
-          <td class="bc-hide-narrow">{{ ui.state(s.classification | classification_text, s.classification | classification_state) }}{% if s.classification_source == 'sender' %}<span class="app-reason">über den Absender</span>{% endif %}</td>
+          <td class="bc-hide-narrow">{{ ui.state(s.classification | classification_text, s.classification | classification_state) }}{% if s.classification_source == 'sender' %}<span class="app-reason">über den Absender</span>{% endif %}{% if s.classification_source == 'rule' %}<span class="app-reason">über die Quellenregeln</span>{% endif %}</td>
           <td class="bc-num bc-hide-narrow">{{ s.total_messages | num }}</td>
           <td class="bc-hide-narrow">{{ ui.state(s.pass_rate | percent, s.pass_rate | rate_state) }}</td>
           <td class="app-nowrap bc-hide-narrow">{{ s.first_seen_at | date }}</td>

@@ -309,6 +309,27 @@ vertrauenswürdig ein, auch Adressen, die er später nutzt; **Verdächtig** mach
 ihre Einstufung. Neue Adressen eines freigegebenen Dienstes lösen keinen Alarm „Neue unbekannte
 Versandquelle“ aus.
 
+### Quellenregeln
+
+Botnetze schicken Mails mit gefälschtem Absender von Hunderten Einwahl-Adressen, jede Adresse mit ein bis
+drei Nachrichten. Quellenregeln stufen solche Adressen selbst ein, sobald die Anwendung sie erkannt hat. Sie
+stehen in den Einstellungen:
+
+| Einstellung | Vorgabe | Wirkung |
+|---|---|---|
+| `SOURCE_RULES_ENABLED` | `true` | schaltet alle Quellenregeln ein oder aus |
+| `SOURCE_RULE_CLASSIFICATION` | `suspicious` | Einstufung durch eine Regel: `suspicious` (bleibt in den Auswertungen sichtbar) oder `ignored` |
+| `SOURCE_RULE_ASNS` | leer | AS-Nummern, durch Komma getrennt, etwa `8193,9198,AS4837` |
+| `SOURCE_RULE_COUNTRIES` | leer | Ländercodes, durch Komma getrennt, etwa `KZ,UZ` |
+| `SOURCE_RULE_RDNS_PATTERNS` | `dialup, dynamic, dhcp, ppp, pppoe, adsl, dsl, pool` | Wörter treffen jeden Hostnamen, der sie als Teil enthält (`dynamic` trifft `host-1-2-3-4.dynamic.example.net`); eine Domain wie `telecom.kz` trifft sie und ihre Unterdomains |
+| `SOURCE_RULE_MAX_PASSED_MESSAGES` | `0` | so viele Nachrichten darf eine Quelle schon mit DMARC-Erfolg verschickt haben, damit eine Regel sie trifft |
+
+Eine Einstufung durch die Regeln kommt nach jeder Entscheidung: Wer eine Adresse einzeln einstuft oder
+ihren Absender freigibt, behält sein Ergebnis. Hebt jemand eine Entscheidung über einen Absender auf, gilt
+die Regel wieder. Die Regeln filtern keine Mails; sie sortieren, was Alarme „Neue unbekannte Versandquelle“
+auslöst. Den Schutz vor gefälschten Absendern bringt die DMARC-Richtlinie `p=quarantine` oder `p=reject` der
+eigenen Domain.
+
 Der Zeitplaner ordnet neue Adressen im Takt von `SENDER_LOOKUP_INTERVAL_SECONDS` zu und prüft
 bekannte nach `SENDER_LOOKUP_REFRESH_DAYS` erneut. Als Nachweis zählen, in dieser Reihenfolge:
 
@@ -518,6 +539,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `RETENTION_*`, `SMTP_REJECTION_RETENTION_DAYS` | täglich, 30 Tage | Aufräumen |
 | `SENDER_LOOKUP_*`, `SENDER_ASN_*` | an, jede Minute, 30 Tage | Zuordnung der Absender per DNS |
 | `SENDER_CATALOG_PATH` | leer | eigener Absenderkatalog |
+| `SOURCE_RULE*` | an, Hostnamen-Muster für Einwahl-Adressen | Quellenregeln: Netze, Länder und Hostnamen, die Quellen selbst einstufen |
 | `TRUSTED_PROXIES` | leer | Proxys, deren `X-Forwarded-For` zählt |
 | `CSRF_TRUSTED_ORIGINS` | leer | weitere Adressen, von denen Formulare kommen dürfen |
 | `LOGIN_*` | 10 je Konto, 20 je Adresse, 15 Minuten | Sperre gegen Raten |

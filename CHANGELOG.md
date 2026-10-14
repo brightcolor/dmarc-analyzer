@@ -7,6 +7,24 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.12.0] – 2026-10-14
+
+### Neu
+
+- **Quellenregeln**: Netze (AS-Nummern), Länder und Hostnamen-Muster aus den Einstellungen stufen Quellen
+  ohne Entscheidung selbst ein, vorgegeben als „verdächtig“. Das beruhigt Botnetz-Wellen, bei denen
+  Hunderte Einwahl-Adressen mit gefälschtem Absender je einen Alarm „Neue unbekannte Versandquelle“
+  auslösen. Die Einstellungen heißen `SOURCE_RULES_ENABLED`, `SOURCE_RULE_CLASSIFICATION`
+  (`suspicious` oder `ignored`), `SOURCE_RULE_ASNS`, `SOURCE_RULE_COUNTRIES`, `SOURCE_RULE_RDNS_PATTERNS`
+  (Vorgabe `dialup, dynamic, dhcp, ppp, pppoe, adsl, dsl, pool`) und `SOURCE_RULE_MAX_PASSED_MESSAGES`
+  (Vorgabe 0).
+- Eine Regel trifft nur Quellen, von denen höchstens `SOURCE_RULE_MAX_PASSED_MESSAGES` Nachrichten DMARC
+  bestanden haben. Eine Entscheidung über die Adresse, über ihren Absender oder von Hand geht jeder Regel
+  vor; hebt jemand eine Entscheidung auf, gilt die Regel wieder.
+- Quellenliste und Adressseite zeigen „über die Quellenregeln“ mit dem Grund. Ändern sich die Einstellungen,
+  prüft der Zeitplaner alle bekannten Quellen beim nächsten Lauf neu.
+- Ungültige Werte (AS-Nummer, Ländercode, Muster, Einstufung) stoppen den Start mit einer lesbaren Meldung.
+
 ## [0.11.7] – 2026-10-09
 
 ### Geändert
