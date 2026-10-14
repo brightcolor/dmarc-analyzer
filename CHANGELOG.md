@@ -7,6 +7,16 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.14.0] – 2026-10-14
+
+### Neu
+
+- Die Liste **Quellen → IP-Adressen** nennt je Adresse die Domains, für die sie in Berichten Mails verschickt
+  hat. Jeder Name führt zum Filter dieser Domain; weitere Domains stehen als „+n“ daneben, der Tooltip nennt
+  sie. Wie viele Namen die Liste zeigt, bestimmt `UI_SOURCE_DOMAINS_SHOWN` (Vorgabe 3).
+- Neuer Filter **Domain** neben Absender und Einstufung: Er zeigt die Adressen, die für die gewählte Domain
+  Mails verschickt haben. Die Auswahl listet die Domains der Organisation.
+
 ## [0.13.0] – 2026-10-14
 
 ### Neu

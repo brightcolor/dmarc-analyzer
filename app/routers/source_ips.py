@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_analyst, get_current_org, get_current_user
-from app.models import DmarcRecord, DmarcReport, Organization, SourceIp, User
+from app.models import DmarcRecord, DmarcReport, Domain, Organization, SourceIp, User
 from app.services.senders import classify_manually, decisions, load_catalog
 from app.templates_config import templates
 
@@ -14,6 +14,23 @@ router = APIRouter(prefix="/source-ips", tags=["source_ips"])
 
 
 CLASSIFICATIONS = ("unknown", "trusted", "suspicious", "ignored")
+
+
+def _domains_of(db: Session, org_id: str, ips: list[str]) -> dict[str, list[str]]:
+    """Names of the domains each address sent mail for, per address, sorted."""
+    if not ips:
+        return {}
+    rows = (
+        db.query(DmarcRecord.source_ip, Domain.name)
+        .join(Domain, Domain.id == DmarcRecord.domain_id)
+        .filter(DmarcRecord.organization_id == org_id, DmarcRecord.source_ip.in_(ips))
+        .distinct()
+        .all()
+    )
+    found: dict[str, list[str]] = {}
+    for ip, name in rows:
+        found.setdefault(ip, []).append(name)
+    return {ip: sorted(names) for ip, names in found.items()}
 
 
 def _paginate(q, page: int, per_page: int):
@@ -29,6 +46,7 @@ def source_ip_list(
     classification: str | None = Query(None),
     search: str | None = Query(None),
     sender: str | None = Query(None),
+    domain: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -53,10 +71,23 @@ def source_ip_list(
     else:
         sender = None
 
+    domain_names = [name for (name,) in db.query(Domain.name).filter_by(organization_id=org.id).order_by(Domain.name)]
+    if domain in domain_names:
+        q = q.filter(SourceIp.ip_address.in_(
+            db.query(DmarcRecord.source_ip)
+            .join(Domain, Domain.id == DmarcRecord.domain_id)
+            .filter(DmarcRecord.organization_id == org.id, Domain.name == domain)
+        ))
+    else:
+        domain = None
+
     ips, total, pages = _paginate(q, page, settings.UI_PAGE_SIZE)
     return templates.TemplateResponse(request, "source_ips/index.html", {
         "user": user, "org": org,
         "ips": ips, "total": total, "page": page, "pages": pages,
+        "domains_by_ip": _domains_of(db, org.id, [s.ip_address for s in ips]),
+        "domain_names": domain_names, "domain_filter": domain or "",
+        "domains_shown": settings.UI_SOURCE_DOMAINS_SHOWN,
         "classification_filter": classification if classification in CLASSIFICATIONS else "",
         "classifications": CLASSIFICATIONS, "search": search or "",
         "sender_filter": sender or "", "senders": [(key, catalog.name(key)) for key in present],

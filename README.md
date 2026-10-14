@@ -300,6 +300,13 @@ Mit `TLS_REPORTS_ENABLED=false` behandelt die Anwendung solche Mails wie jede an
 
 ---
 
+## IP-Adressen und Domains
+
+Unter **Quellen → IP-Adressen** steht jede Adresse, die in einem Bericht Mails für deine Domains verschickt hat.
+Die Spalte **Domains** nennt, für welche Domains sie das tat (die ersten `UI_SOURCE_DOMAINS_SHOWN`, weitere als
+„+n“ mit Tooltip). Ein Klick auf einen Domainnamen filtert die Liste; der Filter **Domain** über der Tabelle
+macht dasselbe und lässt sich mit Absender und Einstufung kombinieren.
+
 ## Absender mit Namen
 
 Unter **Quellen → Absender** stehen die Dienste, die für deine Domains Mails verschicken, mit Zahl der
@@ -521,6 +528,7 @@ Start mit einer Meldung, welche Einstellung welche Grenze verletzt.
 | `SMTP_INBOUND_TLS_*` | aus, TLS 1.2 | STARTTLS für den Mailempfang mit Zertifikat und Schlüssel |
 | `DISPLAY_TIMEZONE` | `Europe/Berlin` | Zeitzone der Oberfläche |
 | `UI_CHART_DAYS` | `30` | Tage im Verlaufsdiagramm |
+| `UI_SOURCE_DOMAINS_SHOWN` | `3` | Domains je IP-Adresse in der Quellenliste, weitere als „+n“ |
 | `RECOMMENDATION_*` | siehe `.env.example` | Vorgabe für die Schwellen der Empfehlungen, [je Organisation änderbar](#schwellen-je-organisation) |
 | `ARCHIVE_MAX_*` | 20 MB, 50 MB, 50 Dateien | Grenzen für Anhänge und Archive |
 | `SETUP_OPEN_PATHS` | `/static,/api,/health,…` | Pfade, die während der Ersteinrichtung offen bleiben |

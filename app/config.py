@@ -494,6 +494,11 @@ class Settings(BaseSettings):
     UI_RECENT_LIMIT: int = Field(
         10, ge=3, le=100, description="Einträge in Kurzlisten wie „Letzte Berichte“ und „Letzte Importe“.",
     )
+    UI_SOURCE_DOMAINS_SHOWN: int = Field(
+        3, ge=1, le=50,
+        description="Anzahl Domains, die die Liste der IP-Adressen je Adresse nennt; weitere stehen als „+n“ "
+                    "daneben und im Tooltip.",
+    )
     UI_RECORDS_PAGE_SIZE: int = Field(
         50, ge=5, le=1000, description="Datensätze je Seite in der Detailansicht eines Berichts.",
     )
