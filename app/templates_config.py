@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
 
 from app.config import settings
 from app.services import report_formats, tls_reports
@@ -63,6 +64,7 @@ NAVIGATION = [
     NavModule("Verwaltung", "sliders", [
         NavLink("Benutzer", "/users", ("/users",)),
         NavLink("API-Tokens", "/api-tokens", ("/api-tokens",)),
+        NavLink("Schwellen", "/settings/thresholds", ("/settings/thresholds",)),
         NavLink("Organisationen", "/organizations", ("/organizations",), superadmin_only=True),
         NavLink("API-Dokumentation", "/api/docs", external=True),
     ]),
@@ -232,13 +234,31 @@ def _tls_rate_state(rate: float | None) -> str:
     return "bc-state--bad"
 
 
-def _rate_state(rate: float | None) -> str:
+def _pass_rate_bounds(request: Request | None) -> tuple[float, float]:
+    """Green and yellow bound of the current organisation, read once per request."""
+    default = (settings.UI_PASS_RATE_GOOD, settings.UI_PASS_RATE_WARN)
+    if request is None or "session" not in request.scope:
+        return default
+    cached = getattr(request.state, "pass_rate_bounds", None)
+    if cached is None:
+        from app.services.org_settings import thresholds_for
+
+        def lookup(db):
+            limits = thresholds_for(db, request.session.get("org_id"))
+            return limits.UI_PASS_RATE_GOOD, limits.UI_PASS_RATE_WARN
+        cached = request.state.pass_rate_bounds = _with_db(request, lookup, default)
+    return cached
+
+
+@pass_context
+def _rate_state(context, rate: float | None) -> str:
     """State pill modifier for a DMARC pass rate."""
     if rate is None:
         return ""
-    if rate >= settings.UI_PASS_RATE_GOOD:
+    good, warn = _pass_rate_bounds(context.get("request"))
+    if rate >= good:
         return "bc-state--on"
-    if rate >= settings.UI_PASS_RATE_WARN:
+    if rate >= warn:
         return "bc-state--warn"
     return "bc-state--bad"
 

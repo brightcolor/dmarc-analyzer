@@ -1,14 +1,14 @@
 """
 Rule-based recommendation engine for DMARC domains.
-Deterministic and explainable; all thresholds come from settings.
+Deterministic and explainable; thresholds come from the organisation or the settings.
 """
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models import DmarcRecord, DmarcReport, Domain, InboundMailAddress, SourceIp
+from app.services.org_settings import thresholds_for
 
 ENFORCING_POLICIES = ("quarantine", "reject")
 POLICY_ACTION = {"quarantine": "in den Spam-Ordner", "reject": "abgewiesen"}
@@ -43,9 +43,10 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
     if not domain:
         return recs
 
+    limits = thresholds_for(db, org_id)
     now = datetime.now(UTC)
-    window_days = settings.RECOMMENDATION_WINDOW_DAYS
-    stale_days = settings.RECOMMENDATION_STALE_REPORT_DAYS
+    window_days = limits.RECOMMENDATION_WINDOW_DAYS
+    stale_days = limits.RECOMMENDATION_STALE_REPORT_DAYS
     window_start = now - timedelta(days=window_days)
     stale_since = now - timedelta(days=stale_days)
 
@@ -143,9 +144,9 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         .count()
     )
 
-    enough_for_policy = total_msgs >= settings.RECOMMENDATION_MIN_MESSAGES
+    enough_for_policy = total_msgs >= limits.RECOMMENDATION_MIN_MESSAGES
     if (domain.dmarc_policy == "none" and enough_for_policy
-            and pass_rate >= settings.RECOMMENDATION_QUARANTINE_PASS_RATE):
+            and pass_rate >= limits.RECOMMENDATION_QUARANTINE_PASS_RATE):
         recs.append(Recommendation(
             code="READY_FOR_QUARANTINE",
             severity="info",
@@ -158,7 +159,7 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         ))
 
     if (domain.dmarc_policy == "quarantine" and enough_for_policy and unknown_ips == 0
-            and pass_rate >= settings.RECOMMENDATION_REJECT_PASS_RATE):
+            and pass_rate >= limits.RECOMMENDATION_REJECT_PASS_RATE):
         recs.append(Recommendation(
             code="READY_FOR_REJECT",
             severity="info",
@@ -170,8 +171,8 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
             data_basis=f"Bestehensquote {_pct(pass_rate)}, {_n(total_msgs)} Nachrichten, 0 unbekannte Quellen.",
         ))
 
-    enough_for_fail_rate = total_msgs >= settings.RECOMMENDATION_FAIL_MIN_MESSAGES
-    if enough_for_fail_rate and fail_rate > settings.RECOMMENDATION_HIGH_FAIL_RATE:
+    enough_for_fail_rate = total_msgs >= limits.RECOMMENDATION_FAIL_MIN_MESSAGES
+    if enough_for_fail_rate and fail_rate > limits.RECOMMENDATION_HIGH_FAIL_RATE:
         recs.append(Recommendation(
             code="HIGH_FAIL_RATE",
             severity="warning",
@@ -184,7 +185,7 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
         ))
 
     if (domain.dmarc_policy in ENFORCING_POLICIES and enough_for_fail_rate
-            and fail_rate > settings.RECOMMENDATION_ENFORCED_FAIL_RATE):
+            and fail_rate > limits.RECOMMENDATION_ENFORCED_FAIL_RATE):
         recs.append(Recommendation(
             code="POLICY_ACTIVE_FAILURES",
             severity="critical",
@@ -215,7 +216,7 @@ def get_recommendations_for_domain(db: Session, org_id: str, domain_id: str) -> 
     spf_only_count = sum(r.count for r in records if r.spf_aligned and not r.dkim_aligned)
     if spf_only_count > 0 and total_msgs > 0:
         share = spf_only_count / total_msgs * 100
-        if share >= settings.RECOMMENDATION_SPF_ONLY_SHARE:
+        if share >= limits.RECOMMENDATION_SPF_ONLY_SHARE:
             recs.append(Recommendation(
                 code="DKIM_MISSING_FOR_SPF_SENDERS",
                 severity="info",

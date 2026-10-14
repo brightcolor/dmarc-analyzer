@@ -7,6 +7,25 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.13.0] – 2026-10-14
+
+### Neu
+
+- Alarmregeln lassen sich bearbeiten und löschen (ab der Rolle Manager). Die Art bleibt fest, weil eine
+  Regel offene Alarme zum selben Befund zusammenfasst; gelöschte Regeln lassen ihre Alarme im Verlauf.
+  Regeln der Betreiber-Arten ändert und löscht nur der Betreiber. Anlegen, Ändern und Löschen stehen im
+  Protokoll.
+- **Verwaltung → Schwellen**: Jede Organisation stellt die Grenzen der Ampel (`UI_PASS_RATE_*`) und der
+  Empfehlungen (`RECOMMENDATION_*`) selbst ein. Ein leeres Feld übernimmt den Wert aus der `.env`. Ändern
+  dürfen Administratoren; Empfehlungen, Alarme „bereit für eine strengere Policy“, Wochenbericht, Übersicht
+  und Ampelfarben rechnen mit den Werten der Organisation.
+
+### Geändert
+
+- Die Seite **Empfang → Status** sagt, dass ihre Werte für den ganzen Server in der `.env` stehen und erst
+  nach einem Neustart gelten.
+- Ein abgelehntes Formular „Neue Regel“ behält die Eingaben.
+
 ## [0.12.0] – 2026-10-14
 
 ### Neu

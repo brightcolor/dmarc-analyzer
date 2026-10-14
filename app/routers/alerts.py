@@ -40,6 +40,7 @@ from app.services.notification import (
     send_event,
     test_event,
 )
+from app.services.org_settings import plain_number
 from app.templates_config import _format_date as format_date
 from app.templates_config import flash, templates
 
@@ -64,20 +65,96 @@ def _alert_types_for(user: User) -> dict[str, str]:
 
 # Rules ---------------------------------------------------------------------------------
 
+RULE_DEFAULTS = {"name": "", "alert_type": "", "domain_id": "", "threshold": "", "time_window_minutes": "60",
+                 "cooldown_minutes": "60", "severity": "warning", "channel_ids": []}
+
+
+class RuleFormError(ValueError):
+    pass
+
+
+def _rule_form(rule: AlertRule) -> dict:
+    return {
+        "name": rule.name, "alert_type": rule.alert_type, "domain_id": rule.domain_id or "",
+        "threshold": plain_number(rule.threshold),
+        "time_window_minutes": str(rule.time_window_minutes), "cooldown_minutes": str(rule.cooldown_minutes),
+        "severity": rule.severity, "channel_ids": json.loads(rule.notification_channel_ids or "[]"),
+    }
+
+
+def _rule_values(db: Session, org: Organization, form: dict) -> dict:
+    """Checked column values for a rule; the alert type is checked by the caller."""
+    try:
+        threshold = float(form["threshold"].replace(",", ".")) if form["threshold"].strip() else None
+        window = int(form["time_window_minutes"])
+        cooldown = int(form["cooldown_minutes"])
+    except ValueError:
+        raise RuleFormError("Schwelle, Zeitraum und Pause müssen Zahlen sein, etwa 10 oder 60. Die Schwelle darf "
+                            "leer bleiben.") from None
+    if window < 1 or cooldown < 0 or (threshold is not None and threshold < 0):
+        raise RuleFormError("Zeitraum muss mindestens 1 Minute sein, Pause und Schwelle dürfen nicht negativ sein.")
+    if form["severity"] not in SEVERITIES:
+        raise RuleFormError("Wähle als Schwere Hinweis, Warnung oder kritisch.")
+    domain_id = form["domain_id"] or None
+    if domain_id and not db.query(Domain.id).filter_by(id=domain_id, organization_id=org.id).first():
+        raise RuleFormError("Die gewählte Domain gehört nicht zu dieser Organisation.")
+    own_channels = {c.id for c in db.query(NotificationChannel.id).filter_by(organization_id=org.id)}
+    if any(cid not in own_channels for cid in form["channel_ids"]):
+        raise RuleFormError("Ein gewählter Kanal gehört nicht zu dieser Organisation.")
+    return {
+        "domain_id": domain_id, "threshold": threshold, "time_window_minutes": window,
+        "cooldown_minutes": cooldown, "severity": form["severity"],
+        "notification_channel_ids": json.dumps(form["channel_ids"]),
+    }
+
+
+def _rule_snapshot(rule: AlertRule) -> dict:
+    return {key: getattr(rule, key) for key in ("name", "domain_id", "threshold", "time_window_minutes",
+                                                "cooldown_minutes", "severity", "notification_channel_ids")}
+
+
+def _own_rule(db: Session, org: Organization, rule_id: str) -> AlertRule:
+    rule = db.query(AlertRule).filter_by(id=rule_id, organization_id=org.id).first()
+    if not rule:
+        raise HTTPException(status_code=404)
+    return rule
+
+
+def _editable_rule(db: Session, user: User, org: Organization, rule_id: str) -> AlertRule:
+    """Rules of the server-wide mail types stay with the operator, like creating them."""
+    rule = _own_rule(db, org, rule_id)
+    if rule.alert_type not in _alert_types_for(user):
+        raise HTTPException(status_code=403, detail="Regeln dieser Art ändert nur der Betreiber.")
+    return rule
+
+
+def _rule_choices(db: Session, org: Organization) -> dict:
+    return {
+        "domains": db.query(Domain).filter_by(organization_id=org.id, is_active=True).order_by(Domain.name).all(),
+        "channels": db.query(NotificationChannel).filter_by(organization_id=org.id, is_active=True).all(),
+        "channel_types": CHANNEL_TYPES, "severities": SEVERITIES, "alert_types": ALERT_TYPES,
+    }
+
+
 def _rules_page(request: Request, db: Session, user: User, org: Organization, error: str | None = None,
-                status_code: int = 200):
+                status_code: int = 200, form: dict | None = None):
     rules = db.query(AlertRule).filter_by(organization_id=org.id).order_by(AlertRule.created_at.desc()).all()
-    domains = db.query(Domain).filter_by(organization_id=org.id, is_active=True).order_by(Domain.name).all()
-    channels = db.query(NotificationChannel).filter_by(organization_id=org.id, is_active=True).all()
     alert_types = _alert_types_for(user)
     return templates.TemplateResponse(request, "alerts/rules.html", {
-        "user": user, "org": org, "error": error,
-        "rules": rules, "domains": domains, "channels": channels,
-        "alert_types": ALERT_TYPES, "choosable_types": alert_types,
+        "user": user, "org": org, "error": error, "rules": rules, **_rule_choices(db, org),
+        "form": form or RULE_DEFAULTS, "choosable_types": alert_types,
         "type_hints": {key: hint for key, hint in alert_type_hints().items() if key in alert_types},
-        "channel_types": CHANNEL_TYPES, "severities": SEVERITIES,
         "eval_minutes": max(settings.ALERT_EVAL_INTERVAL_SECONDS // 60, 1),
         "page_title": "Alarmregeln",
+    }, status_code=status_code)
+
+
+def _rule_edit_page(request: Request, db: Session, user: User, org: Organization, rule: AlertRule,
+                    form: dict, error: str | None = None, status_code: int = 200):
+    return templates.TemplateResponse(request, "alerts/rule_edit.html", {
+        "user": user, "org": org, "error": error, "rule": rule, "form": form, **_rule_choices(db, org),
+        "type_hint": alert_type_hints().get(rule.alert_type),
+        "page_title": f"Regel „{rule.name}“ bearbeiten",
     }, status_code=status_code)
 
 
@@ -106,43 +183,73 @@ def create_alert_rule(
     user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
-    try:
-        threshold_value = float(threshold.replace(",", ".")) if threshold.strip() else None
-        window = int(time_window_minutes)
-        cooldown = int(cooldown_minutes)
-    except ValueError:
-        return _rules_page(request, db, user, org, "Schwelle, Zeitraum und Pause müssen Zahlen sein, etwa 10 oder "
-                           "60. Die Schwelle darf leer bleiben.", 400)
-    if window < 1 or cooldown < 0 or (threshold_value is not None and threshold_value < 0):
-        return _rules_page(request, db, user, org, "Zeitraum muss mindestens 1 Minute sein, Pause und Schwelle "
-                           "dürfen nicht negativ sein.", 400)
+    form = {"name": name, "alert_type": alert_type, "domain_id": domain_id or "", "threshold": threshold,
+            "time_window_minutes": time_window_minutes, "cooldown_minutes": cooldown_minutes,
+            "severity": severity, "channel_ids": channel_ids or []}
     if alert_type not in _alert_types_for(user):
         return _rules_page(request, db, user, org, "Diese Art von Alarm steht dir nicht zur Wahl. Wähle eine aus der "
-                           "Liste.", 400)
-    if severity not in SEVERITIES:
-        return _rules_page(request, db, user, org, "Wähle als Schwere Hinweis, Warnung oder kritisch.", 400)
-    if domain_id and not db.query(Domain.id).filter_by(id=domain_id, organization_id=org.id).first():
-        return _rules_page(request, db, user, org, "Die gewählte Domain gehört nicht zu dieser Organisation.", 400)
-    own_channels = {c.id for c in db.query(NotificationChannel.id).filter_by(organization_id=org.id)}
-    if any(cid not in own_channels for cid in channel_ids or []):
-        return _rules_page(request, db, user, org, "Ein gewählter Kanal gehört nicht zu dieser Organisation.", 400)
+                           "Liste.", 400, form)
+    try:
+        values = _rule_values(db, org, form)
+    except RuleFormError as exc:
+        return _rules_page(request, db, user, org, str(exc), 400, form)
 
-    rule = AlertRule(
-        organization_id=org.id,
-        domain_id=domain_id or None,
-        name=name.strip()[:255] or ALERT_TYPES[alert_type],
-        alert_type=alert_type,
-        threshold=threshold_value,
-        time_window_minutes=window,
-        cooldown_minutes=cooldown,
-        severity=severity,
-        is_active=True,
-        notification_channel_ids=json.dumps(channel_ids or []),
-    )
+    rule = AlertRule(organization_id=org.id, name=name.strip()[:255] or ALERT_TYPES[alert_type],
+                     alert_type=alert_type, is_active=True, **values)
     db.add(rule)
+    db.flush()
+    log_action(db, "rule.create", org_id=org.id, user_id=user.id, resource_type="alert_rule", resource_id=rule.id,
+               new_value={"alert_type": alert_type, **_rule_snapshot(rule)}, ip_address=get_client_ip(request))
     db.commit()
     flash(request, "ok", "Regel angelegt", f"„{rule.name}“ wird ab jetzt geprüft, nach jedem Import und "
           f"alle {max(settings.ALERT_EVAL_INTERVAL_SECONDS // 60, 1)} Minuten.")
+    return RedirectResponse(url="/alerts/rules", status_code=303)
+
+
+@router.get("/rules/{rule_id}/edit", response_class=HTMLResponse)
+def edit_rule_page(
+    rule_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_manager),
+    org: Organization = Depends(get_current_org),
+):
+    rule = _editable_rule(db, user, org, rule_id)
+    return _rule_edit_page(request, db, user, org, rule, _rule_form(rule))
+
+
+@router.post("/rules/{rule_id}/edit")
+def update_rule(
+    rule_id: str,
+    request: Request,
+    name: str = Form(""),
+    domain_id: str | None = Form(None),
+    threshold: str = Form(""),
+    time_window_minutes: str = Form("60"),
+    cooldown_minutes: str = Form("60"),
+    severity: str = Form("warning"),
+    channel_ids: list[str] | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_manager),
+    org: Organization = Depends(get_current_org),
+):
+    rule = _editable_rule(db, user, org, rule_id)
+    form = {"name": name, "alert_type": rule.alert_type, "domain_id": domain_id or "", "threshold": threshold,
+            "time_window_minutes": time_window_minutes, "cooldown_minutes": cooldown_minutes,
+            "severity": severity, "channel_ids": channel_ids or []}
+    try:
+        values = _rule_values(db, org, form)
+    except RuleFormError as exc:
+        return _rule_edit_page(request, db, user, org, rule, form, str(exc), 400)
+
+    before = _rule_snapshot(rule)
+    rule.name = name.strip()[:255] or ALERT_TYPES.get(rule.alert_type, rule.name)
+    for key, value in values.items():
+        setattr(rule, key, value)
+    log_action(db, "rule.update", org_id=org.id, user_id=user.id, resource_type="alert_rule", resource_id=rule.id,
+               old_value=before, new_value=_rule_snapshot(rule), ip_address=get_client_ip(request))
+    db.commit()
+    flash(request, "ok", "Regel gespeichert", f"„{rule.name}“ gilt ab der nächsten Prüfung mit den neuen Werten.")
     return RedirectResponse(url="/alerts/rules", status_code=303)
 
 
@@ -154,11 +261,30 @@ def toggle_rule(
     user: User = Depends(get_current_manager),
     org: Organization = Depends(get_current_org),
 ):
-    rule = db.query(AlertRule).filter_by(id=rule_id, organization_id=org.id).first()
-    if not rule:
-        raise HTTPException(status_code=404)
+    rule = _own_rule(db, org, rule_id)
     rule.is_active = not rule.is_active
     db.commit()
+    return RedirectResponse(url="/alerts/rules", status_code=303)
+
+
+@router.post("/rules/{rule_id}/delete")
+def delete_rule(
+    rule_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_manager),
+    org: Organization = Depends(get_current_org),
+):
+    rule = _editable_rule(db, user, org, rule_id)
+    # Alarms stay in the history without their rule; the ORM cascade on AlertRule.events would delete them
+    db.query(AlertEvent).filter_by(rule_id=rule.id, organization_id=org.id).update(
+        {AlertEvent.rule_id: None}, synchronize_session=False)
+    db.expire(rule, ["events"])
+    log_action(db, "rule.delete", org_id=org.id, user_id=user.id, resource_type="alert_rule", resource_id=rule.id,
+               old_value={"alert_type": rule.alert_type, **_rule_snapshot(rule)}, ip_address=get_client_ip(request))
+    db.delete(rule)
+    db.commit()
+    flash(request, "ok", "Regel gelöscht", f"„{rule.name}“ wird nicht mehr geprüft. Ihre Alarme bleiben im Verlauf.")
     return RedirectResponse(url="/alerts/rules", status_code=303)
 
 
