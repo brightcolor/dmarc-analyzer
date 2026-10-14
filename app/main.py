@@ -195,6 +195,7 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=static_path), name="static")
 
     from app.routers import (
+        account,
         alerts,
         api_tokens,
         auth,
@@ -231,6 +232,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(api_tokens.router)
     app.include_router(thresholds.router)
+    app.include_router(account.router)
     app.include_router(help.router)
     app.include_router(api_v1.router)
 

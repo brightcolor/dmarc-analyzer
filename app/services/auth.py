@@ -46,6 +46,12 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
     return user
 
 
+def start_session(session, user: User) -> None:
+    """Sign the user in: remember who and when, so a later password change can end older sessions."""
+    session["user_id"] = user.id
+    session["iat"] = utcnow().timestamp()
+
+
 def get_user_by_id(db: Session, user_id: str) -> User | None:
     return db.query(User).filter_by(id=user_id, is_active=True).first()
 

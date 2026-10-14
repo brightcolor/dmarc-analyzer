@@ -7,6 +7,23 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.15.0] – 2026-10-15
+
+### Neu
+
+- **Konto** (Link „Konto“ oben rechts neben deinem Namen): Jedes Mitglied ändert dort Name, E-Mail-Adresse
+  und Passwort. Eine neue E-Mail-Adresse, also der Anmeldename, gilt sofort; den Namen allein ändert man ohne
+  Passwort. Wer die Adresse oder das Passwort ändert, gibt das aktuelle Passwort ein. Ein falsches Passwort
+  zählt wie eine fehlgeschlagene Anmeldung und sperrt nach `LOGIN_MAX_FAILURES_PER_ACCOUNT` Versuchen für
+  `LOGIN_LOCKOUT_SECONDS`, damit eine gestohlene Sitzung das Passwort nicht erraten kann. Das neue Passwort
+  folgt den üblichen Regeln (`PASSWORD_MIN_LENGTH`), mit Knopf „Vorschlagen“ und Stärkeanzeige.
+- Ein neues Passwort beendet alle anderen Sitzungen des Kontos; die aktuelle bleibt angemeldet. Dafür trägt
+  jede Anmeldung einen Zeitstempel, das Konto den Zeitpunkt der letzten Passwortänderung
+  (`users.credentials_changed_at`, Migration 0010). Sitzungen aus der Zeit vor der ersten Änderung bleiben
+  gültig, bis jemand das Passwort ändert.
+- Änderungen von Name, Adresse und Passwort stehen im Protokoll (`user.name_change`, `user.email_change`
+  mit alter und neuer Adresse, `user.password_change` ohne Passwörter).
+
 ## [0.14.0] – 2026-10-14
 
 ### Neu

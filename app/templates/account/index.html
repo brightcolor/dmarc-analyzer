@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block eyebrow %}Konto{% endblock %}
+{% block lede %}<p>Name, E-Mail-Adresse und Passwort von {{ user.email }}. Die E-Mail-Adresse ist dein Anmeldename.</p>{% endblock %}
+
+{% macro invalid(section, field) %}{% if error and error_section == section and error.field == field %} aria-invalid="true" aria-describedby="konto-fehler-{{ section }}"{% endif %}{% endmacro %}
+
+{% block content %}
+<section class="bc-panel" aria-labelledby="profil-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="profil-titel">Name und E-Mail-Adresse</h2></div>
+  <form method="post" action="/account/profile">
+    <div class="bc-panel__body">
+      {% if error and error_section == 'profile' %}
+      <div class="bc-alert bc-alert--bad" role="alert" id="konto-fehler-profile"><p class="bc-alert__title">Die Angaben wurden nicht gespeichert</p><p>{{ error }}</p></div>
+      {% endif %}
+      <div class="bc-formgrid">
+        <label for="k-name">Name</label>
+        <input class="bc-input" id="k-name" name="full_name" value="{{ values.full_name }}" maxlength="255" autocomplete="name"{{ invalid('profile', 'full_name') }}>
+        <p class="bc-formgrid__hint">Erscheint oben rechts. Leer lassen zeigt stattdessen deine E-Mail-Adresse.</p>
+        <label for="k-email">E-Mail-Adresse</label>
+        <input class="bc-input" id="k-email" name="email" type="email" value="{{ values.email }}" required maxlength="255" autocomplete="email"{{ invalid('profile', 'email') }}>
+        <p class="bc-formgrid__hint">Mit dieser Adresse meldest du dich an. Eine neue Adresse gilt sofort.</p>
+        <label for="k-current">Aktuelles Passwort</label>
+        <input class="bc-input" id="k-current" name="current_password" type="password" autocomplete="current-password"{{ invalid('profile', 'current_password') }}>
+        <p class="bc-formgrid__hint">Nötig, sobald du die E-Mail-Adresse änderst. Für den Namen allein brauchst du es nicht.</p>
+      </div>
+    </div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Speichern</button></div>
+  </form>
+</section>
+
+<section class="bc-panel" aria-labelledby="passwort-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="passwort-titel">Passwort ändern</h2></div>
+  <form method="post" action="/account/password">
+    <div class="bc-panel__body">
+      {% if error and error_section == 'password' %}
+      <div class="bc-alert bc-alert--bad" role="alert" id="konto-fehler-password"><p class="bc-alert__title">Das Passwort wurde nicht geändert</p><p>{{ error }}</p></div>
+      {% endif %}
+      <div class="app-field">
+        <label for="p-current">Aktuelles Passwort</label>
+        <input class="bc-input" id="p-current" name="current_password" type="password" required autocomplete="current-password"{{ invalid('password', 'current_password') }}>
+      </div>
+      <div class="app-field">
+        <label for="p-new">Neues Passwort</label>
+        <div class="bc-addon">
+          <input class="bc-input" id="p-new" name="password" type="password" required autocomplete="new-password" minlength="{{ password_min_length }}"{{ invalid('password', 'password') }}>
+          <button class="bc-button bc-button--secondary app-addon-button" type="button" data-password-toggle="p-new" aria-pressed="false"><svg class="bc-icon" aria-hidden="true" style="width:15px;height:15px"><use href="#i-eye"/></svg><span class="bc-sr">Passwort zeigen</span></button>
+        </div>
+        <div class="app-strength" data-password-strength="p-new" data-strength-text="p-strength" data-min-length="{{ password_min_length }}" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+        <p class="app-strength-text" id="p-strength" aria-live="polite"></p>
+      </div>
+      <div class="app-field">
+        <label for="p-new2">Neues Passwort wiederholen</label>
+        <input class="bc-input" id="p-new2" name="password_confirm" type="password" required autocomplete="new-password">
+      </div>
+      <div class="app-inline">
+        <button class="bc-button bc-button--secondary" type="button" data-password-generate="p-new" data-password-repeat="p-new2" data-password-length="20"><svg class="bc-icon" aria-hidden="true" style="width:15px;height:15px"><use href="#i-dice"/></svg>Vorschlagen</button>
+        <span class="app-small app-quiet">mindestens {{ password_min_length }} Zeichen</span>
+      </div>
+      <p class="app-small app-quiet">Mit dem neuen Passwort bist du auf diesem Gerät weiter angemeldet. Alle anderen Geräte melden sich ab.</p>
+    </div>
+    <div class="bc-panel__foot"><button class="bc-button" type="submit">Passwort ändern</button></div>
+  </form>
+</section>
+{% endblock %}

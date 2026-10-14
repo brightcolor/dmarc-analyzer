@@ -74,7 +74,7 @@
         <span class="bc-avatar" aria-hidden="true">{{ (user.full_name or user.email)[:1] | upper }}</span>
         <span class="bc-user__text">
           <span class="bc-user__name">{{ user.full_name or user.email }}</span>
-          <span class="app-user__meta">{% if org %}<a href="/organizations/select" title="Organisation wechseln">{{ org.name }}</a> · {% endif %}<a class="bc-logout" href="/auth/logout">Abmelden</a></span>
+          <span class="app-user__meta">{% if org %}<a href="/organizations/select" title="Organisation wechseln">{{ org.name }}</a> · {% endif %}<a href="/account" title="Name, E-Mail-Adresse und Passwort ändern">Konto</a> · <a class="bc-logout" href="/auth/logout">Abmelden</a></span>
         </span>
       </div>
     </header>

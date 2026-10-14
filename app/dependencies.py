@@ -2,6 +2,8 @@
 FastAPI dependency functions for auth, tenant context, and DB sessions.
 """
 
+from datetime import UTC
+
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -11,13 +13,31 @@ from app.services.auth import get_user_by_id, validate_api_token
 
 # ─── Session-based auth ────────────────────────────────────────────────────────
 
+def session_is_current(user: User, session) -> bool:
+    """False when the password changed after the session began. Sessions from before the first change stay valid."""
+    changed = user.credentials_changed_at
+    if changed is None:
+        return True
+    issued = session.get("iat")
+    if not isinstance(issued, int | float):
+        return False
+    if changed.tzinfo is None:
+        changed = changed.replace(tzinfo=UTC)
+    return issued + 0.001 >= changed.timestamp()
+
+
 def get_current_user_optional(
     request: Request, db: Session = Depends(get_db)
 ) -> User | None:
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    return get_user_by_id(db, user_id)
+    user = get_user_by_id(db, user_id)
+    if user and not session_is_current(user, request.session):
+        # The password changed after this session began: the session ends
+        request.session.clear()
+        return None
+    return user
 
 
 def get_current_user(

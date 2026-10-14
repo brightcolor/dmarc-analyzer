@@ -652,6 +652,16 @@ derselben Adresse zurück; Umlaute wandelt die Anwendung in die xn--Form, die au
 
 ---
 
+## Konto
+
+Über **Konto** oben rechts neben dem Namen ändert jedes Mitglied Name, E-Mail-Adresse und Passwort.
+
+- Die E-Mail-Adresse ist der Anmeldename und gilt nach dem Speichern sofort. Dafür und für ein neues Passwort
+  gibt man das aktuelle Passwort ein; den Namen allein ändert man ohne.
+- Ein falsches Passwort zählt wie eine fehlgeschlagene Anmeldung (siehe [Sicherheit](#sicherheit)).
+- Ein neues Passwort beendet alle anderen angemeldeten Geräte; das aktuelle bleibt angemeldet.
+- Das Protokoll hält Änderungen von Name, Adresse und Passwort fest, ohne Passwörter.
+
 ## Rollen
 
 Jedes Mitglied hat in seiner Organisation eine Rolle. Höhere Rollen dürfen alles, was die darunter
@@ -678,7 +688,8 @@ hat.
   Das Sitzungscookie trägt `SameSite=Lax`.
 - **Sperre gegen Raten.** Nach `LOGIN_MAX_FAILURES_PER_ACCOUNT` Fehlversuchen für ein Konto oder
   `LOGIN_MAX_FAILURES_PER_IP` von einer Adresse innerhalb von `LOGIN_FAILURE_WINDOW_SECONDS` sperrt die
-  Anmeldung für `LOGIN_LOCKOUT_SECONDS`. Dasselbe gilt für den Einrichtungscode.
+  Anmeldung für `LOGIN_LOCKOUT_SECONDS`. Dasselbe gilt für den Einrichtungscode und für das aktuelle Passwort
+  auf der Seite „Konto“.
 - **Benachrichtigungen nur an öffentliche Adressen.** Webhook, ntfy und Slack dürfen nicht auf
   localhost, private oder reservierte Netze zeigen; die Anwendung prüft das beim Anlegen und vor jedem
   Versand. Interne Dienste wie ein eigener ntfy-Server kommen über `NOTIFICATION_ALLOWED_INTERNAL_HOSTS`

@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_client_ip, get_current_user_optional
+from app.services.account import EMAIL_RE
 from app.services.audit import log_action
-from app.services.auth import authenticate_user, create_user, get_user_orgs
+from app.services.auth import authenticate_user, create_user, get_user_orgs, start_session
 from app.services.domains import plan_limits
 from app.services.login_guard import locked_until, record_attempt
 from app.services.passwords import password_problem
@@ -18,8 +19,6 @@ from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Dots only between domain labels: overlapping character classes made long input backtrack quadratically
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$")
 SETUP_CODE_HINT = ("Du findest ihn im Serverlog beim Start der Anwendung oder mit dem Befehl "
                    "docker compose exec web python -m app.setup_code.")
 
@@ -113,7 +112,7 @@ def setup_submit(
 
     request.app.state.setup_done = True
     request.session.clear()
-    request.session["user_id"] = user.id
+    start_session(request.session, user)
     request.session["org_id"] = org.id
     return RedirectResponse(url="/dashboard", status_code=303)
 
@@ -158,7 +157,7 @@ def login(
         return RedirectResponse(url="/auth/login", status_code=303)
 
     request.session.clear()
-    request.session["user_id"] = user.id
+    start_session(request.session, user)
 
     # Pick the organisation automatically when there is exactly one
     orgs = get_user_orgs(db, user.id) if not user.is_superadmin else []

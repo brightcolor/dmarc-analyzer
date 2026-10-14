@@ -27,6 +27,8 @@ class User(Base):
         DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A session older than this moment ends: set when the password changes
+    credentials_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     memberships: Mapped[list["OrganizationMembership"]] = relationship(
         "OrganizationMembership",
