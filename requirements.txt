@@ -40,7 +40,7 @@ tzdata==2025.2
 dnspython==2.7.0
 
 # Public Suffix List for organizational domains
-publicsuffixlist==1.0.2.20260925
+publicsuffixlist==1.0.2.20261007
 
 # Testing
 pytest==9.1.1
