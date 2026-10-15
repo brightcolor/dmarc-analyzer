@@ -22,7 +22,7 @@ python-multipart==0.0.32
 # Settings
 pydantic==2.13.5
 pydantic-settings==2.6.1
-python-dotenv==1.2.2
+python-dotenv==1.2.4
 
 # SMTP Inbound
 aiosmtpd==1.4.6
