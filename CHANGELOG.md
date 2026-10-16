@@ -7,6 +7,13 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.16.2] – 2026-10-16
+
+### Behoben
+
+- Die Bezeichnung einer Quelle in Alarmen wiederholt den Anbieter nicht mehr, wenn der Dienst schon in ihm steckt
+  („Google“ statt „Google, Google LLC“).
+
 ## [0.16.1] – 2026-10-16
 
 ### Geändert

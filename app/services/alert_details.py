@@ -55,7 +55,7 @@ def source_label(source: SourceIp | None) -> str:
         return ""
     name = load_catalog().name(source.sender_key) if source.sender_key else (source.reverse_dns or "")
     provider = provider_name(source.asn_org)
-    if provider and provider.lower() in name.lower():
+    if provider and name and (provider.lower() in name.lower() or name.lower() in provider.lower()):
         provider = ""
     return ", ".join(part for part in (name, provider) if part)
 

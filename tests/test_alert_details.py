@@ -373,6 +373,12 @@ class TestSourceLabel:
         source.asn_org = "HETZNER-AS - Hetzner"
         assert source_label(source) == "mail.hetzner.example"
 
+    def test_name_contained_in_the_provider_is_not_repeated(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=1)
+        source.sender_key, source.asn_org = "google", "GOOGLE - Google LLC"
+        assert source_label(source) == "Google"
+
     def test_label_of_nothing_is_empty(self, session):
         assert source_label(None) == ""
         source = add_source(session, make_org(session), "198.51.100.1", total=1)
