@@ -438,7 +438,15 @@ def _provider(value: str | None) -> str:
     return provider_name(value)
 
 
+def _source_label(source) -> str:
+    """Short name of a source: service or host name, then the provider, without repeating itself."""
+    from app.services.alert_details import source_label
+
+    return source_label(source)
+
+
 env.filters["provider"] = _provider
+env.filters["source_label"] = _source_label
 env.filters["severity_text"] = _lookup(SEVERITY_TEXT, keep_unknown=True)
 env.filters["status_state"] = _lookup(STATUS_STATE)
 env.filters["status_text"] = _lookup(STATUS_TEXT, keep_unknown=True)

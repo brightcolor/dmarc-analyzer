@@ -46,8 +46,7 @@
           <td>
             {% if s.source %}<a class="bc-row-title app-mono" href="/source-ips/{{ s.source.id }}">{{ s.ip }}</a>{% else %}<span class="bc-row-title app-mono">{{ s.ip }}</span>{% endif %}
             <span class="bc-row-sub">
-              {% if s.sender_name %}{{ s.sender_name }}{% elif s.source and s.source.reverse_dns %}<span class="app-break">{{ s.source.reverse_dns }}</span>{% endif %}
-              {% if s.source and s.source.asn_org %}<span class="app-quiet"> · {{ s.source.asn_org | provider }}{% if s.source.country_code %}, {{ s.source.country_code }}{% endif %}</span>{% endif %}
+              {% if s.source %}<span class="app-break">{{ s.source | source_label }}</span>{% if s.source.country_code %}<span class="app-quiet"> · {{ s.source.country_code }}</span>{% endif %}{% endif %}
               {% if s.source %}<br>{{ ui.state(s.source.classification | classification_text, s.source.classification | classification_state) }}{% endif %}
               <span class="bc-only-narrow"><br>SPF {{ s.spf_state[0] }}, DKIM {{ s.dkim_state[0] }} · {{ s.failed | num }} von {{ s.total | num }}</span>
             </span>

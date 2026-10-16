@@ -7,6 +7,14 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.18.2] – 2026-10-17
+
+### Behoben
+
+- „Gesehen“ und „Erledigt“ stehen in der Alarmliste wirklich nebeneinander.
+- Die Detailseite eines Alarms nennt die Quelle mit Dienst oder Hostname, dem Anbieter und dem Land, ohne den Anbieter
+  zu wiederholen („Google · US“ statt „Google · Google LLC, US“).
+
 ## [0.18.1] – 2026-10-17
 
 ### Neu

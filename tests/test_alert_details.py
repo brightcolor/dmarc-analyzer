@@ -524,3 +524,25 @@ class TestRefreshKeepsCauses:
         assert {c["key"] for c in json.loads(event.metrics)["causes"]} == {"spoof", "unknown"}
         assert "Alter Text" not in event.description
         assert refresh_event_texts(session) == 0
+
+
+class TestSourceLineOnThePage:
+    def test_service_and_provider_are_not_repeated(self, web, session_factory):
+        from app.models import Domain, Organization
+        from tests.test_web import _login, _seed
+
+        ids = _seed(session_factory)
+        db = session_factory()
+        org = db.get(Organization, ids["org"])
+        domain = db.query(Domain).filter_by(organization_id=org.id).first()
+        source = add_source(db, org, "198.51.100.1", total=3, failed=3)
+        source.sender_key, source.asn_org, source.country_code = "google", "GOOGLE - Google LLC", "US"
+        add_report(db, org, domain, [("198.51.100.1", 3, False, False, False)], created_at=NOW - timedelta(minutes=5))
+        event = raise_event(db, org_id=org.id, alert_type="dmarc_fail_rate", severity="warning", title="x",
+                            domain_id=domain.id, metrics={"window_minutes": 1440}, now=NOW)
+        db.commit()
+        event_id = event.id
+        db.close()
+        _login(web, ids["org"])
+        page = web.get(f"/alerts/events/{event_id}").text
+        assert "Google LLC" not in page and ">Google<" in page and "· US" in page
