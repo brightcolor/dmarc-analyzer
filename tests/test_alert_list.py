@@ -172,3 +172,69 @@ class TestPages:
     ])
     def test_return_target_stays_inside_the_alerts(self, target, expected):
         assert _safe_events_url(target) == expected
+
+
+class TestKindGroups:
+    def _missing(self, db, org, domain):
+        from tests.helpers import make_domain
+
+        domain_row = make_domain(db, org, domain)
+        return raise_event(db, org_id=org.id, alert_type="reports_missing", severity="info",
+                           title=f"Seit 2 Tagen keine Berichte für {domain}", domain_id=domain_row.id, now=NOW)
+
+    def test_alerts_that_arise_per_domain_form_one_group_over_all_domains(self, session):
+        org = make_org(session)
+        for name in ("a.example", "b.example", "c.example"):
+            self._missing(session, org, name)
+        groups = group_rows(load_rows(session, org.id, None, None, ALERT_TYPES)[0], ALERT_TYPES)
+        assert len(groups) == 1 and groups[0].count == 3 and groups[0].domain == ""
+        assert groups[0].domain_names == ["a.example", "b.example", "c.example"]
+
+    def test_kinds_come_from_the_settings(self, session, monkeypatch):
+        org = make_org(session)
+        for name in ("a.example", "b.example"):
+            self._missing(session, org, name)
+        monkeypatch.setattr(settings, "UI_ALERT_GROUP_BY_TYPE", "")
+        assert len(group_rows(load_rows(session, org.id, None, None, ALERT_TYPES)[0], ALERT_TYPES)) == 2
+        monkeypatch.setattr(settings, "UI_ALERT_GROUP_BY_TYPE", "reports_missing")
+        assert len(group_rows(load_rows(session, org.id, None, None, ALERT_TYPES)[0], ALERT_TYPES)) == 1
+
+    def test_group_action_covers_every_domain_of_the_kind(self, web, session_factory):
+        ids = _seed(session_factory)
+        db = session_factory()
+        org = db.get(Organization, ids["org"])
+        db.query(AlertEvent).delete()
+        for name in ("a.example", "b.example"):
+            self._missing(db, org, name)
+        db.commit()
+        db.close()
+        _login(web, ids["org"])
+        page = web.get("/alerts/events?status=open").text
+        assert "2 Domains" in page and "Alle 2 erledigt" in page
+        web.post("/alerts/events/bulk", data={"alert_type": "reports_missing", "domain": "", "action": "resolve",
+                                              "status": "open"})
+        db = session_factory()
+        assert {e.status for e in db.query(AlertEvent)} == {"resolved"}
+        db.close()
+
+    def test_nested_rows_do_not_repeat_the_text(self, web, session_factory):
+        ids = _seed(session_factory)
+        db = session_factory()
+        org = db.get(Organization, ids["org"])
+        db.query(AlertEvent).delete()
+        for name in ("a.example", "b.example"):
+            event = self._missing(db, org, name)
+            event.description = "Es kam kein neuer DMARC-Bericht an."
+        db.commit()
+        db.close()
+        _login(web, ids["org"])
+        assert "Es kam kein neuer DMARC-Bericht an." not in web.get("/alerts/events?status=open").text
+        assert web.get("/alerts/events?status=open&view=single").text.count("Es kam kein neuer DMARC-Bericht an.") == 2
+
+    def test_invalid_kind_is_explained_at_start(self, monkeypatch):
+        from app.config import load_settings
+
+        monkeypatch.setenv("UI_ALERT_GROUP_BY_TYPE", "reports_missing,*")
+        with pytest.raises(SystemExit) as exc:
+            load_settings()
+        assert "UI_ALERT_GROUP_BY_TYPE:" in str(exc.value) and "keine Alarmart" in str(exc.value)

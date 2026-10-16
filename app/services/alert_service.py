@@ -473,7 +473,7 @@ def refresh_event_texts(db: Session, organization_id: str | None = None,
                 title, description = _high_volume_text(db, src, threshold)
             else:
                 title, description = _source_fail_text(db, src)
-        elif event.alert_type in FAILING and event.rule_id and "Ursachen: " not in (event.description or ""):
+        elif event.alert_type in FAILING and event.rule_id:
             rule = db.query(AlertRule).filter_by(id=event.rule_id).first()
             marker = "%). "
             if rule is None or marker not in (event.description or ""):

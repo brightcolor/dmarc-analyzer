@@ -24,7 +24,7 @@
   <div class="app-alert__main">
     <a class="bc-row-title" href="/alerts/events/{{ e.id }}">{{ r.title }}</a>
     <div class="app-alert__facts">{{ chips(r) }}{% if r.source %}<span class="app-alert__source app-break">{{ r.source }}</span>{% endif %}</div>
-    {% if r.detail %}<a class="app-small" href="/alerts/events/{{ e.id }}">Gründe und Abhilfe ansehen</a>{% elif e.description %}<span class="app-alert__text">{{ e.description }}</span>{% endif %}
+    {% if r.detail %}<a class="app-small" href="/alerts/events/{{ e.id }}">Gründe und Abhilfe ansehen</a>{% elif e.description and not nested %}<span class="app-alert__text">{{ e.description }}</span>{% endif %}
     {% for d in deliveries.get(e.id, []) %}<span class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>{% endfor %}
   </div>
   <div class="app-alert__state">
@@ -83,6 +83,7 @@
               <span class="app-alertgroup__body">
                 <span class="bc-row-title">{{ g.label }}{% if g.domain %} · {{ g.domain }}{% endif %}</span>
                 <span class="app-alert__facts">
+                  {% if not g.domain and g.domain_names|length > 1 %}<span class="app-chip app-chip--domain">{{ g.domain_names | length | plural('Domain', 'Domains') }}</span>{% endif %}
                   {% if g.sources %}<span class="app-chip">{{ g.sources | plural('Quelle', 'Quellen') }}</span>{% endif %}
                   {% if g.messages %}<span class="app-chip">{{ g.messages | plural('Nachricht', 'Nachrichten') }}</span>{% endif %}
                   {% for label, n in g.causes %}<span class="app-chip app-chip--cause">{{ label }} · {{ n | num }}</span>{% endfor %}

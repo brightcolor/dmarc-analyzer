@@ -509,3 +509,18 @@ class TestTrustedAndStates:
             ("unknown", ["198.51.100.1"]), ("spoof", ["198.51.100.2"])] or sorted(
             (c.key, tuple(s.ip for s in members)) for c, members in groups) == [
             ("spoof", ("198.51.100.2",)), ("unknown", ("198.51.100.1",))]
+
+
+class TestRefreshKeepsCauses:
+    def test_causes_reach_the_metrics_of_alerts_that_already_name_them(self, session):
+        org, domain = _setup(session)
+        rule = make_rule(session, org, "dmarc_fail_rate", threshold=10, window=1440, cooldown=0)
+        event = raise_event(
+            session, org_id=org.id, alert_type="dmarc_fail_rate", severity="warning", title="x", rule=rule,
+            domain_id=domain.id, now=NOW, metrics={"window_minutes": 1440},
+            description="11 von 13 Nachrichten der letzten 24 Stunden bestehen DMARC nicht (Schwelle 10 %). "
+                        "Ursachen: Alter Text.")
+        assert refresh_event_texts(session) == 1
+        assert {c["key"] for c in json.loads(event.metrics)["causes"]} == {"spoof", "unknown"}
+        assert "Alter Text" not in event.description
+        assert refresh_event_texts(session) == 0

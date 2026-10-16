@@ -503,6 +503,11 @@ class Settings(BaseSettings):
         description="Anzahl Domains, die der Text eines Alarms zu einer Quelle nennt (neue Quelle, viele "
                     "Nachrichten, DMARC-Fehler); weitere stehen als „und n weitere“ dabei, 0 lässt den Satz weg.",
     )
+    UI_ALERT_GROUP_BY_TYPE: str = Field(
+        "reports_missing,dns_problem,import_failed",
+        description="Alarmarten, die die Alarmliste über alle Domains zu einer Gruppe zusammenfasst, durch Komma "
+                    "getrennt; alle anderen Arten bilden je Domain eine eigene Gruppe.",
+    )
     UI_ALERT_GROUP_LIMIT: int = Field(
         2000, ge=100, le=20_000,
         description="Höchstzahl Alarme, die die Alarmliste für die Gruppierung lädt; darüber hinaus meldet die "
@@ -658,6 +663,17 @@ class Settings(BaseSettings):
             raise ValueError(f"{value!r} ist kein DNS-Name, erwartet wird etwa origin.asn.cymru.com")
         return zone
 
+    @field_validator("UI_ALERT_GROUP_BY_TYPE")
+    @classmethod
+    def _alert_group_by_type(cls, value: str) -> str:
+        import re
+
+        for entry in (v.strip() for v in value.split(",")):
+            if entry and not re.fullmatch(r"[a-z][a-z_]*", entry):
+                raise ValueError(f"{entry!r} ist keine Alarmart; erwartet werden Namen wie reports_missing, "
+                                 "durch Komma getrennt")
+        return value
+
     @field_validator("SOURCE_RULE_CLASSIFICATION")
     @classmethod
     def _source_rule_classification(cls, value: str) -> str:
@@ -803,6 +819,10 @@ class Settings(BaseSettings):
     @property
     def source_rule_rdns_patterns(self) -> list[str]:
         return [v.strip().strip(".").lower() for v in self.SOURCE_RULE_RDNS_PATTERNS.split(",") if v.strip()]
+
+    @property
+    def ui_alert_group_by_type(self) -> set[str]:
+        return {v.strip().lower() for v in self.UI_ALERT_GROUP_BY_TYPE.split(",") if v.strip()}
 
     @property
     def healthcheck_targets(self) -> list[str]:

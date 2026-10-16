@@ -346,3 +346,5 @@
 
 .app-causes { margin: 12px 0 0; padding-left: 18px; }
 .app-causes li + li { margin-top: 4px; }
+
+.app-alert__actions .bc-row-actions { flex-direction: row; flex-wrap: nowrap; }

@@ -46,6 +46,16 @@ class Group:
         return len(self.rows)
 
     @property
+    def domain_names(self) -> list[str]:
+        """The domains of the group in order of appearance; a group per kind lists several."""
+        names: list[str] = []
+        for row in self.rows:
+            for name in row.domains:
+                if name not in names:
+                    names.append(name)
+        return names
+
+    @property
     def severity(self) -> str:
         return min((r.event.severity for r in self.rows), key=lambda s: SEVERITY_ORDER.get(s, 3))
 
@@ -121,9 +131,12 @@ def load_rows(db: Session, org_id: str, status: str | None, severity: str | None
 
 def group_rows(rows: list[Row], type_labels: dict[str, str]) -> list[Group]:
     """Alerts of one kind about one domain form a group; the groups come by severity, then by newest alert."""
+    by_type = settings.ui_alert_group_by_type
     grouped: dict[tuple[str, str], list[Row]] = {}
     for row in rows:
-        grouped.setdefault((row.event.alert_type, row.domain), []).append(row)
+        # Kinds that arise once per domain form one group over all domains
+        key = (row.event.alert_type, "" if row.event.alert_type in by_type else row.domain)
+        grouped.setdefault(key, []).append(row)
     groups = [Group(alert_type=key[0], domain=key[1], rows=members, label=type_labels.get(key[0], key[0]))
               for key, members in grouped.items()]
     groups.sort(key=lambda g: (SEVERITY_ORDER.get(g.severity, 3), -g.latest.timestamp()))
@@ -134,4 +147,5 @@ def members(db: Session, org_id: str, alert_type: str, domain: str, status: str 
             severity: str | None, type_labels: dict[str, str]) -> list[AlertEvent]:
     """The alerts of one group, for the actions on a whole group."""
     rows, _ = load_rows(db, org_id, status, severity, type_labels)
-    return [r.event for r in rows if r.event.alert_type == alert_type and r.domain == domain]
+    whole_kind = alert_type in settings.ui_alert_group_by_type
+    return [r.event for r in rows if r.event.alert_type == alert_type and (whole_kind or r.domain == domain)]

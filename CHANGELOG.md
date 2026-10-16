@@ -7,6 +7,22 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.18.1] – 2026-10-17
+
+### Neu
+
+- Alarme, die je Domain einzeln entstehen („Seit 2 Tagen keine Berichte für …“), bilden in der Alarmliste eine
+  Gruppe über alle Domains mit der Zahl der Domains („22 · Berichte bleiben aus · 22 Domains“) und den Sammelaktionen
+  für die ganze Art. `UI_ALERT_GROUP_BY_TYPE` nennt die Arten (Vorgabe `reports_missing,dns_problem,import_failed`);
+  alle anderen Arten bilden je Domain eine eigene Gruppe.
+
+### Behoben
+
+- Offene Alarme zur Fehlerquote, die ihre Ursachen schon im Text nannten, bekamen beim Start keine Ursachen in
+  ihre Werte; die Liste zeigt sie jetzt auch dort als Abzeichen.
+- Die Schaltflächen „Gesehen“ und „Erledigt“ stehen nebeneinander, und Gruppen wiederholen den Text der einzelnen
+  Alarme nicht.
+
 ## [0.18.0] – 2026-10-17
 
 ### Neu
