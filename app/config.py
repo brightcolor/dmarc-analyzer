@@ -494,6 +494,10 @@ class Settings(BaseSettings):
     UI_RECENT_LIMIT: int = Field(
         10, ge=3, le=100, description="Einträge in Kurzlisten wie „Letzte Berichte“ und „Letzte Importe“.",
     )
+    ALERT_REFRESH_TEXTS_ON_START: bool = Field(
+        True, description="Beim Start Titel und Text der offenen Alarme auf den aktuellen Wortlaut bringen "
+                          "(Domains, Hostname, Anbieter, Ursachen); erledigte Alarme bleiben, wie sie sind.",
+    )
     ALERT_DESCRIPTION_DOMAINS: int = Field(
         5, ge=0, le=50,
         description="Anzahl Domains, die der Text eines Alarms zu einer Quelle nennt (neue Quelle, viele "

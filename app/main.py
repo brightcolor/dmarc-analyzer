@@ -87,6 +87,7 @@ async def lifespan(app: FastAPI):
 
     _create_default_plan()
     _announce_setup()
+    _refresh_alert_texts()
 
     from app.scheduler import Scheduler
     scheduler = Scheduler()
@@ -96,6 +97,25 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("%s shutting down", APP_NAME)
     await scheduler.stop()
+
+
+def _refresh_alert_texts() -> None:
+    """Open alerts get the current wording: domains, host name, provider and causes (ALERT_REFRESH_TEXTS_ON_START)."""
+    if not settings.ALERT_REFRESH_TEXTS_ON_START:
+        return
+    from app.database import SessionLocal
+    from app.services.alert_service import refresh_event_texts
+    db = SessionLocal()
+    try:
+        changed = refresh_event_texts(db)
+        db.commit()
+        if changed:
+            logger.info("Texts of %d open alerts brought to the current wording", changed)
+    except Exception:
+        db.rollback()
+        logger.exception("Could not refresh the texts of open alerts")
+    finally:
+        db.close()
 
 
 def _announce_setup() -> None:

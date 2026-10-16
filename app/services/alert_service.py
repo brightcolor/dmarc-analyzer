@@ -355,67 +355,130 @@ def _source_title(src: SourceIp) -> str:
     return f"{src.ip_address} ({label})" if label else src.ip_address
 
 
+def _unknown_source_text(db: Session, src: SourceIp) -> tuple[str, str]:
+    """Title and text of the alert about a new source that is not classified."""
+    title = f"Neue unbekannte Quelle {_source_title(src)}{_for_domains(db, src)}"
+    description = (f"{src.ip_address} verschickt Mails für deine Domains und ist noch nicht eingestuft. Bisher "
+                   f"{_num(src.total_messages)} Nachrichten, davon {_num(src.pass_rate or 0)} % bestanden. "
+                   f"{_source_context(db, src)} "
+                   + ("Gehört der Dienst zu dir, gib ihn unter „Absender“ frei."
+                      if src.sender_key else "Stufe sie unter „Quellen“ ein.")
+                   + " Gründe und Einzelheiten stehen auf der Detailseite des Alarms.")
+    return title, description
+
+
+def _high_volume_text(db: Session, src: SourceIp, threshold: float) -> tuple[str, str]:
+    title = f"Neue Quelle {_source_title(src)} mit {_num(src.total_messages)} Nachrichten{_for_domains(db, src)}"
+    description = (f"{src.ip_address} ist neu und hat schon {_num(src.total_messages)} Nachrichten für deine "
+                   f"Domains verschickt (Schwelle {_num(threshold)}). {_source_context(db, src)} "
+                   "Gründe und Einzelheiten stehen auf der Detailseite des Alarms.")
+    return title, description
+
+
+def _source_fail_text(db: Session, src: SourceIp) -> tuple[str, str]:
+    title = f"Neue Quelle {_source_title(src)} scheitert an DMARC{_for_domains(db, src)}"
+    description = (f"{_num(src.fail_count)} von {_num(src.total_messages)} Nachrichten dieser neuen Quelle "
+                   f"bestehen DMARC nicht. {_source_context(db, src)} Ist sie ein eigener Versanddienst, "
+                   "fehlt ihr SPF oder DKIM. Gründe und Einzelheiten stehen auf der Detailseite des Alarms.")
+    return title, description
+
+
 def _eval_new_unknown_source(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
     start = now - timedelta(minutes=rule.time_window_minutes)
     sources = _new_sources(db, rule, start, now)
     if settings.SCHEDULER_ENABLED:
         # The scheduler names the sender first; a decision about the sender may already cover the address
         sources = [src for src in sources if src.enriched_at is not None]
-    return [
-        Finding(
-            title=f"Neue unbekannte Quelle {_source_title(src)}{_for_domains(db, src)}",
-            description=(f"{src.ip_address} verschickt Mails für deine Domains und ist noch nicht eingestuft. Bisher "
-                         f"{_num(src.total_messages)} Nachrichten, davon {_num(src.pass_rate or 0)} % bestanden. "
-                         f"{_source_context(db, src)} "
-                         + ("Gehört der Dienst zu dir, gib ihn unter „Absender“ frei."
-                            if src.sender_key else "Stufe sie unter „Quellen“ ein.")
-                         + " Gründe und Einzelheiten stehen auf der Detailseite des Alarms."),
-            domain_id=rule.domain_id,
-            source_ip=src.ip_address,
+    findings = []
+    for src in sources:
+        if src.classification != "unknown":
+            continue
+        title, description = _unknown_source_text(db, src)
+        findings.append(Finding(
+            title=title, description=description, domain_id=rule.domain_id, source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "total": src.total_messages, "pass_rate": src.pass_rate,
                      "sender": src.sender_key, "window_minutes": rule.time_window_minutes},
-        )
-        for src in sources
-        if src.classification == "unknown"
-    ]
+        ))
+    return findings
 
 
 def _eval_high_volume_source(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
     start = now - timedelta(minutes=rule.time_window_minutes)
     threshold = _threshold(rule, settings.ALERT_DEFAULT_HIGH_VOLUME)
-    return [
-        Finding(
-            title=f"Neue Quelle {_source_title(src)} mit {_num(src.total_messages)} Nachrichten{_for_domains(db, src)}",
-            description=(f"{src.ip_address} ist neu und hat schon {_num(src.total_messages)} Nachrichten für deine "
-                         f"Domains verschickt (Schwelle {_num(threshold)}). {_source_context(db, src)} "
-                         "Gründe und Einzelheiten stehen auf der Detailseite des Alarms."),
-            domain_id=rule.domain_id,
-            source_ip=src.ip_address,
+    findings = []
+    for src in _new_sources(db, rule, start, now):
+        if src.total_messages < threshold:
+            continue
+        title, description = _high_volume_text(db, src, threshold)
+        findings.append(Finding(
+            title=title, description=description, domain_id=rule.domain_id, source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "total": src.total_messages, "threshold": threshold,
                      "window_minutes": rule.time_window_minutes},
-        )
-        for src in _new_sources(db, rule, start, now)
-        if src.total_messages >= threshold
-    ]
+        ))
+    return findings
 
 
 def _eval_new_source_dmarc_fail(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
     start = now - timedelta(minutes=rule.time_window_minutes)
     minimum = _threshold(rule, settings.ALERT_DEFAULT_NEW_SOURCE_FAILURES)
-    return [
-        Finding(
-            title=f"Neue Quelle {_source_title(src)} scheitert an DMARC{_for_domains(db, src)}",
-            description=(f"{_num(src.fail_count)} von {_num(src.total_messages)} Nachrichten dieser neuen Quelle "
-                         f"bestehen DMARC nicht. {_source_context(db, src)} Ist sie ein eigener Versanddienst, "
-                         "fehlt ihr SPF oder DKIM. Gründe und Einzelheiten stehen auf der Detailseite des Alarms."),
-            domain_id=rule.domain_id,
-            source_ip=src.ip_address,
+    findings = []
+    for src in _new_sources(db, rule, start, now):
+        if src.fail_count < minimum:
+            continue
+        title, description = _source_fail_text(db, src)
+        findings.append(Finding(
+            title=title, description=description, domain_id=rule.domain_id, source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "failed": src.fail_count, "total": src.total_messages,
                      "window_minutes": rule.time_window_minutes},
-        )
-        for src in _new_sources(db, rule, start, now)
-        if src.fail_count >= minimum
-    ]
+        ))
+    return findings
+
+
+def refresh_event_texts(db: Session, organization_id: str | None = None,
+                        statuses: tuple[str, ...] = ("open", "acknowledged")) -> int:
+    """Bring title and text of existing alerts to the current wording (domains, host name, provider, causes).
+
+    Alerts keep the text they were raised with; this rewrites the ones that are still open. Returns the number
+    of changed alerts."""
+    from app.services.alert_details import FAILING
+
+    query = db.query(AlertEvent).filter(AlertEvent.status.in_(statuses))
+    if organization_id:
+        query = query.filter(AlertEvent.organization_id == organization_id)
+    changed = 0
+    for event in query:
+        title = description = None
+        if event.source_ip and event.alert_type in ("new_unknown_source", "high_volume_source",
+                                                    "new_source_dmarc_fail"):
+            src = db.query(SourceIp).filter_by(organization_id=event.organization_id,
+                                               ip_address=event.source_ip).first()
+            if src is None:
+                continue
+            if event.alert_type == "new_unknown_source":
+                title, description = _unknown_source_text(db, src)
+            elif event.alert_type == "high_volume_source":
+                threshold = (json.loads(event.metrics or "{}").get("threshold") or settings.ALERT_DEFAULT_HIGH_VOLUME)
+                title, description = _high_volume_text(db, src, threshold)
+            else:
+                title, description = _source_fail_text(db, src)
+        elif event.alert_type in FAILING and event.rule_id and "Ursachen: " not in (event.description or ""):
+            rule = db.query(AlertRule).filter_by(id=event.rule_id).first()
+            marker = "%). "
+            if rule is None or marker not in (event.description or ""):
+                continue
+            end = event.created_at
+            start = end - timedelta(minutes=rule.time_window_minutes)
+            domain_rule = AlertRule(organization_id=event.organization_id, domain_id=event.domain_id,
+                                    time_window_minutes=rule.time_window_minutes)
+            records = _records(db, domain_rule, start, end + timedelta(seconds=1))
+            hint, _ = _sources_hint(db, domain_rule, records, event.alert_type, end)
+            prefix = event.description[:event.description.index(marker) + len(marker) - 1]
+            title, description = event.title, f"{prefix} {hint}"
+        if title is not None and (title != event.title or description != event.description):
+            event.title, event.description = clean_text(title, 500), clean_text(description)
+            changed += 1
+    db.flush()
+    return changed
 
 
 def _eval_dns_problem(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:

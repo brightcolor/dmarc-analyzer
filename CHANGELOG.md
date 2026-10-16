@@ -7,6 +7,17 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.17.0] – 2026-10-16
+
+### Neu
+
+- **Offene Alarme bekommen den aktuellen Wortlaut.** Ein Alarm behält den Text, mit dem er entstand; die neuen
+  Angaben (betroffene Domains, Hostname, Anbieter, Ursachen) fehlten deshalb bei älteren, noch offenen Alarmen.
+  Beim Start schreibt die Anwendung Titel und Text offener und bestätigter Alarme zu neuen Quellen (unbekannte
+  Quelle, viele Nachrichten, DMARC-Fehler) und zur Fehlerquote auf den heutigen Stand um; erledigte Alarme
+  bleiben unverändert. `ALERT_REFRESH_TEXTS_ON_START=false` schaltet das ab, `docker compose exec web python -m
+  app.alert_texts` führt es von Hand aus.
+
 ## [0.16.2] – 2026-10-16
 
 ### Behoben

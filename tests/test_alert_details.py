@@ -21,7 +21,7 @@ from app.services.alert_details import (
     summarize,
     window_minutes,
 )
-from app.services.alert_service import evaluate_rules_for_org, raise_event
+from app.services.alert_service import evaluate_rules_for_org, raise_event, refresh_event_texts
 from tests.helpers import NOW, add_report, add_source, make_domain, make_org, make_rule, minutes_ago
 from tests.test_web import _login, _seed
 
@@ -399,3 +399,73 @@ class TestSourceLabel:
         make_rule(session, org, "dmarc_fail_rate", threshold=10, window=1440, cooldown=0)
         event = evaluate_rules_for_org(session, org.id, NOW)[0]
         assert "198.51.100.1 (mail.hoster.example, Hetzner Online GmbH): 8" in event.description
+
+
+class TestRefreshTexts:
+    OLD = ("102.244.98.191 verschickt Mails für deine Domains und ist noch nicht eingestuft. Bisher 1 Nachrichten, "
+           "davon 0 % bestanden. Stufe sie unter „Quellen“ ein.")
+
+    def _old_alert(self, session, status="open"):
+        org = make_org(session)
+        domain = make_domain(session, org, "crust-y.com")
+        source = add_source(session, org, "102.244.98.191", total=1, failed=1, reverse_dns="host.example.za")
+        source.asn_org, source.country_code = "AS37 - Beispiel Telecom", "ZA"
+        add_report(session, org, domain, [("102.244.98.191", 1, False, False, False)], created_at=minutes_ago(5),
+                   reporting_org="Google")
+        event = raise_event(session, org_id=org.id, alert_type="new_unknown_source", severity="warning",
+                            title="Neue unbekannte Quelle 102.244.98.191", description=self.OLD, domain_id=None,
+                            source_ip="102.244.98.191", now=NOW)
+        event.status = status
+        return org, event
+
+    def test_open_alert_gets_domains_host_and_provider(self, session):
+        _, event = self._old_alert(session)
+        assert refresh_event_texts(session) == 1
+        assert event.title == (
+            "Neue unbekannte Quelle 102.244.98.191 (host.example.za, Beispiel Telecom) für crust-y.com")
+        for part in ("Sie verschickt Mails für crust-y.com (1).", "Hostname host.example.za", "Land ZA",
+                     "Angenommen von: Google."):
+            assert part in event.description
+
+    def test_second_run_changes_nothing(self, session):
+        self._old_alert(session)
+        refresh_event_texts(session)
+        assert refresh_event_texts(session) == 0
+
+    def test_resolved_alerts_keep_their_text(self, session):
+        _, event = self._old_alert(session, status="resolved")
+        assert refresh_event_texts(session) == 0
+        assert event.description == self.OLD
+
+    def test_only_the_given_organisation(self, session):
+        org, event = self._old_alert(session)
+        other = make_org(session, "Fremd", "fremd")
+        assert refresh_event_texts(session, other.id) == 0 and event.description == self.OLD
+        assert refresh_event_texts(session, org.id) == 1
+
+    def test_old_fail_rate_text_gets_the_causes(self, session):
+        org, domain = _setup(session)
+        rule = make_rule(session, org, "dmarc_fail_rate", threshold=10, window=1440, cooldown=0)
+        event = raise_event(
+            session, org_id=org.id, alert_type="dmarc_fail_rate", severity="warning", title="x", rule=rule,
+            domain_id=domain.id, now=NOW,
+            description="11 von 13 Nachrichten der letzten 24 Stunden bestehen DMARC nicht (Schwelle 10 %). "
+                        "Prüfe die fehlschlagenden Quellen.")
+        assert refresh_event_texts(session) == 1
+        assert event.description.startswith("11 von 13 Nachrichten der letzten 24 Stunden bestehen DMARC nicht "
+                                            "(Schwelle 10 %). Ursachen: ")
+        assert "Prüfe die fehlschlagenden Quellen" not in event.description
+        assert refresh_event_texts(session) == 0
+
+    def test_setting_can_switch_the_start_run_off(self, monkeypatch):
+        from app import main
+        from app.services import alert_service
+
+        calls = []
+        monkeypatch.setattr(alert_service, "refresh_event_texts", lambda db: calls.append(db) or 0)
+        monkeypatch.setattr(settings, "ALERT_REFRESH_TEXTS_ON_START", False)
+        main._refresh_alert_texts()
+        assert calls == []
+        monkeypatch.setattr(settings, "ALERT_REFRESH_TEXTS_ON_START", True)
+        main._refresh_alert_texts()
+        assert len(calls) == 1
