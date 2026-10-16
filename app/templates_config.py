@@ -431,6 +431,14 @@ env.filters["rate_state"] = _rate_state
 env.filters["interval"] = _interval
 env.filters["plural"] = _plural
 env.filters["severity_state"] = _lookup(SEVERITY_STATE)
+def _provider(value: str | None) -> str:
+    """Operator name from the registry entry of a network: "UZMOBILE-AS - _Uzbektelekom_ Joint Stock Company"."""
+    from app.services.alert_details import provider_name
+
+    return provider_name(value)
+
+
+env.filters["provider"] = _provider
 env.filters["severity_text"] = _lookup(SEVERITY_TEXT, keep_unknown=True)
 env.filters["status_state"] = _lookup(STATUS_STATE)
 env.filters["status_text"] = _lookup(STATUS_TEXT, keep_unknown=True)

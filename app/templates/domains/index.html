@@ -19,23 +19,32 @@
         <option value="unchecked"{% if selected_dns == 'unchecked' %} selected{% endif %}>noch nicht geprüft</option>
       </select>
     </div>
+    <div>
+      <label for="f-sort">Reihenfolge</label>
+      <select class="bc-select" id="f-sort" name="sort">
+        <option value="">Probleme zuerst</option>
+        <option value="name"{% if by_name %} selected{% endif %}>Nach Name</option>
+      </select>
+    </div>
     <button class="bc-button" type="submit">Suchen</button>
-    {% if search or selected_dns %}<a class="bc-button bc-button--secondary" href="/domains">Suche zurücksetzen</a>{% endif %}
+    {% if search or selected_dns or by_name %}<a class="bc-button bc-button--secondary" href="/domains">Suche zurücksetzen</a>{% endif %}
   </form>
 
   {% if domains %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>Domain</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">DNS</th><th class="bc-hide-narrow">Policy</th><th class="bc-hide-narrow">Letzter Bericht</th><th class="bc-hide-narrow">Format</th></tr></thead>
+      <thead><tr><th>Domain</th><th class="bc-hide-narrow">Bestehen ({{ days }} Tage)</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-num bc-hide-narrow">Offene Alarme</th><th class="bc-hide-narrow">DNS</th><th class="bc-hide-narrow">Policy</th><th class="bc-hide-narrow">Letzter Bericht</th></tr></thead>
       <tbody>
         {% for d in domains %}
+        {% set h = health.get(d.id, no_health) %}
         <tr>
-          <td><a class="bc-row-title app-break" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">{{ 'aktiv' if d.is_active else 'inaktiv' }} · DNS {{ ui.dns_icon(d.dns_status, d.dns_status | dns_status_text) }} · {% if d.dmarc_policy %}p={{ d.dmarc_policy }}{% else %}Policy noch unbekannt{% endif %} · letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td>
-          <td class="bc-hide-narrow">{{ ui.state('aktiv' if d.is_active else 'inaktiv', 'bc-state--on' if d.is_active else '') }}</td>
-          <td class="bc-hide-narrow">{{ ui.dns_icon(d.dns_status, d.dns_status | dns_status_text) }}</td>
+          <td><a class="bc-row-title app-break" href="/domains/{{ d.id }}">{{ d.name }}</a>{% if not d.is_active %} {{ ui.state('inaktiv') }}{% endif %}<span class="bc-row-sub bc-only-narrow">{% if h.messages %}{{ h.pass_rate | percent }} bestanden von {{ h.messages | plural('Nachricht', 'Nachrichten') }}{% else %}keine Nachrichten in {{ days }} Tagen{% endif %}{% if h.alerts %} · {{ h.alerts | plural('offener Alarm', 'offene Alarme') }}{% endif %} · DNS {{ ui.dns_icon(d.dns_status, d.dns_status | dns_status_text) }} · {% if d.dmarc_policy %}p={{ d.dmarc_policy }}{% else %}Policy noch unbekannt{% endif %} · letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td>
+          <td class="bc-hide-narrow">{% if h.messages %}{{ ui.state(h.pass_rate | percent, h.pass_rate | rate_state) }}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
+          <td class="bc-num bc-hide-narrow">{% if h.messages %}{{ h.messages | num }}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
+          <td class="bc-num bc-hide-narrow">{% if h.alerts %}<a href="/alerts/events?status=open">{{ h.alerts | num }}</a>{% else %}<span class="app-quiet">0</span>{% endif %}</td>
+          <td class="bc-hide-narrow app-nowrap">{{ ui.dns_icon(d.dns_status, d.dns_status | dns_status_text) }}{% if d.dns_status and d.dns_status != 'ok' %} <span class="app-small">{{ d.dns_status | dns_status_text }}</span>{% endif %}</td>
           <td class="app-nowrap bc-hide-narrow">{% if d.dmarc_policy %}<code>p={{ d.dmarc_policy }}</code>{% if d.dmarc_policy_testing == 'y' %} <code>t=y</code>{% endif %}{% if d.dmarc_policy_pct is not none and d.dmarc_policy_pct < 100 %} <code>pct={{ d.dmarc_policy_pct }}</code>{% endif %}{% else %}<span class="app-quiet">noch unbekannt</span>{% endif %}</td>
           <td class="app-nowrap bc-hide-narrow">{{ d.last_report_at | date }}</td>
-          <td class="bc-hide-narrow">{% if d.last_report_format %}{{ ui.format_badge(d.last_report_format) }}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

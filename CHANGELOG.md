@@ -7,6 +7,42 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.18.0] – 2026-10-17
+
+### Neu
+
+- **Alarmliste neu gegliedert.** Jeder Alarm ist eine Zeile mit dem, was passiert ist, den betroffenen Domains,
+  der Ursache mit Zahl und der Hauptquelle (Hostname und Anbieter). Die Textwand und die Zeile über den
+  Versandstatus entfallen; der Link „Gründe und Abhilfe ansehen“ führt zu den Einzelheiten.
+- **Gruppen mit Sammelaktionen.** Alarme derselben Art zu einer Domain stehen als aufklappbare Gruppe („228 · Neue
+  unbekannte Versandquelle · hsp-events.de“) mit Zahl der Quellen und Nachrichten und den häufigsten Ursachen.
+  „Alle als gesehen markieren“ und „Alle erledigt“ wirken auf die Gruppe und stehen im Protokoll
+  (`alert.bulk_acknowledge`, `alert.bulk_resolve`). Die Gruppen kommen nach Schwere, dann nach dem neuesten
+  Alarm. Die Ansicht „Einzeln“ zeigt jeden Alarm für sich. `UI_ALERT_GROUP_LIMIT` begrenzt, wie viele Alarme die
+  Liste für die Gruppierung lädt (Vorgabe 2000).
+- **Detailseite nach Ursachen geordnet.** Jede Ursache hat ihre Überschrift mit Zahl, „Was du tun kannst“ und
+  darunter die betroffenen Quellen. Die Abzeichen für SPF und DKIM sagen „passt“, „andere Domain“, „fehlt“ oder
+  „fehlgeschlagen“, statt „fehlgeschlagen“ über „bestanden“ zu zeigen. Freigegebene Quellen mit Fehlern heißen
+  „Freigegebene Quelle ohne passendes SPF oder DKIM“ und gelten nie als Missbrauch. Der SPF-Eintrag steht als
+  Code, der Text der Benachrichtigung unten, die Brotkrume nennt den Alarm, und „Gesehen“ und „Erledigt“ bleiben
+  auf der Seite.
+- **IP-Adressen:** Domainnamen brechen nicht mehr mitten im Wort, die Spalte „Zuerst gesehen“ entfällt. Eigene
+  Server (Hostname in einer deiner Domains) heißen „Eigener Server“; freigegebene Quellen, die weniger als
+  `UI_PASS_RATE_WARN` Prozent bestehen, tragen „Fehler prüfen“. Der Filter „Qualität“ listet Quellen, die
+  freigegeben oder unbekannt sind und zu wenig bestehen.
+- **Domains:** Die Liste zeigt Bestehensquote und Nachrichten der letzten `UI_CHART_DAYS` Tage, offene Alarme
+  und die DNS-Prüfung mit Kurztext. „Probleme zuerst“ ordnet nach den meisten fehlgeschlagenen Nachrichten, dann
+  nach offenen Alarmen. Die Spalten „Status“ (inaktive Domains tragen ein Abzeichen) und „Format“ entfallen.
+- **Übersicht:** „Woran die Fehler liegen“ trennt gefälschte Absender (verdächtig oder ignoriert, nichts
+  einzurichten) von eigenen, freigegebenen oder unbekannten Quellen, die zu prüfen sind, und nennt die drei
+  größten. „Domains, die sich nicht mehr melden“ listet nur Domains, die früher Berichte schickten
+  (`UI_RECENT_LIMIT`); Domains ohne je einen Bericht stehen als Zahl.
+
+### Geändert
+
+- Neue Alarme speichern Domains und den Namen der Quelle in ihren Werten; beim Start ergänzt die Anwendung sie
+  bei offenen Alarmen (siehe 0.17.0), damit auch ältere gruppiert und beschriftet erscheinen.
+
 ## [0.17.1] – 2026-10-16
 
 ### Behoben

@@ -12,6 +12,7 @@ from app.services.charts import day_chart
 from app.services.dashboard import (
     get_dashboard_stats,
     get_disposition_counts,
+    get_failure_split,
     get_pass_fail_over_time,
     get_top_source_ips,
 )
@@ -42,6 +43,7 @@ def dashboard(
         "chart_days": days,
         "top_ips": get_top_source_ips(db, org.id, limit=settings.UI_RECENT_LIMIT),
         "formats": format_counts(db, org.id, since=since),
+        "split": get_failure_split(db, org.id, days, limit=3), "recent_limit": settings.UI_RECENT_LIMIT,
         "dispositions": get_disposition_counts(db, org.id, days=days),
         "dns_errors": db.query(Domain).filter_by(organization_id=org.id, is_active=True, dns_status="error").count(),
         "page_title": "Übersicht",

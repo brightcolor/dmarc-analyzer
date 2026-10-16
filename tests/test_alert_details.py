@@ -233,11 +233,17 @@ class TestPages:
     def test_detail_page_answers_who_what_and_how_to_fix(self, web, seeded):
         page = web.get(f"/alerts/events/{seeded['event']}")
         assert page.status_code == 200
-        assert "Wer hat die Mails verschickt?" in page.text
+        assert "Was du tun kannst" in page.text and "Quelle ohne passendes SPF oder DKIM" in page.text
         assert f'href="/source-ips/{seeded["source"]}"' in page.text
         assert "mail.hoster.example" in page.text and "Google" in page.text
-        assert "Weder SPF noch DKIM passen" in page.text
-        assert "keine einzelnen Empfänger" in page.text and "Beschreibung des Alarms." in page.text
+        assert "SPF-Eintrag: <code>ip4:198.51.100.1</code>" in page.text
+        assert "keine einzelnen Empfänger" in page.text
+        assert page.text.count("Beschreibung des Alarms.") == 1  # once as the notification text, not in the overview
+
+    def test_breadcrumb_names_the_alert_and_actions_return_to_it(self, web, seeded):
+        page = web.get(f"/alerts/events/{seeded['event']}").text
+        assert 'aria-current="page">Fehlerquote' in page or 'aria-current="page">DMARC-Fehlerquote' in page
+        assert f'name="next" value="/alerts/events/{seeded["event"]}"' in page
 
     def test_detail_page_of_another_organisation_is_not_found(self, web, seeded):
         assert web.get(f"/alerts/events/{seeded['foreign']}").status_code == 404
@@ -254,6 +260,7 @@ class TestPages:
 
     def test_list_links_to_the_detail_page(self, web, seeded):
         assert f'href="/alerts/events/{seeded["event"]}"' in web.get("/alerts/events").text
+
 
     def test_mail_link_points_to_the_event(self, session):
         from app.services.notification import event_url
@@ -284,7 +291,7 @@ class TestCauses:
         assert spf_snippet("198.51.100.1") == "ip4:198.51.100.1"
         assert spf_snippet("2001:db8::1") == "ip6:2001:db8::1"
         item = FailedSource(ip="198.51.100.1", failed=1, total=1, header_from=["piste.de"])
-        assert "`ip4:198.51.100.1`" in diagnose(item)
+        assert "ip4:198.51.100.1" in diagnose(item)
 
     def test_alert_text_carries_the_causes_and_metrics(self, session):
         org, domain = _setup(session)
@@ -475,3 +482,30 @@ class TestRefreshTexts:
         monkeypatch.setattr(settings, "ALERT_REFRESH_TEXTS_ON_START", True)
         main._refresh_alert_texts()
         assert len(calls) == 1
+
+
+class TestTrustedAndStates:
+    def test_trusted_source_is_not_called_abuse(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=2, failed=2, classification="trusted")
+        item = FailedSource(ip="198.51.100.1", failed=2, total=2, header_from=["piste.de"], source=source)
+        assert categorize(item) == "trusted"
+        text = diagnose(item)
+        assert "freigegebene Quelle" in text and "Missbrauch" not in text and "ip4:198.51.100.1" in text
+
+    def test_auth_state_words(self):
+        from app.services.alert_details import auth_state
+
+        assert auth_state("pass", True) == ("passt", True)
+        assert auth_state("pass", False) == ("andere Domain", False)
+        assert auth_state("none", False) == ("fehlt", False)
+        assert auth_state("", False) == ("fehlt", False)
+        assert auth_state("fail", False) == ("fehlgeschlagen", False)
+
+    def test_sources_are_grouped_by_cause(self, session):
+        org, domain = _setup(session)
+        groups = build(session, _fail_event(session, org, domain)).groups
+        assert [(c.key, [s.ip for s in members]) for c, members in groups] == [
+            ("unknown", ["198.51.100.1"]), ("spoof", ["198.51.100.2"])] or sorted(
+            (c.key, tuple(s.ip for s in members)) for c, members in groups) == [
+            ("spoof", ("198.51.100.2",)), ("unknown", ("198.51.100.1",))]

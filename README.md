@@ -300,9 +300,17 @@ Mit `TLS_REPORTS_ENABLED=false` behandelt die Anwendung solche Mails wie jede an
 
 ---
 
-## IP-Adressen und Domains
+## Übersicht, Domains und IP-Adressen
+
+Die **Übersicht** trennt unter „Woran die Fehler liegen“ gefälschte Absender (Quellen, die als verdächtig oder
+ignoriert eingestuft sind; nichts einzurichten) von eigenen, freigegebenen oder unbekannten Quellen, die zu prüfen
+sind, und nennt die drei größten. Die **Domainliste** zeigt je Domain die Bestehensquote und die Nachrichten der
+letzten `UI_CHART_DAYS` Tage, die offenen Alarme und die DNS-Prüfung; „Probleme zuerst“ ordnet nach den meisten
+fehlgeschlagenen Nachrichten, „Nach Name“ alphabetisch.
 
 Unter **Quellen → IP-Adressen** steht jede Adresse, die in einem Bericht Mails für deine Domains verschickt hat.
+Eigene Server (Hostname in einer deiner Domains) tragen „Eigener Server“; freigegebene Quellen, die weniger als
+`UI_PASS_RATE_WARN` Prozent bestehen, tragen „Fehler prüfen“, und der Filter „Qualität“ listet sie.
 Die Spalte **Domains** nennt, für welche Domains sie das tat (die ersten `UI_SOURCE_DOMAINS_SHOWN`, weitere als
 „+n“ mit Tooltip). Ein Klick auf einen Domainnamen filtert die Liste; der Filter **Domain** über der Tabelle
 macht dasselbe und lässt sich mit Absender und Einstufung kombinieren.
@@ -396,6 +404,11 @@ mit Zahlen (gefälschter Absender, Dienst ohne passendes SPF oder DKIM, unbekann
 nicht) und die häufigsten Quellen (`ALERT_DESCRIPTION_SOURCES`). Alarme zu einer Quelle nennen die betroffenen
 Domains im Titel und im Text, dazu SPF- und DKIM-Ergebnisse, Hostname, Netz, Land und die Anbieter, die die
 Mails angenommen haben (`ALERT_DESCRIPTION_DOMAINS`). Dasselbe steht in den Mails und Benachrichtigungen.
+
+Die Liste der Alarme zeigt je Alarm eine Zeile mit Domain, Ursache und Hauptquelle. Alarme derselben Art zu einer
+Domain stehen als aufklappbare Gruppe; „Alle als gesehen markieren“ und „Alle erledigt“ wirken auf die ganze Gruppe
+und stehen im Protokoll. Die Gruppen kommen nach Schwere, dann nach dem neuesten Alarm; die Ansicht „Einzeln“
+zeigt jeden Alarm für sich. `UI_ALERT_GROUP_LIMIT` begrenzt, wie viele Alarme die Liste dafür lädt.
 
 „Gründe und Abhilfe ansehen“ unter einem Alarm führt zur Detailseite: oben die Ursachen mit dem, was du tun
 kannst, darunter bis zu `UI_ALERT_DETAIL_SOURCES` Quellen mit Dienst, Hostname, Netzbetreiber, Einstufung,

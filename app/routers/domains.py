@@ -1,7 +1,8 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -13,7 +14,16 @@ from app.dependencies import (
     get_current_org,
     get_current_user,
 )
-from app.models import DmarcReport, Domain, DomainRecipient, InboundMailAddress, Organization, User
+from app.models import (
+    AlertEvent,
+    DmarcRecord,
+    DmarcReport,
+    Domain,
+    DomainRecipient,
+    InboundMailAddress,
+    Organization,
+    User,
+)
 from app.services.audit import log_action
 from app.services.charts import day_chart
 from app.services.dashboard import get_pass_fail_over_time
@@ -34,6 +44,50 @@ router = APIRouter(prefix="/domains", tags=["domains"])
 DNS_FILTERS = ("error", "warning", "unknown", "ok", "unchecked")
 
 
+class _Health:
+    """How a domain fared in the last days: messages, passed messages, open alerts."""
+
+    def __init__(self, messages: int = 0, passed: int = 0, alerts: int = 0):
+        self.messages, self.passed, self.alerts = messages, passed, alerts
+
+    @property
+    def failed(self) -> int:
+        return self.messages - self.passed
+
+    @property
+    def pass_rate(self) -> float | None:
+        return round(self.passed / self.messages * 100, 1) if self.messages else None
+
+
+_NO_HEALTH = _Health()
+
+
+def _health(db: Session, org_id: str) -> dict[str, _Health]:
+    """Messages and open alerts per domain over UI_CHART_DAYS days, in two queries for all domains."""
+    since = datetime.now(UTC) - timedelta(days=settings.UI_CHART_DAYS)
+    rows = (
+        db.query(
+            DmarcReport.domain_id, func.sum(DmarcRecord.count),
+            func.sum(case((DmarcRecord.dmarc_pass.is_(True), DmarcRecord.count), else_=0)),
+        )
+        .join(DmarcReport, DmarcRecord.report_id == DmarcReport.id)
+        .filter(DmarcReport.organization_id == org_id, DmarcReport.created_at >= since)
+        .group_by(DmarcReport.domain_id)
+        .all()
+    )
+    health = {domain_id: _Health(int(messages or 0), int(passed or 0)) for domain_id, messages, passed in rows
+              if domain_id}
+    alerts = (
+        db.query(AlertEvent.domain_id, func.count(AlertEvent.id))
+        .filter(AlertEvent.organization_id == org_id, AlertEvent.status == "open", AlertEvent.domain_id.isnot(None))
+        .group_by(AlertEvent.domain_id)
+        .all()
+    )
+    for domain_id, count in alerts:
+        health.setdefault(domain_id, _Health()).alerts = count
+    return health
+
+
 def _paginate(q, page: int, per_page: int):
     total = q.count()
     items = q.offset((page - 1) * per_page).limit(per_page).all()
@@ -46,6 +100,7 @@ def domain_list(
     page: int = Query(1, ge=1),
     search: str | None = Query(None),
     dns: str | None = Query(None),
+    sort: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -57,12 +112,22 @@ def domain_list(
         q = q.filter(Domain.dns_status.is_(None))
     elif dns in DNS_FILTERS:
         q = q.filter(Domain.dns_status == dns)
-    q = q.order_by(Domain.name)
-    domains, total, pages = _paginate(q, page, settings.UI_PAGE_SIZE)
+    all_domains = q.order_by(Domain.name).all()
+    health = _health(db, org.id)
+    by_name = sort == "name"
+    if not by_name:
+        # Problems first: the most failed messages, then the most open alerts; quiet domains follow by name
+        all_domains.sort(key=lambda d: (-health.get(d.id, _NO_HEALTH).failed, -health.get(d.id, _NO_HEALTH).alerts))
+    total = len(all_domains)
+    per_page = settings.UI_PAGE_SIZE
+    domains = all_domains[(page - 1) * per_page:page * per_page]
+    pages = (total + per_page - 1) // per_page
 
     return templates.TemplateResponse(request, "domains/index.html", {
         "user": user, "org": org,
         "domains": domains, "total": total, "page": page, "pages": pages,
+        "health": health, "no_health": _NO_HEALTH, "days": settings.UI_CHART_DAYS,
+        "by_name": by_name,
         "search": search or "", "selected_dns": dns if dns in DNS_FILTERS else "", "page_title": "Domains",
     })
 

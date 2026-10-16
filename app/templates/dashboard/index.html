@@ -28,6 +28,26 @@
   <div class="bc-kpi"><p class="bc-kpi__value">{{ stats.unknown_ips | num }}</p><p class="bc-kpi__label">unbekannte Versandquellen</p></div>
 </div>
 
+{% if split.forged or split.to_check %}
+<section class="bc-panel" aria-labelledby="ursache-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="ursache-titel">Woran die Fehler liegen</h2><a class="bc-button bc-button--secondary" href="/source-ips?problem=1">Quellen mit Fehlern</a></div>
+  <div class="bc-panel__body">
+    <dl class="app-dl">
+      <dt>Gefälschte Absender</dt><dd><strong>{{ split.forged | num }}</strong> Nachrichten von Quellen, die als verdächtig oder ignoriert eingestuft sind. Hier ist nichts einzurichten; eine strengere DMARC-Richtlinie weist sie ab.</dd>
+      <dt>Zu prüfen</dt><dd><strong>{{ split.to_check | num }}</strong> Nachrichten von eigenen, freigegebenen oder noch unbekannten Quellen. Hier fehlt vermutlich SPF oder DKIM.</dd>
+    </dl>
+    {% if split.top %}
+    <ul class="app-causes">
+      {% for t in split.top %}
+      <li>{% if t.id %}<a class="app-mono" href="/source-ips/{{ t.id }}">{{ t.ip }}</a>{% else %}<span class="app-mono">{{ t.ip }}</span>{% endif %}{% if t.label %} <span class="app-quiet">{{ t.label }}</span>{% endif %} · {{ t.failed | plural('Nachricht', 'Nachrichten') }} ohne Erfolg</li>
+      {% endfor %}
+      {% if split.more %}<li class="app-quiet">und {{ split.more | num }} weitere Quellen</li>{% endif %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 <section class="bc-panel" aria-labelledby="verlauf-titel">
   <div class="bc-panel__head"><h2 class="bc-panel__title" id="verlauf-titel">Verlauf</h2><span class="app-quiet app-small">Tage in UTC, nach Berichtszeitraum</span></div>
   <div class="bc-panel__body">
@@ -125,21 +145,28 @@
   {% endif %}
 </section>
 
-{% if stats.domains_no_reports %}
+{% set silent = stats.domains_no_reports | selectattr('last_report_at') | list %}
+{% set never = stats.domains_no_reports | rejectattr('last_report_at') | list %}
+{% if silent %}
 <section class="bc-panel" aria-labelledby="stille-titel">
-  <div class="bc-panel__head"><h2 class="bc-panel__title" id="stille-titel">Domains ohne neue Berichte</h2></div>
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="stille-titel">Domains, die sich nicht mehr melden</h2><a class="bc-button bc-button--secondary" href="/domains">Alle Domains</a></div>
   <div class="bc-table-wrap">
     <table class="bc-table">
       <thead><tr><th>Domain</th><th class="bc-hide-narrow">Letzter Bericht</th><th class="bc-hide-narrow"><span class="bc-sr">Aktion</span></th></tr></thead>
       <tbody>
-        {% for d in stats.domains_no_reports %}
-        <tr><td><a class="bc-row-title" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">letzter Bericht {% if d.last_report_at %}{{ d.last_report_at | date }}{% else %}noch keiner{% endif %}</span></td><td class="bc-hide-narrow">{{ d.last_report_at | date }}</td><td class="bc-hide-narrow"><div class="bc-row-actions"><a class="bc-button bc-button--secondary" href="/domains/{{ d.id }}">Öffnen</a></div></td></tr>
+        {% for d in silent[:recent_limit] %}
+        <tr><td><a class="bc-row-title" href="/domains/{{ d.id }}">{{ d.name }}</a><span class="bc-row-sub bc-only-narrow">letzter Bericht {{ d.last_report_at | date }}</span></td><td class="app-nowrap bc-hide-narrow">{{ d.last_report_at | date }}</td><td class="bc-hide-narrow"><a href="/domains/{{ d.id }}">Öffnen</a></td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {% if silent | length > recent_limit %}<p class="app-small app-quiet" style="padding:12px 20px;margin:0">und {{ (silent | length - recent_limit) | num }} weitere; die <a href="/domains?sort=name">Domainliste</a> zeigt den letzten Bericht je Domain.</p>{% endif %}
 </section>
-{% else %}
+{% endif %}
+{% if never %}
+<div class="bc-alert"><p class="bc-alert__title">{{ never | length | plural('Domain hat', 'Domains haben') }} noch nie einen Bericht geschickt</p><p>Das ist bei Domains ohne Mailverkehr oder ohne DMARC-Eintrag mit der Empfangsadresse üblich. Die <a href="/domains">Domainliste</a> zeigt die DNS-Prüfung je Domain.</p></div>
+{% endif %}
+{% if not silent and not never %}
 <div class="bc-alert bc-alert--ok"><p class="bc-alert__title">Alle Domains melden sich</p><p>Für jede aktive Domain kam in den letzten Tagen mindestens ein Bericht.</p></div>
 {% endif %}
 {% endblock %}

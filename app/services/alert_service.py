@@ -329,6 +329,15 @@ def _eval_reports_missing(db: Session, rule: AlertRule, now: datetime) -> list[F
     )]
 
 
+def _source_facets(db: Session, src: SourceIp) -> dict:
+    """Domains and the short name of a source for the metrics of an alert; the alert list groups and labels by them."""
+    from app.services.alert_details import source_context, source_label
+
+    context = source_context(db, src.organization_id, src.ip_address, limit=max(1, settings.ALERT_DESCRIPTION_DOMAINS))
+    return {"domains": [name for name, _ in context.domains], "domains_more": context.more_domains,
+            "source_label": source_label(src)}
+
+
 def _for_domains(db: Session, src: SourceIp) -> str:
     """„ für a.example, b.example und 3 weitere“ for the title of an alert about a source; empty without records."""
     from app.services.alert_details import source_context
@@ -397,7 +406,8 @@ def _eval_new_unknown_source(db: Session, rule: AlertRule, now: datetime) -> lis
         findings.append(Finding(
             title=title, description=description, domain_id=rule.domain_id, source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "total": src.total_messages, "pass_rate": src.pass_rate,
-                     "sender": src.sender_key, "window_minutes": rule.time_window_minutes},
+                     "sender": src.sender_key, "window_minutes": rule.time_window_minutes,
+                     **_source_facets(db, src)},
         ))
     return findings
 
@@ -413,7 +423,7 @@ def _eval_high_volume_source(db: Session, rule: AlertRule, now: datetime) -> lis
         findings.append(Finding(
             title=title, description=description, domain_id=rule.domain_id, source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "total": src.total_messages, "threshold": threshold,
-                     "window_minutes": rule.time_window_minutes},
+                     "window_minutes": rule.time_window_minutes, **_source_facets(db, src)},
         ))
     return findings
 
@@ -429,7 +439,7 @@ def _eval_new_source_dmarc_fail(db: Session, rule: AlertRule, now: datetime) -> 
         findings.append(Finding(
             title=title, description=description, domain_id=rule.domain_id, source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "failed": src.fail_count, "total": src.total_messages,
-                     "window_minutes": rule.time_window_minutes},
+                     "window_minutes": rule.time_window_minutes, **_source_facets(db, src)},
         ))
     return findings
 
@@ -448,12 +458,14 @@ def refresh_event_texts(db: Session, organization_id: str | None = None,
     changed = 0
     for event in query:
         title = description = None
+        extra: dict = {}
         if event.source_ip and event.alert_type in ("new_unknown_source", "high_volume_source",
                                                     "new_source_dmarc_fail"):
             src = db.query(SourceIp).filter_by(organization_id=event.organization_id,
                                                ip_address=event.source_ip).first()
             if src is None:
                 continue
+            extra = _source_facets(db, src)
             if event.alert_type == "new_unknown_source":
                 title, description = _unknown_source_text(db, src)
             elif event.alert_type == "high_volume_source":
@@ -471,11 +483,20 @@ def refresh_event_texts(db: Session, organization_id: str | None = None,
             domain_rule = AlertRule(organization_id=event.organization_id, domain_id=event.domain_id,
                                     time_window_minutes=rule.time_window_minutes)
             records = _records(db, domain_rule, start, end + timedelta(seconds=1))
-            hint, _ = _sources_hint(db, domain_rule, records, event.alert_type, end)
+            hint, causes = _sources_hint(db, domain_rule, records, event.alert_type, end)
+            extra = {"causes": causes, "window_minutes": rule.time_window_minutes}
             prefix = event.description[:event.description.index(marker) + len(marker) - 1]
             title, description = event.title, f"{prefix} {hint}"
-        if title is not None and (title != event.title or description != event.description):
+        if title is None:
+            continue
+        try:
+            metrics = json.loads(event.metrics or "{}")
+        except ValueError:
+            metrics = {}
+        merged = json.dumps({**metrics, **extra})
+        if title != event.title or description != event.description or merged != (event.metrics or ""):
             event.title, event.description = clean_text(title, 500), clean_text(description)
+            event.metrics = merged
             changed += 1
     db.flush()
     return changed

@@ -1,10 +1,43 @@
 {% extends "base.html" %}
 {% import "partials/macros.html" as ui with context %}
 
-{% block lede %}<p>Auffälligkeiten, die die Anwendung gemeldet hat. Bestätige, was du gesehen hast, und schließe, was erledigt ist.</p>{% endblock %}
+{% block lede %}<p>Auffälligkeiten, die die Anwendung gemeldet hat. Gleichartige Alarme zu einer Domain stehen als Gruppe beisammen; bestätige, was du gesehen hast, und schließe, was erledigt ist.</p>{% endblock %}
 {% block actions %}<a class="bc-button bc-button--secondary" href="/alerts/rules">Regeln</a>{% endblock %}
 
+{% macro actions(e, back) %}
+{% if can.analyst %}
+<div class="bc-row-actions">
+  {% if e.status == 'open' %}<form method="post" action="/alerts/events/{{ e.id }}/acknowledge"><input type="hidden" name="next" value="{{ back }}"><button class="bc-button bc-button--secondary" type="submit">Gesehen</button></form>{% endif %}
+  {% if e.status != 'resolved' %}<form method="post" action="/alerts/events/{{ e.id }}/resolve"><input type="hidden" name="next" value="{{ back }}"><button class="bc-button" type="submit">Erledigt</button></form>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro chips(r) %}
+{% for d in r.domains[:3] %}<span class="app-chip app-chip--domain">{{ d }}</span>{% endfor %}{% if r.domains|length > 3 or r.domains_more %}<span class="app-chip app-chip--quiet">+{{ (r.domains|length - 3 if r.domains|length > 3 else 0) + r.domains_more }} Domains</span>{% endif %}
+{% for c in r.causes[:2] %}<span class="app-chip app-chip--cause">{{ c.label }} · {{ c.messages | plural('Nachricht', 'Nachrichten') }}</span>{% endfor %}
+{% endmacro %}
+
+{% macro event_row(r, back, nested=False) %}
+{% set e = r.event %}
+<li class="app-alert{% if nested %} app-alert--nested{% endif %}">
+  <div class="app-alert__main">
+    <a class="bc-row-title" href="/alerts/events/{{ e.id }}">{{ r.title }}</a>
+    <div class="app-alert__facts">{{ chips(r) }}{% if r.source %}<span class="app-alert__source app-break">{{ r.source }}</span>{% endif %}</div>
+    {% if r.detail %}<a class="app-small" href="/alerts/events/{{ e.id }}">Gründe und Abhilfe ansehen</a>{% elif e.description %}<span class="app-alert__text">{{ e.description }}</span>{% endif %}
+    {% for d in deliveries.get(e.id, []) %}<span class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>{% endfor %}
+  </div>
+  <div class="app-alert__state">
+    {{ ui.state(e.severity | severity_text, e.severity | severity_state) }}
+    {{ ui.state(e.status | status_text, e.status | status_state) }}
+    <span class="app-small app-quiet app-nowrap">{{ e.created_at | datetime }}</span>
+  </div>
+  <div class="app-alert__actions">{{ actions(e, back) }}</div>
+</li>
+{% endmacro %}
+
 {% block content %}
+{% set back = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
 <section class="bc-panel">
   <form class="app-filter" method="get" aria-label="Alarme filtern">
     <div>
@@ -21,42 +54,59 @@
         {% for s in severities %}<option value="{{ s }}"{% if severity_filter == s %} selected{% endif %}>{{ s | severity_text }}</option>{% endfor %}
       </select>
     </div>
+    <div>
+      <label for="f-view">Ansicht</label>
+      <select class="bc-select" id="f-view" name="view">
+        <option value="">Gruppiert</option>
+        <option value="single"{% if view_single %} selected{% endif %}>Einzeln</option>
+      </select>
+    </div>
     <button class="bc-button" type="submit">Filtern</button>
-    {% if status_filter or severity_filter %}<a class="bc-button bc-button--secondary" href="/alerts/events">Filter zurücksetzen</a>{% endif %}
+    {% if status_filter or severity_filter or view_single %}<a class="bc-button bc-button--secondary" href="/alerts/events">Filter zurücksetzen</a>{% endif %}
   </form>
-  {% if events %}
-  <div class="bc-table-wrap">
-    <table class="bc-table">
-      <thead><tr><th>Alarm</th><th class="bc-hide-narrow">Schwere</th><th class="bc-hide-narrow">Status</th><th class="bc-hide-narrow">Gemeldet</th><th class="bc-hide-narrow"><span class="bc-sr">Aktionen</span></th></tr></thead>
-      <tbody>
-        {% for e in events %}
-        {% set actions %}
-              {% if e.status == 'open' %}
-              <form method="post" action="/alerts/events/{{ e.id }}/acknowledge"><button class="bc-button bc-button--secondary" type="submit">Gesehen</button></form>
+
+  {% if truncated %}<p class="app-small app-quiet" style="padding:12px 20px;margin:0">Es gibt mehr als {{ limit | num }} Alarme in diesem Filter; die Liste zeigt die neuesten. Schließe erledigte Alarme, um ältere zu sehen.</p>{% endif %}
+
+  {% if items %}
+  <ul class="app-alerts">
+    {% if single %}
+      {% for r in items %}{{ event_row(r, back) }}{% endfor %}
+    {% else %}
+      {% for g in items %}
+        {% if g.count == 1 %}
+          {{ event_row(g.rows[0], back) }}
+        {% else %}
+        <li class="app-alertgroup">
+          <details>
+            <summary>
+              <span class="app-alertgroup__count">{{ g.count | num }}</span>
+              <span class="app-alertgroup__body">
+                <span class="bc-row-title">{{ g.label }}{% if g.domain %} · {{ g.domain }}{% endif %}</span>
+                <span class="app-alert__facts">
+                  {% if g.sources %}<span class="app-chip">{{ g.sources | plural('Quelle', 'Quellen') }}</span>{% endif %}
+                  {% if g.messages %}<span class="app-chip">{{ g.messages | plural('Nachricht', 'Nachrichten') }}</span>{% endif %}
+                  {% for label, n in g.causes %}<span class="app-chip app-chip--cause">{{ label }} · {{ n | num }}</span>{% endfor %}
+                </span>
+              </span>
+              <span class="app-alert__state">{{ ui.state(g.severity | severity_text, g.severity | severity_state) }}<span class="app-small app-quiet app-nowrap">{{ g.latest | datetime }}</span></span>
+            </summary>
+            {% if can.analyst %}
+            <div class="app-alertgroup__bulk">
+              {% if g.open_count %}
+              <form method="post" action="/alerts/events/bulk"><input type="hidden" name="alert_type" value="{{ g.alert_type }}"><input type="hidden" name="domain" value="{{ g.domain }}"><input type="hidden" name="action" value="acknowledge"><input type="hidden" name="status" value="{{ status_filter }}"><input type="hidden" name="severity" value="{{ severity_filter }}"><input type="hidden" name="next" value="{{ back }}"><button class="bc-button bc-button--secondary" type="submit">Alle {{ g.open_count | num }} als gesehen markieren</button></form>
               {% endif %}
-              {% if e.status != 'resolved' %}
-              <form method="post" action="/alerts/events/{{ e.id }}/resolve"><button class="bc-button" type="submit">Erledigt</button></form>
-              {% endif %}
-        {% endset %}
-        <tr>
-          <td>
-            <a class="bc-row-title" href="/alerts/events/{{ e.id }}">{{ e.title }}</a>
-            <span class="bc-row-sub"><span class="bc-only-narrow">{{ e.severity | severity_text }} · {{ e.status | status_text }} · {{ e.created_at | datetime }}{% if e.description %}<br>{% endif %}</span>{{ e.description or '' }}</span>
-            {% if e.alert_type in detail_types %}<a class="app-small" href="/alerts/events/{{ e.id }}">Gründe und Abhilfe ansehen</a>{% endif %}
-            {% for d in e.deliveries %}
-            <span class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</span>
-            {% endfor %}
-            {% if can.analyst and e.status != 'resolved' %}<div class="bc-row-actions bc-only-narrow">{{ actions }}</div>{% endif %}
-          </td>
-          <td class="bc-hide-narrow">{{ ui.state(e.severity | severity_text, e.severity | severity_state) }}</td>
-          <td class="bc-hide-narrow">{{ ui.state(e.status | status_text, e.status | status_state) }}</td>
-          <td class="app-nowrap bc-hide-narrow">{{ e.created_at | datetime }}</td>
-          <td class="bc-hide-narrow">{% if can.analyst %}<div class="bc-row-actions">{{ actions }}</div>{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+              <form method="post" action="/alerts/events/bulk"><input type="hidden" name="alert_type" value="{{ g.alert_type }}"><input type="hidden" name="domain" value="{{ g.domain }}"><input type="hidden" name="action" value="resolve"><input type="hidden" name="status" value="{{ status_filter }}"><input type="hidden" name="severity" value="{{ severity_filter }}"><input type="hidden" name="next" value="{{ back }}"><button class="bc-button" type="submit">Alle {{ g.count | num }} erledigt</button></form>
+            </div>
+            {% endif %}
+            <ul class="app-alerts app-alerts--nested">
+              {% for r in g.rows %}{{ event_row(r, back, nested=True) }}{% endfor %}
+            </ul>
+          </details>
+        </li>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  </ul>
   {{ ui.pagination(page, pages, total, "Alarme") }}
   {% elif status_filter or severity_filter %}
     {{ ui.empty("Kein Alarm passt zum Filter", "", "/alerts/events", "Filter zurücksetzen") }}

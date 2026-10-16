@@ -212,3 +212,42 @@ def get_top_source_ips(db: Session, org_id: str, limit: int = 10) -> list[dict]:
         }
         for s in rows
     ]
+
+
+def get_failure_split(db: Session, org_id: str, days: int, limit: int) -> dict:
+    """Where the failed messages of the last days come from: sources marked as forged senders (nothing to do)
+    against all others (own or unknown servers that need a look), with the biggest of the second kind."""
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = (
+        db.query(DmarcRecord.source_ip, func.sum(DmarcRecord.count))
+        .join(DmarcReport, DmarcRecord.report_id == DmarcReport.id)
+        .filter(DmarcReport.organization_id == org_id, DmarcReport.created_at >= since)
+        .filter(DmarcRecord.dmarc_pass.is_(False))
+        .group_by(DmarcRecord.source_ip)
+        .all()
+    )
+    sources = {
+        s.ip_address: s for s in db.query(SourceIp).filter(
+            SourceIp.organization_id == org_id, SourceIp.ip_address.in_([ip for ip, _ in rows]))
+    } if rows else {}
+    from app.services.alert_details import source_label
+
+    forged = to_check = 0
+    check = []
+    for ip, count in rows:
+        count = int(count or 0)
+        source = sources.get(ip)
+        if source is not None and source.classification in ("suspicious", "ignored"):
+            forged += count
+        else:
+            to_check += count
+            check.append((count, ip, source))
+    check.sort(key=lambda item: item[0], reverse=True)
+    return {
+        "forged": forged, "to_check": to_check,
+        "top": [{"ip": ip, "id": source.id if source else None, "failed": count,
+                 "label": source_label(source) if source else "",
+                 "classification": source.classification if source else "unknown"}
+                for count, ip, source in check[:limit]],
+        "more": max(0, len(check) - limit),
+    }

@@ -33,6 +33,16 @@ def _domains_of(db: Session, org_id: str, ips: list[str]) -> dict[str, list[str]
     return {ip: sorted(names) for ip, names in found.items()}
 
 
+def _own_servers(sources: list[SourceIp], domain_names: list[str]) -> set[str]:
+    """Ids of the sources whose host name lies in one of the organisation's own domains."""
+    own = set()
+    for source in sources:
+        host = (source.reverse_dns or "").lower().rstrip(".")
+        if host and any(host == name.lower() or host.endswith("." + name.lower()) for name in domain_names):
+            own.add(source.id)
+    return own
+
+
 def _paginate(q, page: int, per_page: int):
     total = q.count()
     items = q.offset((page - 1) * per_page).limit(per_page).all()
@@ -47,6 +57,7 @@ def source_ip_list(
     search: str | None = Query(None),
     sender: str | None = Query(None),
     domain: str | None = Query(None),
+    problem: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
@@ -71,6 +82,12 @@ def source_ip_list(
     else:
         sender = None
 
+    if problem == "1":
+        # Sources that may be yours and fail too often; the ones already marked as suspicious are no problem
+        q = q.filter(SourceIp.classification.in_(("trusted", "unknown")),
+                     SourceIp.pass_rate < settings.UI_PASS_RATE_WARN)
+    else:
+        problem = None
     domain_names = [name for (name,) in db.query(Domain.name).filter_by(organization_id=org.id).order_by(Domain.name)]
     if domain in domain_names:
         q = q.filter(SourceIp.ip_address.in_(
@@ -87,7 +104,11 @@ def source_ip_list(
         "ips": ips, "total": total, "page": page, "pages": pages,
         "domains_by_ip": _domains_of(db, org.id, [s.ip_address for s in ips]),
         "domain_names": domain_names, "domain_filter": domain or "",
-        "domains_shown": settings.UI_SOURCE_DOMAINS_SHOWN,
+        "domains_shown": settings.UI_SOURCE_DOMAINS_SHOWN, "problem_filter": problem or "",
+        "own_ids": _own_servers(ips, domain_names),
+        "problem_ids": {s.id for s in ips if s.classification == "trusted" and s.pass_rate is not None
+                        and s.pass_rate < settings.UI_PASS_RATE_WARN},
+        "pass_warn": settings.UI_PASS_RATE_WARN,
         "classification_filter": classification if classification in CLASSIFICATIONS else "",
         "classifications": CLASSIFICATIONS, "search": search or "",
         "sender_filter": sender or "", "senders": [(key, catalog.name(key)) for key in present],

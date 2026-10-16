@@ -27,6 +27,13 @@
       </select>
     </div>
     <div>
+      <label for="f-problem">Qualität</label>
+      <select class="bc-select" id="f-problem" name="problem">
+        <option value="">Alle</option>
+        <option value="1"{% if problem_filter == '1' %} selected{% endif %}>Bestehen unter {{ pass_warn | num }} %</option>
+      </select>
+    </div>
+    <div>
       <label for="f-class">Einstufung</label>
       <select class="bc-select" id="f-class" name="classification">
         <option value="">Alle</option>
@@ -34,23 +41,22 @@
       </select>
     </div>
     <button class="bc-button" type="submit">Filtern</button>
-    {% if search or classification_filter or sender_filter or domain_filter %}<a class="bc-button bc-button--secondary" href="/source-ips">Filter zurücksetzen</a>{% endif %}
+    {% if search or classification_filter or sender_filter or domain_filter or problem_filter %}<a class="bc-button bc-button--secondary" href="/source-ips">Filter zurücksetzen</a>{% endif %}
   </form>
   {% if ips %}
   <div class="bc-table-wrap">
     <table class="bc-table">
-      <thead><tr><th>IP-Adresse</th><th class="bc-hide-narrow">Domains</th><th class="bc-hide-narrow">Absender</th><th class="bc-hide-narrow">Einstufung</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-hide-narrow">Bestanden</th><th class="bc-hide-narrow">Zuerst gesehen</th><th class="bc-hide-narrow">Zuletzt gesehen</th></tr></thead>
+      <thead><tr><th>IP-Adresse</th><th class="bc-hide-narrow">Domains</th><th class="bc-hide-narrow">Absender</th><th class="bc-hide-narrow">Einstufung</th><th class="bc-num bc-hide-narrow">Nachrichten</th><th class="bc-hide-narrow">Bestanden</th><th class="bc-hide-narrow">Zuletzt gesehen</th></tr></thead>
       <tbody>
         {% for s in ips %}
         <tr>
           <td><a class="bc-row-title app-mono" href="/source-ips/{{ s.id }}">{{ s.ip_address }}</a><span class="bc-row-sub">{% if s.reverse_dns %}<span class="app-break">{{ s.reverse_dns }}</span>{% endif %}<span class="bc-only-narrow">{% if s.reverse_dns %} · {% endif %}{% if s.sender_key %}{{ catalog.name(s.sender_key) }} · {% endif %}{{ s.classification | classification_text }} · {{ s.total_messages | plural('Nachricht', 'Nachrichten') }} · {{ s.pass_rate | percent }} bestanden</span></span></td>
           {%- set names = domains_by_ip.get(s.ip_address, []) %}
-          <td class="bc-hide-narrow app-break">{% if names %}{% for name in names[:domains_shown] %}<a href="/source-ips?domain={{ name | urlencode }}">{{ name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if names | length > domains_shown %} <span class="app-quiet" title="{{ names[domains_shown:] | join(', ') }}">+{{ names | length - domains_shown }}</span>{% endif %}{% else %}<span class="app-quiet">—</span>{% endif %}</td>
-          <td class="bc-hide-narrow">{% if s.sender_key %}<a href="/source-ips?sender={{ s.sender_key }}">{{ catalog.name(s.sender_key) }}</a>{% elif s.enriched_at %}<span class="app-quiet app-nowrap">nicht zugeordnet</span>{% else %}<span class="app-quiet app-nowrap">wird ermittelt</span>{% endif %}</td>
-          <td class="bc-hide-narrow">{{ ui.state(s.classification | classification_text, s.classification | classification_state) }}{% if s.classification_source == 'sender' %}<span class="app-reason">über den Absender</span>{% endif %}{% if s.classification_source == 'rule' %}<span class="app-reason">über die Quellenregeln</span>{% endif %}</td>
+          <td class="bc-hide-narrow">{% if names %}<span class="app-domains">{% for name in names[:domains_shown] %}<a class="app-nowrap" href="/source-ips?domain={{ name | urlencode }}">{{ name }}</a>{% endfor %}{% if names | length > domains_shown %}<span class="app-quiet" title="{{ names[domains_shown:] | join(', ') }}">+{{ names | length - domains_shown }}</span>{% endif %}</span>{% else %}<span class="app-quiet">—</span>{% endif %}</td>
+          <td class="bc-hide-narrow">{% if s.sender_key %}<a href="/source-ips?sender={{ s.sender_key }}">{{ catalog.name(s.sender_key) }}</a>{% elif s.id in own_ids %}<span class="app-nowrap" title="Der Hostname liegt in einer deiner Domains">Eigener Server</span>{% elif s.enriched_at %}<span class="app-quiet app-nowrap">nicht zugeordnet</span>{% else %}<span class="app-quiet app-nowrap">wird ermittelt</span>{% endif %}</td>
+          <td class="bc-hide-narrow">{{ ui.state(s.classification | classification_text, s.classification | classification_state) }}{% if s.classification_source == 'sender' %}<span class="app-reason">über den Absender</span>{% endif %}{% if s.classification_source == 'rule' %}<span class="app-reason">über die Quellenregeln</span>{% endif %}{% if s.id in problem_ids %}<span class="app-reason"><a class="bc-state bc-state--warn" href="/source-ips/{{ s.id }}">Fehler prüfen</a></span>{% endif %}</td>
           <td class="bc-num bc-hide-narrow">{{ s.total_messages | num }}</td>
           <td class="bc-hide-narrow">{{ ui.state(s.pass_rate | percent, s.pass_rate | rate_state) }}</td>
-          <td class="app-nowrap bc-hide-narrow">{{ s.first_seen_at | date }}</td>
           <td class="app-nowrap bc-hide-narrow">{{ s.last_seen_at | date }}</td>
         </tr>
         {% endfor %}
@@ -58,7 +64,7 @@
     </table>
   </div>
   {{ ui.pagination(page, pages, total, "Quellen") }}
-  {% elif search or classification_filter or sender_filter or domain_filter %}
+  {% elif search or classification_filter or sender_filter or domain_filter or problem_filter %}
     {{ ui.empty("Keine Quelle passt zum Filter", "", "/source-ips", "Filter zurücksetzen") }}
   {% else %}
     {{ ui.empty("Noch keine Quellen", "Sobald Berichte ankommen, stehen hier die IP-Adressen, die für deine Domains Mails verschicken.") }}

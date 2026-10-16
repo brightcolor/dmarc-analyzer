@@ -503,6 +503,11 @@ class Settings(BaseSettings):
         description="Anzahl Domains, die der Text eines Alarms zu einer Quelle nennt (neue Quelle, viele "
                     "Nachrichten, DMARC-Fehler); weitere stehen als „und n weitere“ dabei, 0 lässt den Satz weg.",
     )
+    UI_ALERT_GROUP_LIMIT: int = Field(
+        2000, ge=100, le=20_000,
+        description="Höchstzahl Alarme, die die Alarmliste für die Gruppierung lädt; darüber hinaus meldet die "
+                    "Liste, dass es weitere gibt.",
+    )
     UI_ALERT_DETAIL_SOURCES: int = Field(
         50, ge=5, le=500,
         description="Höchstzahl Quellen, die die Detailseite eines Alarms zur Fehlerquote auflistet.",

@@ -16,7 +16,7 @@ from app.dependencies import (
 )
 from app.models import AlertEvent, AlertRule, Domain, NotificationChannel, NotificationDelivery, Organization, User
 from app.security import utcnow
-from app.services import alert_details
+from app.services import alert_details, alert_list
 from app.services.alert_service import ALERT_TYPES, OPERATOR_ALERT_TYPES, alert_type_hints
 from app.services.audit import log_action
 from app.services.auth import get_user_role_in_org
@@ -297,35 +297,85 @@ def alert_events(
     page: int = Query(1, ge=1),
     status: str | None = Query(None),
     severity: str | None = Query(None),
+    view: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
 ):
-    q = (
-        db.query(AlertEvent)
-        .options(selectinload(AlertEvent.deliveries).selectinload(NotificationDelivery.channel))
-        .filter_by(organization_id=org.id)
-        .order_by(AlertEvent.created_at.desc())
-    )
-    if status in EVENT_STATUSES:
-        q = q.filter_by(status=status)
-    if severity in SEVERITIES:
-        q = q.filter_by(severity=severity)
-
+    status = status if status in EVENT_STATUSES else None
+    severity = severity if severity in SEVERITIES else None
+    single = view == "single"
+    rows, truncated = alert_list.load_rows(db, org.id, status, severity, ALERT_TYPES)
     per_page = settings.UI_PAGE_SIZE
-    total = q.count()
-    events = q.offset((page - 1) * per_page).limit(per_page).all()
-    pages = (total + per_page - 1) // per_page
+    if single:
+        items = rows
+    else:
+        items = alert_list.group_rows(rows, ALERT_TYPES)
+    total_items = len(items)
+    pages = (total_items + per_page - 1) // per_page
+    shown = items[(page - 1) * per_page:page * per_page]
+    deliveries = {}
+    if single:
+        ids = [r.event.id for r in shown]
+        for delivery in (db.query(NotificationDelivery).options(selectinload(NotificationDelivery.channel))
+                         .filter(NotificationDelivery.alert_event_id.in_(ids)) if ids else []):
+            deliveries.setdefault(delivery.alert_event_id, []).append(delivery)
 
     return templates.TemplateResponse(request, "alerts/events.html", {
         "user": user, "org": org,
-        "events": events, "total": total, "page": page, "pages": pages,
-        "status_filter": status if status in EVENT_STATUSES else "",
-        "severity_filter": severity if severity in SEVERITIES else "",
-        "statuses": EVENT_STATUSES, "severities": SEVERITIES,
-        "detail_types": alert_details.DETAIL_TYPES,
+        "items": shown, "single": single, "total": len(rows), "page": page, "pages": pages,
+        "truncated": truncated, "limit": settings.UI_ALERT_GROUP_LIMIT,
+        "status_filter": status or "", "severity_filter": severity or "",
+        "statuses": EVENT_STATUSES, "severities": SEVERITIES, "deliveries": deliveries,
+        "view_single": single,
         "page_title": "Alarme",
     })
+
+
+@router.post("/events/bulk")
+def bulk_events(
+    request: Request,
+    alert_type: str = Form(""),
+    domain: str = Form(""),
+    action: str = Form(""),
+    status: str = Form(""),
+    severity: str = Form(""),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_analyst),
+    org: Organization = Depends(get_current_org),
+):
+    """Mark every alert of one group as seen or as resolved."""
+    if action not in ("acknowledge", "resolve") or alert_type not in ALERT_TYPES:
+        raise HTTPException(status_code=400, detail="Diese Sammelaktion gibt es nicht. Wähle „Alle gesehen“ oder "
+                            "„Alle erledigt“ in der Gruppe.")
+    source_status = status if status in EVENT_STATUSES else None
+    events = alert_list.members(db, org.id, alert_type, domain, source_status,
+                                severity if severity in SEVERITIES else None, ALERT_TYPES)
+    wanted = "acknowledged" if action == "acknowledge" else "resolved"
+    now = utcnow()
+    changed = 0
+    for event in events:
+        if event.status == wanted or (action == "acknowledge" and event.status != "open"):
+            continue
+        event.status = wanted
+        if action == "acknowledge":
+            event.acknowledged_at, event.acknowledged_by = now, user.id
+        else:
+            event.resolved_at, event.resolved_by = now, user.id
+        changed += 1
+    log_action(db, f"alert.bulk_{action}", org_id=org.id, user_id=user.id, resource_type="alert_group",
+               new_value={"alert_type": alert_type, "domain": domain, "count": changed},
+               ip_address=get_client_ip(request))
+    db.commit()
+    flash(request, "ok", f"{changed} Alarme {'als gesehen markiert' if action == 'acknowledge' else 'erledigt'}",
+          "Der Verlauf behält sie; filtere nach Status „erledigt“, um sie wiederzufinden." if changed else "")
+    return RedirectResponse(url=_safe_events_url(next), status_code=303)
+
+
+def _safe_events_url(target: str) -> str:
+    """Back to the alert list or one alert; any other target leads to the list."""
+    return target if target.startswith("/alerts/events") and not target.startswith("//") else "/alerts/events"
 
 
 @router.get("/events/{event_id}", response_class=HTMLResponse)
@@ -358,6 +408,7 @@ def alert_event_detail(
 def acknowledge_event(
     event_id: str,
     request: Request,
+    next: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
@@ -369,13 +420,14 @@ def acknowledge_event(
     event.acknowledged_at = utcnow()
     event.acknowledged_by = user.id
     db.commit()
-    return RedirectResponse(url="/alerts/events", status_code=303)
+    return RedirectResponse(url=_safe_events_url(next), status_code=303)
 
 
 @router.post("/events/{event_id}/resolve")
 def resolve_event(
     event_id: str,
     request: Request,
+    next: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_analyst),
     org: Organization = Depends(get_current_org),
@@ -387,7 +439,7 @@ def resolve_event(
     event.resolved_at = utcnow()
     event.resolved_by = user.id
     db.commit()
-    return RedirectResponse(url="/alerts/events", status_code=303)
+    return RedirectResponse(url=_safe_events_url(next), status_code=303)
 
 
 # Channels ------------------------------------------------------------------------------

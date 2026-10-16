@@ -83,6 +83,9 @@ class FailedSource:
     sender_name: str | None = None
     cause: str = ""
     cause_key: str = "other"
+    spf_entry: str = ""
+    spf_state: tuple[str, bool] = ("", False)
+    dkim_state: tuple[str, bool] = ("", False)
 
 
 @dataclass
@@ -103,6 +106,7 @@ class Breakdown:
     reporters: list[ReporterShare]
     failure_reports: int = 0
     causes: list["Cause"] = field(default_factory=list)
+    groups: list[tuple["Cause", list["FailedSource"]]] = field(default_factory=list)
 
 
 def window_minutes(event: AlertEvent, rule: AlertRule | None) -> int:
@@ -127,6 +131,9 @@ CAUSES = {
               "weisen Empfänger solche Mails ab."),
     "service": ("Dienst ohne passendes SPF oder DKIM",
                 "Richte beim Dienst DKIM für deine Domain ein oder nimm ihn in den SPF-Eintrag auf."),
+    "trusted": ("Freigegebene Quelle ohne passendes SPF oder DKIM",
+                "Die Quelle ist schon freigegeben und gehört zu dir. Richte DKIM für die Domain ein oder trage "
+                "die Adresse im SPF-Eintrag ein, dann besteht sie die Prüfung."),
     "unknown": ("Quelle ohne passendes SPF oder DKIM",
                 "Gehört die Quelle zu dir, trage ihre Adresse in den SPF-Eintrag ein oder richte DKIM ein. "
                 "Gehört sie nicht zu dir, stufe sie unter Quellen als verdächtig ein."),
@@ -151,6 +158,8 @@ def categorize(item: FailedSource) -> str:
     if item.failed == 0:
         return "passing"
     if not item.spf_aligned and not item.dkim_aligned:
+        if item.source is not None and item.source.classification == "trusted":
+            return "trusted"
         if item.sender_name:
             return "service"
         if item.source is not None and item.source.pass_count == 0:
@@ -161,6 +170,17 @@ def categorize(item: FailedSource) -> str:
     if not item.dkim_aligned:
         return "dkim"
     return "other"
+
+
+def auth_state(result: str, aligned: bool) -> tuple[str, bool]:
+    """Text and verdict of SPF or DKIM for a source: passes, passes for another domain, fails, missing."""
+    if aligned:
+        return "passt", True
+    if result == "pass":
+        return "andere Domain", False
+    if result in ("none", ""):
+        return "fehlt", False
+    return result_text(result), False
 
 
 def diagnose(item: FailedSource) -> str:
@@ -174,20 +194,24 @@ def diagnose(item: FailedSource) -> str:
         return ("Weder SPF noch DKIM passen, und von dieser Adresse hat noch nie eine Nachricht DMARC bestanden. "
                 "Das ist meist ein gefälschter Absender (Spoofing). Eine strengere DMARC-Richtlinie "
                 "(quarantine oder reject) lässt solche Mails abweisen.")
+    if key == "trusted":
+        return (f"Diese freigegebene Quelle verschickt Mails mit {own} als Absender, aber weder SPF noch DKIM passen "
+                f"zur Domain. Ergänze im SPF-Eintrag von {own} {spf_snippet(item.ip)} oder richte DKIM beim "
+                "Versender ein.")
     if key == "service":
         return (f"{item.sender_name} verschickt Mails mit {own} als Absender, aber weder SPF noch DKIM passen zur "
                 f"Domain. Richte bei {item.sender_name} DKIM für {own} ein oder nimm den Dienst in den "
                 "SPF-Eintrag auf.")
     if key == "unknown":
         return (f"Weder SPF noch DKIM passen zu {own}. Gehört die Adresse zu dir, ergänze im SPF-Eintrag von {own} "
-                f"`{spf_snippet(item.ip)}` oder richte DKIM beim Versender ein; sonst ist es vermutlich Missbrauch.")
+                f"{spf_snippet(item.ip)} oder richte DKIM beim Versender ein; sonst ist es vermutlich Missbrauch.")
     if key == "spf":
         if item.spf == "pass":
             return (f"SPF besteht, aber für eine andere Domain ({', '.join(item.spf_domains) or 'Bounce-Adresse'}) "
                     f"als {own}. DKIM trägt die Mail; stelle den Versand so ein, dass die Bounce-Adresse zu "
                     f"{own} passt, oder verlass dich auf DKIM.")
         return (f"SPF schlägt fehl: Die Adresse steht nicht im SPF-Eintrag der Bounce-Domain. Ergänze dort "
-                f"`{spf_snippet(item.ip)}`, wenn sie zu dir gehört. DKIM trägt die Mail noch.")
+                f"{spf_snippet(item.ip)}, wenn sie zu dir gehört. DKIM trägt die Mail noch.")
     if key == "dkim":
         if item.dkim in ("none", ""):
             return (f"Die Mails tragen keine DKIM-Signatur für {own}. SPF trägt sie noch; "
@@ -310,10 +334,19 @@ def analyze(db: Session, org_id: str, domain_id: str | None, alert_type: str, so
             f"{a.domain or '—'}{' · ' + a.selector if a.selector else ''} ({result_text(a.result)})"
             for a in results if a.auth_type == "dkim")
         item.cause = diagnose(item)
+        item.cause_key = categorize(item)
+        item.spf_state = auth_state(item.spf, item.spf_aligned)
+        item.dkim_state = auth_state(item.dkim, item.dkim_aligned)
+        if item.cause_key in ("unknown", "trusted", "spf", "service"):
+            item.spf_entry = spf_snippet(item.ip)
         items.append(item)
     items.sort(key=lambda i: i.failed, reverse=True)
 
     limit = settings.UI_ALERT_DETAIL_SOURCES
+    causes = summarize(items)
+    shown = items[:limit]
+    groups = [(cause, [i for i in shown if i.cause_key == cause.key]) for cause in causes]
+    groups = [(cause, members) for cause, members in groups if members]
     failure_reports = 0
     if domain_id:
         failure_reports = db.query(DmarcFailureReport.id).filter(
@@ -327,7 +360,7 @@ def analyze(db: Session, org_id: str, domain_id: str | None, alert_type: str, so
         sources=items[:limit], more_sources=max(0, len(items) - limit),
         reporters=sorted((ReporterShare(n, reporters_failed[n], reporters_total[n]) for n in reporters_total
                           if reporters_failed[n]), key=lambda x: x.failed, reverse=True),
-        failure_reports=failure_reports, causes=summarize(items),
+        failure_reports=failure_reports, causes=causes, groups=groups,
     )
 
 
