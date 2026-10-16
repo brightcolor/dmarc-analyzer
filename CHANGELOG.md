@@ -7,6 +7,35 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.16.0] – 2026-10-15
+
+### Neu
+
+- **Gründe direkt am Alarm.** Der Text der Alarme zur Fehlerquote (DMARC, SPF, DKIM) nennt jetzt die Ursachen
+  mit Zahlen („Ursachen: Gefälschter Absender (vermutlich): 8 Nachrichten von 5 Quellen; Dienst ohne passendes
+  SPF oder DKIM: 3 Nachrichten von 1 Quelle“) und die häufigsten Quellen. Das steht in der Liste der Alarme
+  und in jeder Mail, ntfy-, Slack- und Webhook-Nachricht. Die Ursachen: gefälschter Absender, Dienst ohne
+  passendes SPF oder DKIM, unbekannte Quelle ohne passendes SPF oder DKIM, SPF passt nicht (DKIM trägt),
+  DKIM passt nicht (SPF trägt). Neue Alarme speichern sie in ihren Werten (`causes`) und ihren Zeitraum
+  (`window_minutes`).
+- **Domains und Kontext bei Quellen-Alarmen.** „Neue unbekannte Quelle“, „Neue Quelle mit vielen Nachrichten“
+  und „Neue Quelle mit DMARC-Fehlern“ nennen im Titel die betroffenen Domains („… 109.187.92.220 für crust-y.com,
+  hsp-events.de“) und im Text, wie viele Nachrichten je Domain kamen, wie oft SPF und DKIM passten, Hostname,
+  Netz, Land und die Anbieter, die die Mails angenommen haben.
+- **Detailseite eines Alarms** (Link „Gründe und Abhilfe ansehen“ unter dem Alarm und der Titel): oben „Warum?“
+  mit den Ursachen und was du tun kannst, darunter je Quelle IP-Adresse, Dienst, Hostname, Netzbetreiber,
+  Einstufung, fehlgeschlagene Nachrichten, SPF und DKIM mit Domain und Selector, Absender- und Bounce-Adresse,
+  Berichtgeber und eine Abhilfe mit dem passenden SPF-Eintrag (`ip4:` oder `ip6:`). Dazu die Anbieter, die die
+  Mails angenommen haben. Einzelne Empfänger, Betreff und Inhalt stehen nicht in DMARC-Berichten; die Seite
+  sagt das und verweist auf die Fehlerberichte, wenn für den Zeitraum welche vorliegen.
+- Einstellungen: `ALERT_DESCRIPTION_SOURCES` (Quellen im Alarmtext, Vorgabe 3, `0` lässt sie weg),
+  `ALERT_DESCRIPTION_DOMAINS` (Domains im Alarmtext einer Quelle, Vorgabe 5, `0` lässt sie weg),
+  `UI_ALERT_DETAIL_SOURCES` (Quellen auf der Detailseite, Vorgabe 50).
+
+### Geändert
+
+- Der Link in Mails und Benachrichtigungen führt zur Detailseite des Alarms, vorher zur Liste.
+
 ## [0.15.0] – 2026-10-15
 
 ### Neu

@@ -16,6 +16,7 @@ from app.dependencies import (
 )
 from app.models import AlertEvent, AlertRule, Domain, NotificationChannel, NotificationDelivery, Organization, User
 from app.security import utcnow
+from app.services import alert_details
 from app.services.alert_service import ALERT_TYPES, OPERATOR_ALERT_TYPES, alert_type_hints
 from app.services.audit import log_action
 from app.services.auth import get_user_role_in_org
@@ -322,7 +323,34 @@ def alert_events(
         "status_filter": status if status in EVENT_STATUSES else "",
         "severity_filter": severity if severity in SEVERITIES else "",
         "statuses": EVENT_STATUSES, "severities": SEVERITIES,
+        "detail_types": alert_details.DETAIL_TYPES,
         "page_title": "Alarme",
+    })
+
+
+@router.get("/events/{event_id}", response_class=HTMLResponse)
+def alert_event_detail(
+    event_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    org: Organization = Depends(get_current_org),
+):
+    event = db.query(AlertEvent).filter_by(id=event_id, organization_id=org.id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Diesen Alarm gibt es nicht oder er gehört zu einer anderen "
+                            "Organisation. Öffne ihn über die Liste der Alarme.")
+    rule = db.query(AlertRule).filter_by(id=event.rule_id, organization_id=org.id).first() if event.rule_id else None
+    domain = db.query(Domain).filter_by(id=event.domain_id, organization_id=org.id).first() if event.domain_id else None
+    try:
+        metrics = json.loads(event.metrics or "{}")
+    except ValueError:
+        metrics = {}
+    return templates.TemplateResponse(request, "alerts/event.html", {
+        "user": user, "org": org, "event": event, "rule": rule, "domain": domain, "metrics": metrics,
+        "type_label": ALERT_TYPES.get(event.alert_type, event.alert_type),
+        "breakdown": alert_details.build(db, event, rule), "result_text": alert_details.result_text,
+        "page_title": "Alarm",
     })
 
 

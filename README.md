@@ -391,6 +391,18 @@ Alarme bleiben im Verlauf. Regeln der Betreiber-Arten ändert und löscht nur de
 | Viele Mails an unbekannte Adressen | der Mailempfang viele Mails an unbekannte Adressen ablehnt (nur Betreiber) | `ALERT_DEFAULT_INVALID_RECIPIENTS` |
 | Grenze für eingehende Mails erreicht | Absender die Mailgrenze treffen (nur Betreiber) | `ALERT_DEFAULT_RATE_LIMIT_HITS` |
 
+Die Gründe stehen am Alarm selbst. Bei Alarmen zur Fehlerquote (DMARC, SPF, DKIM) nennt der Text die Ursachen
+mit Zahlen (gefälschter Absender, Dienst ohne passendes SPF oder DKIM, unbekannte Quelle, SPF oder DKIM passt
+nicht) und die häufigsten Quellen (`ALERT_DESCRIPTION_SOURCES`). Alarme zu einer Quelle nennen die betroffenen
+Domains im Titel und im Text, dazu SPF- und DKIM-Ergebnisse, Hostname, Netz, Land und die Anbieter, die die
+Mails angenommen haben (`ALERT_DESCRIPTION_DOMAINS`). Dasselbe steht in den Mails und Benachrichtigungen.
+
+„Gründe und Abhilfe ansehen“ unter einem Alarm führt zur Detailseite: oben die Ursachen mit dem, was du tun
+kannst, darunter bis zu `UI_ALERT_DETAIL_SOURCES` Quellen mit Dienst, Hostname, Netzbetreiber, Einstufung,
+SPF- und DKIM-Ergebnis mit Domain und Selector, Absender- und Bounce-Adresse und dem Anbieter, der die Mails
+angenommen hat. Ein DMARC-Bericht fasst die Mails je Absender-Adresse zusammen und enthält keinen Empfänger,
+Betreff oder Inhalt einzelner Mails; die sehen nur Fehlerberichte (ruf), soweit der Empfänger sie schickt.
+
 Eine Regel für alle Domains prüft jede aktive Domain einzeln: Jeder Alarm nennt seine Domain und geht
 auch an deren weitere Empfänger. „Berichte bleiben aus“ meldet dabei nur Domains, die schon einmal einen
 Bericht hatten; geparkte Domains ohne Mailversand bleiben still. Gilt eine Regel für eine bestimmte

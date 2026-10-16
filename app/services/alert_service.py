@@ -175,6 +175,22 @@ def _threshold(rule: AlertRule, default: float) -> float:
 
 # Evaluators: one per alert type, each returns what it found ------------------------------
 
+def _sources_hint(db: Session, rule: AlertRule, records: list[DmarcRecord], alert_type: str,
+                  now: datetime) -> tuple[str, list[dict]]:
+    """Text about the causes and the sources behind the failures, and the causes for the metrics of the event."""
+    from app.services.alert_details import FAILING, analyze, causes_text, top_sources_text
+
+    start = now - timedelta(minutes=rule.time_window_minutes)
+    breakdown = analyze(db, rule.organization_id, rule.domain_id, alert_type, None, start, now)
+    causes = breakdown.causes if breakdown else []
+    parts = [causes_text(causes),
+             top_sources_text(db, rule.organization_id, records, FAILING[alert_type],
+                              settings.ALERT_DESCRIPTION_SOURCES),
+             "Gründe und Abhilfe stehen auf der Detailseite des Alarms."]
+    return " ".join(p for p in parts if p), [
+        {"key": c.key, "label": c.label, "messages": c.messages, "sources": c.sources} for c in causes]
+
+
 def _eval_dmarc_fail_rate(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
     records = _records(db, rule, now - timedelta(minutes=rule.time_window_minutes), now + timedelta(seconds=1))
     total = sum(r.count for r in records)
@@ -186,12 +202,14 @@ def _eval_dmarc_fail_rate(db: Session, rule: AlertRule, now: datetime) -> list[F
     if rate < threshold:
         return []
     window = _window_text(rule.time_window_minutes)
+    hint, causes = _sources_hint(db, rule, records, "dmarc_fail_rate", now)
     return [Finding(
         title=f"{_num(rate)} % scheitern an DMARC{_domain_label(db, rule.domain_id)}",
         description=(f"{_num(failed)} von {_num(total)} Nachrichten der letzten {window} bestehen DMARC nicht "
-                     f"(Schwelle {_num(threshold)} %). Prüfe die fehlschlagenden Quellen."),
+                     f"(Schwelle {_num(threshold)} %). {hint}"),
         domain_id=rule.domain_id,
-        metrics={"rate": round(rate, 2), "failed": failed, "total": total, "threshold": threshold},
+        metrics={"rate": round(rate, 2), "failed": failed, "total": total, "threshold": threshold,
+                 "window_minutes": rule.time_window_minutes, "causes": causes},
     )]
 
 
@@ -209,13 +227,15 @@ def _eval_auth_fail_rate(mechanism: str) -> Callable[[Session, AlertRule, dateti
         threshold = _threshold(rule, settings.ALERT_DEFAULT_AUTH_FAIL_RATE)
         if rate < threshold:
             return []
+        hint, causes = _sources_hint(db, rule, records, f"{mechanism}_fail_rate", now)
         return [Finding(
             title=f"{_num(rate)} % ohne passendes {label}{_domain_label(db, rule.domain_id)}",
             description=(f"{_num(without)} von {_num(total)} Nachrichten der letzten "
                          f"{_window_text(rule.time_window_minutes)} haben kein zur Domain passendes {label} "
-                         f"(Schwelle {_num(threshold)} %)."),
+                         f"(Schwelle {_num(threshold)} %). {hint}"),
             domain_id=rule.domain_id,
-            metrics={"rate": round(rate, 2), "without": without, "total": total, "threshold": threshold},
+            metrics={"rate": round(rate, 2), "without": without, "total": total, "threshold": threshold,
+                     "window_minutes": rule.time_window_minutes, "causes": causes},
         )]
 
     return evaluate
@@ -309,6 +329,24 @@ def _eval_reports_missing(db: Session, rule: AlertRule, now: datetime) -> list[F
     )]
 
 
+def _for_domains(db: Session, src: SourceIp) -> str:
+    """„ für a.example, b.example und 3 weitere“ for the title of an alert about a source; empty without records."""
+    from app.services.alert_details import source_context
+
+    context = source_context(db, src.organization_id, src.ip_address, limit=2)
+    names = ", ".join(name for name, _ in context.domains)
+    if not names:
+        return ""
+    return f" für {names}" + (f" und {context.more_domains} weitere" if context.more_domains else "")
+
+
+def _source_context(db: Session, src: SourceIp) -> str:
+    """Domains, results, host and receivers of a source, as sentences for the text of an alert."""
+    from app.services.alert_details import source_text
+
+    return source_text(db, src.organization_id, src)
+
+
 def _source_title(src: SourceIp) -> str:
     from app.services.senders import load_catalog
 
@@ -324,15 +362,17 @@ def _eval_new_unknown_source(db: Session, rule: AlertRule, now: datetime) -> lis
         sources = [src for src in sources if src.enriched_at is not None]
     return [
         Finding(
-            title=f"Neue unbekannte Quelle {_source_title(src)}",
+            title=f"Neue unbekannte Quelle {_source_title(src)}{_for_domains(db, src)}",
             description=(f"{src.ip_address} verschickt Mails für deine Domains und ist noch nicht eingestuft. Bisher "
                          f"{_num(src.total_messages)} Nachrichten, davon {_num(src.pass_rate or 0)} % bestanden. "
+                         f"{_source_context(db, src)} "
                          + ("Gehört der Dienst zu dir, gib ihn unter „Absender“ frei."
-                            if src.sender_key else "Stufe sie unter „Quellen“ ein.")),
+                            if src.sender_key else "Stufe sie unter „Quellen“ ein.")
+                         + " Gründe und Einzelheiten stehen auf der Detailseite des Alarms."),
             domain_id=rule.domain_id,
             source_ip=src.ip_address,
             metrics={"ip": src.ip_address, "total": src.total_messages, "pass_rate": src.pass_rate,
-                     "sender": src.sender_key},
+                     "sender": src.sender_key, "window_minutes": rule.time_window_minutes},
         )
         for src in sources
         if src.classification == "unknown"
@@ -344,12 +384,14 @@ def _eval_high_volume_source(db: Session, rule: AlertRule, now: datetime) -> lis
     threshold = _threshold(rule, settings.ALERT_DEFAULT_HIGH_VOLUME)
     return [
         Finding(
-            title=f"Neue Quelle {_source_title(src)} mit {_num(src.total_messages)} Nachrichten",
+            title=f"Neue Quelle {_source_title(src)} mit {_num(src.total_messages)} Nachrichten{_for_domains(db, src)}",
             description=(f"{src.ip_address} ist neu und hat schon {_num(src.total_messages)} Nachrichten für deine "
-                         f"Domains verschickt (Schwelle {_num(threshold)})."),
+                         f"Domains verschickt (Schwelle {_num(threshold)}). {_source_context(db, src)} "
+                         "Gründe und Einzelheiten stehen auf der Detailseite des Alarms."),
             domain_id=rule.domain_id,
             source_ip=src.ip_address,
-            metrics={"ip": src.ip_address, "total": src.total_messages, "threshold": threshold},
+            metrics={"ip": src.ip_address, "total": src.total_messages, "threshold": threshold,
+                     "window_minutes": rule.time_window_minutes},
         )
         for src in _new_sources(db, rule, start, now)
         if src.total_messages >= threshold
@@ -361,12 +403,14 @@ def _eval_new_source_dmarc_fail(db: Session, rule: AlertRule, now: datetime) -> 
     minimum = _threshold(rule, settings.ALERT_DEFAULT_NEW_SOURCE_FAILURES)
     return [
         Finding(
-            title=f"Neue Quelle {_source_title(src)} scheitert an DMARC",
+            title=f"Neue Quelle {_source_title(src)} scheitert an DMARC{_for_domains(db, src)}",
             description=(f"{_num(src.fail_count)} von {_num(src.total_messages)} Nachrichten dieser neuen Quelle "
-                         "bestehen DMARC nicht. Ist sie ein eigener Versanddienst, fehlt ihr SPF oder DKIM."),
+                         f"bestehen DMARC nicht. {_source_context(db, src)} Ist sie ein eigener Versanddienst, "
+                         "fehlt ihr SPF oder DKIM. Gründe und Einzelheiten stehen auf der Detailseite des Alarms."),
             domain_id=rule.domain_id,
             source_ip=src.ip_address,
-            metrics={"ip": src.ip_address, "failed": src.fail_count, "total": src.total_messages},
+            metrics={"ip": src.ip_address, "failed": src.fail_count, "total": src.total_messages,
+                     "window_minutes": rule.time_window_minutes},
         )
         for src in _new_sources(db, rule, start, now)
         if src.fail_count >= minimum

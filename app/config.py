@@ -494,6 +494,20 @@ class Settings(BaseSettings):
     UI_RECENT_LIMIT: int = Field(
         10, ge=3, le=100, description="Einträge in Kurzlisten wie „Letzte Berichte“ und „Letzte Importe“.",
     )
+    ALERT_DESCRIPTION_DOMAINS: int = Field(
+        5, ge=0, le=50,
+        description="Anzahl Domains, die der Text eines Alarms zu einer Quelle nennt (neue Quelle, viele "
+                    "Nachrichten, DMARC-Fehler); weitere stehen als „und n weitere“ dabei, 0 lässt den Satz weg.",
+    )
+    UI_ALERT_DETAIL_SOURCES: int = Field(
+        50, ge=5, le=500,
+        description="Höchstzahl Quellen, die die Detailseite eines Alarms zur Fehlerquote auflistet.",
+    )
+    ALERT_DESCRIPTION_SOURCES: int = Field(
+        3, ge=0, le=20,
+        description="Anzahl Quellen, die der Text eines Alarms zur Fehlerquote nennt (auch in Mails und "
+                    "Benachrichtigungen); 0 lässt den Satz weg.",
+    )
     UI_SOURCE_DOMAINS_SHOWN: int = Field(
         3, ge=1, le=50,
         description="Anzahl Domains, die die Liste der IP-Adressen je Adresse nennt; weitere stehen als „+n“ "

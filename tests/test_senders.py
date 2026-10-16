@@ -247,7 +247,8 @@ class TestAlerts:
         dns["192.0.2.1"] = LookupResult("mail1.us4.mcsv.net", True)
         refresh_sources(session, NOW)
         events = evaluate_rules_for_org(session, org.id, NOW)
-        assert [e.title for e in events] == ["Neue unbekannte Quelle 192.0.2.1 (Mailchimp und Mandrill)"]
+        assert [e.title for e in events] == [
+            "Neue unbekannte Quelle 192.0.2.1 (Mailchimp und Mandrill) für example.org"]
         assert "gib ihn unter „Absender“ frei" in events[0].description
 
     def test_approved_sender_stays_quiet(self, session, dns, monkeypatch):

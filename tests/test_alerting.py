@@ -389,7 +389,7 @@ class TestDispatch:
         body = json.loads(http_calls["requests"][0].content)
         assert body["title"] == event.title
         assert body["domain"] == "example.org"
-        assert body["url"].endswith("/alerts/events?status=open")
+        assert body["url"].endswith(f"/alerts/events/{event.id}")
         assert event.deliveries[0].status == "sent"
 
     def test_ntfy_sends_json_with_umlauts(self, session, http_calls):

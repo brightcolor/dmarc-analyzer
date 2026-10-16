@@ -161,7 +161,7 @@ def channel_summary(channel: NotificationChannel) -> str:
 # Messages ----------------------------------------------------------------------------
 
 def event_url(event: AlertEvent) -> str:
-    return f"{settings.APP_URL.rstrip('/')}/alerts/events?status={event.status}"
+    return f"{settings.APP_URL.rstrip('/')}/alerts/events/{event.id}"
 
 
 def _metrics(event: AlertEvent) -> dict:

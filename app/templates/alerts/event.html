@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui with context %}
+
+{% block eyebrow %}Alarm{% endblock %}
+{% block heading %}{{ event.title }}{% endblock %}
+{% block lede %}<p>{{ type_label }}{% if domain %} · {{ domain.name }}{% endif %} · gemeldet am {{ event.created_at | datetime }}.</p>{% endblock %}
+{% block actions %}
+<a class="bc-button bc-button--secondary" href="/alerts/events">Alle Alarme</a>
+{% if can.analyst and event.status == 'open' %}<form method="post" action="/alerts/events/{{ event.id }}/acknowledge"><button class="bc-button bc-button--secondary" type="submit">Gesehen</button></form>{% endif %}
+{% if can.analyst and event.status != 'resolved' %}<form method="post" action="/alerts/events/{{ event.id }}/resolve"><button class="bc-button" type="submit">Erledigt</button></form>{% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="bc-panel" aria-labelledby="ueberblick-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="ueberblick-titel">Überblick</h2></div>
+  <div class="bc-panel__body">
+    <dl class="app-dl">
+      <dt>Schwere</dt><dd>{{ ui.state(event.severity | severity_text, event.severity | severity_state) }}</dd>
+      <dt>Status</dt><dd>{{ ui.state(event.status | status_text, event.status | status_state) }}</dd>
+      {% if domain %}<dt>Domain</dt><dd><a href="/domains/{{ domain.id }}">{{ domain.name }}</a></dd>{% endif %}
+      {% if event.source_ip %}<dt>Quelle</dt><dd class="app-mono"><a href="/source-ips?search={{ event.source_ip | urlencode }}">{{ event.source_ip }}</a></dd>{% endif %}
+      {% if rule %}<dt>Regel</dt><dd><a href="/alerts/rules/{{ rule.id }}/edit">{{ rule.name }}</a></dd>{% endif %}
+      {% if breakdown %}<dt>Zeitraum</dt><dd>{{ breakdown.start | datetime }} bis {{ breakdown.end | datetime }} Uhr (Eingang der Berichte)</dd>{% endif %}
+    </dl>
+    {% if event.description %}<p>{{ event.description }}</p>{% endif %}
+  </div>
+</section>
+
+{% if breakdown and breakdown.causes %}
+<section class="bc-panel" aria-labelledby="gruende-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="gruende-titel">Warum? Ursachen und was du tun kannst</h2></div>
+  <div class="bc-panel__body">
+    {% for c in breakdown.causes %}
+    <div class="app-field">
+      <p style="margin:0"><strong>{{ c.label }}</strong> · {{ c.messages | plural('Nachricht', 'Nachrichten') }} von {{ c.sources | plural('Quelle', 'Quellen') }}{% if c.examples %} <span class="app-quiet">({{ c.examples | join(', ') }})</span>{% endif %}</p>
+      <p class="app-small" style="margin:4px 0 0">{{ c.advice }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if breakdown %}
+<section class="bc-panel" aria-labelledby="quellen-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="quellen-titel">Wer hat die Mails verschickt?</h2></div>
+  {% if breakdown.sources %}
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Quelle</th><th class="bc-num bc-hide-narrow">Fehlgeschlagen</th><th class="bc-hide-narrow">SPF</th><th class="bc-hide-narrow">DKIM</th><th class="bc-hide-narrow">Absender in der Mail</th><th class="bc-hide-narrow">Gemeldet von</th><th>Ursache und Abhilfe</th></tr></thead>
+      <tbody>
+        {% for s in breakdown.sources %}
+        <tr>
+          <td>
+            {% if s.source %}<a class="bc-row-title app-mono" href="/source-ips/{{ s.source.id }}">{{ s.ip }}</a>{% else %}<span class="bc-row-title app-mono">{{ s.ip }}</span>{% endif %}
+            <span class="bc-row-sub">
+              {% if s.sender_name %}{{ s.sender_name }}{% elif s.source and s.source.reverse_dns %}<span class="app-break">{{ s.source.reverse_dns }}</span>{% endif %}
+              {% if s.source and s.source.asn_org %}<span class="app-quiet"> · {{ s.source.asn_org }}{% if s.source.country_code %}, {{ s.source.country_code }}{% endif %}</span>{% endif %}
+              {% if s.source %}<br>{{ ui.state(s.source.classification | classification_text, s.source.classification | classification_state) }}{% endif %}
+              <span class="bc-only-narrow"><br>SPF {{ result_text(s.spf) }}, DKIM {{ result_text(s.dkim) }}</span>
+            </span>
+          </td>
+          <td class="bc-num bc-hide-narrow">{{ s.failed | num }} von {{ s.total | num }}</td>
+          <td class="bc-hide-narrow">{{ ui.state(result_text(s.spf), 'bc-state--on' if s.spf_aligned else 'bc-state--bad') }}{% for d in s.spf_domains %}<br><span class="app-small app-break">{{ d }}</span>{% endfor %}</td>
+          <td class="bc-hide-narrow">{{ ui.state(result_text(s.dkim), 'bc-state--on' if s.dkim_aligned else 'bc-state--bad') }}{% for d in s.dkim_checks %}<br><span class="app-small app-break">{{ d }}</span>{% endfor %}</td>
+          <td class="bc-hide-narrow app-break">
+            {% if s.header_from %}<span class="app-small app-quiet">Von:</span> {{ s.header_from | join(', ') }}{% endif %}
+            {% if s.envelope_from %}<br><span class="app-small app-quiet">Bounce:</span> {{ s.envelope_from | join(', ') }}{% endif %}
+          </td>
+          <td class="bc-hide-narrow app-break">{{ s.reporters | join(', ') or '—' }}</td>
+          <td class="app-break">{{ s.cause }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if breakdown.more_sources %}<p class="app-small app-quiet" style="padding:0 16px 16px">Es gibt {{ breakdown.more_sources | num }} weitere Quellen mit weniger fehlgeschlagenen Nachrichten. Unter <a href="/source-ips{% if domain %}?domain={{ domain.name | urlencode }}{% endif %}">Quellen</a> stehen alle.</p>{% endif %}
+  {% else %}
+  <div class="bc-panel__body"><p>In den Berichten dieses Zeitraums ist keine fehlgeschlagene Quelle mehr zu finden. Vielleicht hat die Aufbewahrung sie schon gelöscht.</p></div>
+  {% endif %}
+</section>
+
+{% if breakdown.reporters %}
+<section class="bc-panel" aria-labelledby="empfaenger-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="empfaenger-titel">Bei wem kamen die Mails an?</h2></div>
+  <div class="bc-table-wrap">
+    <table class="bc-table">
+      <thead><tr><th>Empfangender Anbieter (Berichtgeber)</th><th class="bc-num">Fehlgeschlagen</th><th class="bc-num bc-hide-narrow">Insgesamt</th></tr></thead>
+      <tbody>
+        {% for r in breakdown.reporters %}<tr><td><span class="bc-row-title">{{ r.name }}</span></td><td class="bc-num">{{ r.failed | num }}</td><td class="bc-num bc-hide-narrow">{{ r.total | num }}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bc-panel__body">
+    <p class="app-small app-quiet">Ein DMARC-Bericht fasst die Mails je Absender-Adresse zusammen. Er nennt den Anbieter, der die Mails angenommen hat (zum Beispiel Google für Gmail-Postfächer), aber keine einzelnen Empfänger, keinen Betreff und keinen Inhalt.
+    {% if breakdown.failure_reports %}Für diesen Zeitraum liegen {{ breakdown.failure_reports | num }} Fehlerberichte mit Einzelheiten zu einzelnen Mails vor: <a href="/failure-reports{% if domain %}?domain_id={{ domain.id }}{% endif %}">Fehlerberichte ansehen</a>.
+    {% else %}Einzelne Mails zeigen nur Fehlerberichte (ruf); wenige Empfänger schicken sie. Mehr dazu unter <a href="/failure-reports">Fehlerberichte</a>.{% endif %}</p>
+  </div>
+</section>
+{% endif %}
+{% elif metrics %}
+<section class="bc-panel" aria-labelledby="werte-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="werte-titel">Werte</h2></div>
+  <div class="bc-panel__body"><dl class="app-dl">{% for key, value in metrics.items() %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl></div>
+</section>
+{% endif %}
+
+{% if event.deliveries %}
+<section class="bc-panel" aria-labelledby="versand-titel">
+  <div class="bc-panel__head"><h2 class="bc-panel__title" id="versand-titel">Benachrichtigungen</h2></div>
+  <div class="bc-panel__body">
+    {% for d in event.deliveries %}<p class="app-reason">{{ d.channel.name if d.channel else (d.recipient or 'Gelöschter Kanal') }}: {{ d.status | status_text }}{% if d.status == 'failed' and d.error_message %} – {{ d.error_message }}{% endif %}</p>{% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
