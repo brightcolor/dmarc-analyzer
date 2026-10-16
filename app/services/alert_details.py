@@ -406,7 +406,7 @@ def source_text(db: Session, org_id: str, source: SourceIp) -> str:
     where = [part for part in (
         f"Hostname {source.reverse_dns}" if source.reverse_dns else
         ("kein Hostname (rDNS) eingetragen" if source.enriched_at else ""),
-        f"Netz AS{source.asn} ({source.asn_org})" if source.asn and source.asn_org else
+        f"Netz AS{source.asn} ({provider_name(source.asn_org)})" if source.asn and source.asn_org else
         (f"Netz AS{source.asn}" if source.asn else ""),
         f"Land {source.country_code}" if source.country_code else "") if part]
     if where:

@@ -384,6 +384,12 @@ class TestSourceLabel:
         source = add_source(session, make_org(session), "198.51.100.1", total=1)
         assert source_label(source) == ""
 
+    def test_text_names_the_network_by_its_operator(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=1)
+        source.asn, source.asn_org = "28812", "JSCBIS-AS - PJSC _Bashinformsvyaz_"
+        assert "Netz AS28812 (PJSC Bashinformsvyaz)" in source_text(session, org.id, source)
+
     def test_text_says_when_the_address_has_no_host_name(self, session):
         org = make_org(session)
         source = add_source(session, org, "198.51.100.1", total=1)
