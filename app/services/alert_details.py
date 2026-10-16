@@ -42,6 +42,24 @@ RESULT_TEXT = {
 }
 
 
+def provider_name(asn_org: str | None) -> str:
+    """Operator name without the registry label: "UZMOBILE-AS - _Uzbektelekom_ Joint Stock Company" gives
+    "Uzbektelekom Joint Stock Company"."""
+    name = (asn_org or "").split(" - ", 1)[-1].replace("_", "").strip()
+    return " ".join(name.split())
+
+
+def source_label(source: SourceIp | None) -> str:
+    """Short name of a source for alert titles and texts: the service or host name, then the provider."""
+    if source is None:
+        return ""
+    name = load_catalog().name(source.sender_key) if source.sender_key else (source.reverse_dns or "")
+    provider = provider_name(source.asn_org)
+    if provider and provider.lower() in name.lower():
+        provider = ""
+    return ", ".join(part for part in (name, provider) if part)
+
+
 def result_text(value: str | None) -> str:
     return RESULT_TEXT.get(value or "", value or "unbekannt")
 
@@ -326,14 +344,9 @@ def top_sources_text(db: Session, org_id: str, records: list[DmarcRecord], faili
     ips = [ip for ip, _ in failed.most_common(limit)]
     known = {s.ip_address: s for s in db.query(SourceIp).filter(
         SourceIp.organization_id == org_id, SourceIp.ip_address.in_(ips))}
-    catalog = load_catalog()
     parts = []
     for ip in ips:
-        source = known.get(ip)
-        label = ""
-        if source is not None:
-            label = (catalog.name(source.sender_key) if source.sender_key
-                     else (source.reverse_dns or source.asn_org or ""))
+        label = source_label(known.get(ip))
         parts.append(f"{ip}{f' ({label})' if label else ''}: {failed[ip]}")
     rest = len(failed) - len(ips)
     return "Häufigste Quellen: " + ", ".join(parts) + (f" und {rest} weitere" if rest > 0 else "") + "."
@@ -391,7 +404,8 @@ def source_text(db: Session, org_id: str, source: SourceIp) -> str:
         parts.append(f"SPF passt bei {context.spf_aligned} von {context.messages} Nachrichten, "
                      f"DKIM bei {context.dkim_aligned}.")
     where = [part for part in (
-        f"Hostname {source.reverse_dns}" if source.reverse_dns else "",
+        f"Hostname {source.reverse_dns}" if source.reverse_dns else
+        ("kein Hostname (rDNS) eingetragen" if source.enriched_at else ""),
         f"Netz AS{source.asn} ({source.asn_org})" if source.asn and source.asn_org else
         (f"Netz AS{source.asn}" if source.asn else ""),
         f"Land {source.country_code}" if source.country_code else "") if part]

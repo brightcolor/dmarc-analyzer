@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 
 from app.config import settings
-from app.models import AlertEvent, DmarcAuthResult, DmarcFailureReport, DmarcRecord
+from app.models import AlertEvent, DmarcAuthResult, DmarcFailureReport, DmarcRecord, SourceIp
 from app.services import alert_details
 from app.services.alert_details import (
     FailedSource,
@@ -13,7 +13,9 @@ from app.services.alert_details import (
     categorize,
     causes_text,
     diagnose,
+    provider_name,
     source_context,
+    source_label,
     source_text,
     spf_snippet,
     summarize,
@@ -308,7 +310,8 @@ class TestSourceAlerts:
 
     def test_title_names_the_domains(self, session):
         _, event = self._alert(session)
-        assert event.title == "Neue unbekannte Quelle 109.187.92.220 für crust-y.com, hsp-events.de"
+        assert event.title == (
+            "Neue unbekannte Quelle 109.187.92.220 (host.dyn.example.ru, Rostelecom) für crust-y.com, hsp-events.de")
 
     def test_text_gives_context(self, session):
         _, event = self._alert(session)
@@ -344,3 +347,49 @@ class TestSourceAlerts:
         result = build(session, event, None)
         assert [s.ip for s in result.sources] == ["109.187.92.220"]
         assert result.causes[0].key == "spoof"
+
+
+class TestSourceLabel:
+    def test_provider_name_drops_the_registry_label(self):
+        assert provider_name("UZMOBILE-AS - _Uzbektelekom_ Joint Stock Company") == "Uzbektelekom Joint Stock Company"
+        assert provider_name("OVH") == "OVH"
+        assert provider_name(None) == "" and provider_name("") == ""
+
+    def test_label_is_host_name_and_provider(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=1, reverse_dns="mail.hoster.example")
+        source.asn_org = "HETZNER-AS - Hetzner Online GmbH"
+        assert source_label(source) == "mail.hoster.example, Hetzner Online GmbH"
+
+    def test_known_service_replaces_the_host_name(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=1, reverse_dns="mail1.us4.mcsv.net")
+        source.sender_key, source.asn_org = "mailchimp", "THE-RISE-TECH - The Rocket Science Group"
+        assert source_label(source) == "Mailchimp und Mandrill, The Rocket Science Group"
+
+    def test_provider_is_not_repeated_in_the_name(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=1, reverse_dns="mail.hetzner.example")
+        source.asn_org = "HETZNER-AS - Hetzner"
+        assert source_label(source) == "mail.hetzner.example"
+
+    def test_label_of_nothing_is_empty(self, session):
+        assert source_label(None) == ""
+        source = add_source(session, make_org(session), "198.51.100.1", total=1)
+        assert source_label(source) == ""
+
+    def test_text_says_when_the_address_has_no_host_name(self, session):
+        org = make_org(session)
+        source = add_source(session, org, "198.51.100.1", total=1)
+        source.enriched_at = NOW
+        assert "kein Hostname (rDNS) eingetragen" in source_text(session, org.id, source)
+        source.enriched_at = None
+        assert "rDNS" not in source_text(session, org.id, source)
+
+    def test_fail_rate_text_names_host_and_provider(self, session):
+        org, domain = _setup(session)
+        source = session.query(SourceIp).filter_by(ip_address="198.51.100.1").one()
+        source.asn_org = "HETZNER-AS - Hetzner Online GmbH"
+        make_rule(session, org, "dmarc_fail_rate", threshold=10, window=1440, cooldown=0)
+        event = evaluate_rules_for_org(session, org.id, NOW)[0]
+        assert "198.51.100.1 (mail.hoster.example, Hetzner Online GmbH): 8" in event.description

@@ -7,6 +7,15 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.16.1] – 2026-10-16
+
+### Geändert
+
+- Alarme zu Quellen nennen im Titel und im Text Hostname (rDNS) oder Dienst und den Anbieter dahinter, zum Beispiel
+  „Neue unbekannte Quelle 109.187.92.220 (host.example.ru, Rostelecom) für crust-y.com, hsp-events.de“. Hat die
+  Adresse keinen Hostnamen, sagt der Text das. Dieselbe Bezeichnung steht bei den häufigsten Quellen der Alarme
+  zur Fehlerquote („198.51.100.1 (mail.hoster.example, Hetzner Online GmbH): 8“).
+
 ## [0.16.0] – 2026-10-15
 
 ### Neu

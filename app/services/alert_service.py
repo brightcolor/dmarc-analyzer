@@ -348,10 +348,11 @@ def _source_context(db: Session, src: SourceIp) -> str:
 
 
 def _source_title(src: SourceIp) -> str:
-    from app.services.senders import load_catalog
+    """Address with its service or host name and its provider: "203.0.113.7 (mail.example.net, Hetzner)"."""
+    from app.services.alert_details import source_label
 
-    name = load_catalog().name(src.sender_key)
-    return f"{src.ip_address} ({name})" if name else src.ip_address
+    label = source_label(src)
+    return f"{src.ip_address} ({label})" if label else src.ip_address
 
 
 def _eval_new_unknown_source(db: Session, rule: AlertRule, now: datetime) -> list[Finding]:
